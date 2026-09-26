@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "IDK Nova",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "identifier": "com.idk.nova",
   "build": { "beforeDevCommand": "npm run dev", "devUrl": "http://localhost:1430", "beforeBuildCommand": "npm run build", "frontendDist": "../dist" },
   "app": {
@@ -12,9 +12,25 @@
     "active": true,
     "targets": ["nsis", "msi"],
     "icon": ["icons/icon.ico", "icons/icon.png", "icons/icon.icns"],
-    "publisher": "Nova",
-    "shortDescription": "Private, local-first AI chat",
+    "publisher": "IDK Nova Open Source",
+    "copyright": "Copyright © 2026 IDK Nova contributors",
+    "category": "Productivity",
+    "shortDescription": "Private, configurable AI workspace",
     "longDescription": "IDK Nova connects to local and cloud AI models with support for conversations, images, files and voice input.",
-    "windows": { "wix": { "language": "en-US" }, "nsis": { "installMode": "currentUser", "displayLanguageSelector": false } }
+    "windows": {
+      "allowDowngrades": false,
+      "wix": { "language": "en-US" },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "compression": "lzma",
+        "startMenuFolder": "IDK Nova",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp",
+        "uninstallerHeaderImage": "installer/header.bmp"
+      }
+    }
   }
 }

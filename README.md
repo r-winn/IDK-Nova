@@ -25,6 +25,10 @@ Go to **[Latest Release](https://github.com/r-winn/IDK-Nova/releases/latest)** a
 
 Nova currently targets 64-bit Windows 10 and Windows 11. Windows may show a SmartScreen notice because community builds are not yet code-signed. Confirm that the publisher file came from this repository's official Releases page before continuing.
 
+The release pipeline is ready for Authenticode signing. Maintainers can follow
+[WINDOWS_SIGNING.md](WINDOWS_SIGNING.md) to add an encrypted certificate to
+GitHub Actions without committing private signing material.
+
 ### 2. Start an AI provider
 
 Nova is the interface; the model runs through a provider. The easiest private option is [Ollama](https://ollama.com/).

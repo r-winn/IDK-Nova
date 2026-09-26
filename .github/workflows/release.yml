@@ -7,6 +7,8 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      SIGNING_ENABLED: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,12 +17,40 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
-      - uses: tauri-apps/tauri-action@v0
+      - name: Import Windows code-signing certificate
+        if: env.SIGNING_ENABLED == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $certificateBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'idk-nova-signing.pfx'
+          [IO.File]::WriteAllBytes($certificatePath, $certificateBytes)
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          $config = @{ bundle = @{ windows = @{ certificateThumbprint = $certificate.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Depth 5
+          Set-Content -Path src-tauri/tauri.signing.conf.json -Value $config
+      - name: Build signed Windows installers
+        if: env.SIGNING_ENABLED == 'true'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: IDK Nova ${{ github.ref_name }}
-          releaseBody: Download the Setup.exe file and follow the installation wizard.
+          releaseBody: Download the signed Setup.exe for the guided installer, or the MSI for managed deployment.
+          releaseDraft: false
+          prerelease: false
+          args: --config src-tauri/tauri.signing.conf.json
+      - name: Build unsigned community installers
+        if: env.SIGNING_ENABLED != 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: IDK Nova ${{ github.ref_name }}
+          releaseBody: Community build. Download Setup.exe for the guided installer, or MSI for managed deployment. This release is not code-signed yet and Windows SmartScreen may show a warning.
           releaseDraft: false
           prerelease: false
