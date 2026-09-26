@@ -9,7 +9,7 @@ export function loadConfig(): Config {
   const provider = { id: 'migrated-provider', name: stored.name || 'Local provider', baseUrl: stored.baseUrl || defaultConfig.providers[0].baseUrl, apiKey: stored.apiKey || '', models: stored.model ? [stored.model] : [] };
   return { ...defaultConfig, providers: [provider], activeProviderId: provider.id, activeModel: stored.model || '', temperature: stored.temperature ?? 0.5 };
 }
-export function saveConfig(config: Config) { localStorage.setItem('idk-nova-config', JSON.stringify({ ...config, providers: config.providers.map(provider => ({ ...provider, apiKey: '' })) })); }
+export function saveConfig(config: Config) { localStorage.setItem('idk-nova-config', JSON.stringify(config)); }
 
 export async function loadManagedConfig(): Promise<Partial<Config> | null> {
   try { const response = await fetch(`${import.meta.env.BASE_URL}idk-nova.config.json`, { cache: 'no-store' }); return response.ok ? await response.json() : null; } catch { return null; }
