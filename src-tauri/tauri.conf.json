@@ -11,6 +11,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "icon": ["icons/icon.ico", "icons/icon.png", "icons/icon.icns"],
     "publisher": "Nova",
     "shortDescription": "Private, local-first AI chat",
     "longDescription": "IDK Nova connects to local and cloud AI models with support for conversations, images, files and voice input.",
