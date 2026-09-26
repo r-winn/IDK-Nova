@@ -1,23 +1,61 @@
-# Nova Chat
+# IDK Nova
 
-The conversational companion to Nova AI IDE. It supports streaming chat, image and file attachments, conversation history, light/dark modes, and OpenAI-compatible local or cloud models.
+IDK Nova is a private, local-first AI chat application for the web and Windows.
+It supports streaming conversations, images, files, voice input, searchable
+history and OpenAI-compatible local or cloud models.
+
+> Early preview: verify important responses and avoid uploading sensitive data
+> to a cloud provider unless you trust that provider and understand its policy.
+
+## Features
+
+- Streaming text and vision conversations
+- Image, PDF, text, Markdown, JSON and CSV attachments
+- Searchable local conversation history
+- Rename, delete, archive, copy and share controls
+- Voice input where supported by the browser
+- Light/dark themes and responsive glass interface
+- Ollama, LM Studio and OpenAI-compatible providers
+- Independent Tauri desktop shell for Windows
+
+## Run locally
+
+Requirements: Node.js 22 or newer and npm.
 
 ```bash
+git clone https://github.com/r-winn/IDK-Nova.git
+cd IDK-Nova
 npm install
 npm run dev
 ```
 
-Open `http://localhost:1430`. Configure Ollama, LM Studio, OpenAI, or another compatible endpoint from Settings. Image understanding requires a vision-capable model.
+Open `http://localhost:1430`. Configure the provider and vision model from the
+Settings button.
 
-## Windows installer
+## Local providers
 
-The app includes an independent Tauri desktop shell. Pushing a tag such as `chat-v0.1.0` creates a draft GitHub Release containing a standard `Setup.exe` wizard and an MSI package.
+| Provider | Base URL |
+| --- | --- |
+| Ollama | `http://localhost:11434/v1` |
+| LM Studio | `http://localhost:1234/v1` |
+
+Image understanding requires a vision-capable model. Cloud API keys are kept
+in memory for the current browser session and are intentionally not persisted.
+
+## Build
 
 ```bash
-git tag chat-v0.1.0
-git push origin chat-v0.1.0
+npm run build
 ```
 
-## One-click start on macOS
+Download the Windows `Setup.exe` from GitHub Releases. For a local desktop
+build, install Rust and Tauri prerequisites and run `npm run desktop:build`.
 
-Double-click `Start Nova Chat.command` in the parent project folder. The launcher prepares the app when needed, starts the local website, and opens it in the default browser. Keep the Terminal window open while using Nova Chat and press Control+C to stop it.
+## Security
+
+Read [SECURITY.md](SECURITY.md). AI responses and uploaded content should be
+treated as untrusted when used in code or automated workflows.
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Released under the [MIT License](LICENSE).

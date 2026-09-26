@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Nova Chat",
+  "productName": "IDK Nova",
   "version": "0.1.0",
-  "identifier": "dev.nova.chat",
+  "identifier": "com.idk.nova",
   "build": { "beforeDevCommand": "npm run dev", "devUrl": "http://localhost:1430", "beforeBuildCommand": "npm run build", "frontendDist": "../dist" },
   "app": {
-    "windows": [{ "title": "Nova Chat", "width": 1240, "height": 820, "minWidth": 760, "minHeight": 560, "center": true, "resizable": true }],
+    "windows": [{ "title": "IDK Nova", "width": 1240, "height": 820, "minWidth": 760, "minHeight": 560, "center": true, "resizable": true }],
     "security": { "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* https:; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'" }
   },
   "bundle": {
@@ -13,7 +13,7 @@
     "targets": ["nsis", "msi"],
     "publisher": "Nova",
     "shortDescription": "Private, local-first AI chat",
-    "longDescription": "Nova Chat connects to local and cloud AI models with support for conversations, images, files and voice input.",
+    "longDescription": "IDK Nova connects to local and cloud AI models with support for conversations, images, files and voice input.",
     "windows": { "wix": { "language": "en-US" }, "nsis": { "installMode": "currentUser", "displayLanguageSelector": false } }
   }
 }

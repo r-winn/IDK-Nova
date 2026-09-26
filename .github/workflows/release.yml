@@ -20,7 +20,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: Nova Chat ${{ github.ref_name }}
+          releaseName: IDK Nova ${{ github.ref_name }}
           releaseBody: Download the Setup.exe file and follow the installation wizard.
           releaseDraft: false
           prerelease: false
