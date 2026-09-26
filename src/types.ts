@@ -4,7 +4,8 @@ export type Chat = { id: number; title: string; time: string; messages: Message[
 export type Provider = { id: string; name: string; baseUrl: string; apiKey: string; models: string[] };
 export type Branding = { appName: string; workspaceName: string; accent: string; logoDataUrl: string };
 export type DatabaseConfig = { enabled: boolean; kind: 'none' | 'postgresql' | 'mysql' | 'sqlite' | 'http'; url: string; useForMemory: boolean };
-export type Config = { providers: Provider[]; activeProviderId: string; activeModel: string; temperature: number; branding: Branding; database: DatabaseConfig };
+export type ThemePreference = 'system' | 'light' | 'dark';
+export type Config = { providers: Provider[]; activeProviderId: string; activeModel: string; temperature: number; theme: ThemePreference; branding: Branding; database: DatabaseConfig };
 export const defaultProvider: Provider = { id: 'ollama-local', name: 'Ollama Local', baseUrl: 'http://localhost:11434/v1', apiKey: '', models: [] };
-export const defaultConfig: Config = { providers: [defaultProvider], activeProviderId: defaultProvider.id, activeModel: '', temperature: 0.5, branding: { appName: 'Nova', workspaceName: 'Personal workspace', accent: '#171717', logoDataUrl: '' }, database: { enabled: false, kind: 'none', url: '', useForMemory: false } };
+export const defaultConfig: Config = { providers: [defaultProvider], activeProviderId: defaultProvider.id, activeModel: '', temperature: 0.5, theme: 'system', branding: { appName: 'Nova', workspaceName: 'Personal workspace', accent: '#171717', logoDataUrl: '' }, database: { enabled: false, kind: 'none', url: '', useForMemory: false } };
 export const getActiveProvider = (config: Config) => config.providers.find(provider => provider.id === config.activeProviderId) || config.providers[0];

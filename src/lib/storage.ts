@@ -5,7 +5,7 @@ export function saveChats(chats: Chat[]) { const safe = chats.map(chat => ({ ...
 export function loadConfig(): Config {
   const stored = loadValue<any>('idk-nova-config', null) || loadValue<any>('nova-chat-config', null);
   if (!stored) return defaultConfig;
-  if (Array.isArray(stored.providers)) return { ...defaultConfig, ...stored, branding: { ...defaultConfig.branding, ...stored.branding }, database: { ...defaultConfig.database, ...stored.database }, providers: stored.providers.map((provider: any) => ({ ...provider, models: Array.isArray(provider.models) ? provider.models : [] })) };
+  if (Array.isArray(stored.providers)) return { ...defaultConfig, ...stored, theme: stored.theme || 'system', branding: { ...defaultConfig.branding, ...stored.branding }, database: { ...defaultConfig.database, ...stored.database }, providers: stored.providers.map((provider: any) => ({ ...provider, models: Array.isArray(provider.models) ? provider.models : [] })) };
   const provider = { id: 'migrated-provider', name: stored.name || 'Local provider', baseUrl: stored.baseUrl || defaultConfig.providers[0].baseUrl, apiKey: stored.apiKey || '', models: stored.model ? [stored.model] : [] };
   return { ...defaultConfig, providers: [provider], activeProviderId: provider.id, activeModel: stored.model || '', temperature: stored.temperature ?? 0.5 };
 }
