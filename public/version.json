@@ -1,6 +1,6 @@
 {
-  "version": "0.3.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.3.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.3.1/IDK.Nova_0.3.1_x64-setup.exe",
-  "notes": ["Branded Windows installation wizard", "New application and installer icons", "Signing-ready release pipeline", "Improved publisher metadata", "LZMA installer compression"]
+  "version": "0.3.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.3.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.3.2/IDK.Nova_0.3.2_x64-setup.exe",
+  "notes": ["Settings interface rebuilt from the ground up", "Theme-aware logo system", "Cleaner conversation header", "Temporary Chat preview", "Refined spacing and desktop layout"]
 }
