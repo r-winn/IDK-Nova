@@ -59,6 +59,27 @@ Each connection keeps its own real model list. You can add, rename and remove
 providers, refresh installed models, add an exact model ID manually and switch
 the active model from the header.
 
+## Managed and white-label configuration
+
+Settings includes branding, model providers, database/memory and update
+management. A configuration can be exported as `idk-nova.config.json` and
+imported on another installation. Secrets are removed from exported files.
+
+Organizations can start from
+[`public/idk-nova.config.example.json`](public/idk-nova.config.example.json),
+rename it to `idk-nova.config.json` before building, and distribute a branded
+build with the application name, workspace name, accent, logo, providers,
+approved model IDs and database policy already configured. A custom logo may be
+embedded as a PNG/SVG/WebP data URL. Models entered manually are tested against
+the configured completion endpoint before Nova accepts them.
+
+## Updates
+
+`public/version.json` is the canonical release manifest. The web app is deployed
+from `main` and updates on the next reload. Desktop builds compare their bundled
+version with this manifest and link only to the official GitHub Release
+installer. Update the application version, manifest and release tag together.
+
 ## Build
 
 ```bash

@@ -1,0 +1,6 @@
+{
+  "version": "0.3.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.3.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.3.0/IDK.Nova_0.3.0_x64-setup.exe",
+  "notes": ["New macOS-style settings", "Verified model connections", "Managed branding and configuration", "Central update checks", "Database setup"]
+}

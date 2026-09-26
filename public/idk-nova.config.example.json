@@ -1,0 +1,8 @@
+{
+  "branding": { "appName": "Acme AI", "workspaceName": "Acme Private AI", "accent": "#0f766e", "logoDataUrl": "" },
+  "providers": [{ "id": "company-ai", "name": "Company AI", "baseUrl": "https://ai.example.com/v1", "apiKey": "", "models": ["company-chat"] }],
+  "activeProviderId": "company-ai",
+  "activeModel": "company-chat",
+  "temperature": 0.3,
+  "database": { "enabled": false, "kind": "none", "url": "", "useForMemory": false }
+}

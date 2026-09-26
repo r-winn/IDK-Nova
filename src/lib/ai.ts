@@ -12,6 +12,15 @@ export async function discoverModels(provider: Provider): Promise<string[]> {
   return [...new Set<string>(ids)].sort();
 }
 
+export async function testModel(provider: Provider, model: string): Promise<number> {
+  const started = performance.now();
+  const response = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: headers(provider), body: JSON.stringify({ model, stream: false, max_tokens: 8, messages: [{ role: 'user', content: 'Reply with OK' }] }) });
+  if (!response.ok) throw new Error(`Model test failed (${response.status})`);
+  const payload = await response.json();
+  if (!payload.choices?.[0]?.message) throw new Error('Provider returned an invalid completion');
+  return Math.round(performance.now() - started);
+}
+
 export async function streamCompletion(config: Config, messages: Message[], onToken: (token: string) => void) {
   const provider = getActiveProvider(config);
   if (!provider) throw new Error('Add a provider in Settings first');
