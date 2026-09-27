@@ -1,6 +1,6 @@
 {
-  "version": "0.9.14",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.14",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.14/IDK.Nova_0.9.14_x64-setup.exe",
-  "notes": ["Unified animated transitions now connect Workspace Home, Browser, Files, Side Chat, code, and image views", "Tab creation, switching, closing, and browser Back or Forward navigation animate without layout jumps", "Native desktop webviews appear in sync with Workspace motion", "Reduced Motion system preferences are respected"]
+  "version": "0.9.15",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.15",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.15/IDK.Nova_0.9.15_x64-setup.exe",
+  "notes": ["One animated gradient surface now continues through Workspace Home, Browser, Files, Side Chat, code, and image views", "Page transitions use a soft blur cross-fade with no sideways page motion", "White flashes between Workspace views have been removed", "Browser loading and fallback surfaces now respect light and dark themes"]
 }
