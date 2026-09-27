@@ -1,10 +1,12 @@
-import { ChangeEvent, CSSProperties, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArrowRight, ArrowUp, Bot, BriefcaseBusiness, Check, ChevronDown, CircleUserRound, Clock3, Code2, Copy, Database, Download, FileText, Globe2, Image as ImageIcon, Info, Laptop, Menu, MessageSquare, Mic, Moon, PanelLeftClose, Paperclip, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Sun, Trash2, Upload, Workflow, X } from 'lucide-react';
+import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Archive, ArrowRight, ArrowUp, Bot, BriefcaseBusiness, Check, ChevronDown, CircleUserRound, Clock3, Code2, Copy, Database, Download, FileText, Globe2, Image as ImageIcon, Info, Menu, MessageSquare, Mic, PanelLeftClose, Paperclip, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Upload, Workflow, X } from 'lucide-react';
 import { discoverModels, streamCompletion, testModel } from './lib/ai';
 import { loadConfig, loadManagedConfig, loadValue, saveChats, saveConfig } from './lib/storage';
-import { Attachment, Chat, Config, Message, Provider, ThemePreference, getActiveProvider } from './types';
+import { Attachment, Chat, Config, Message, Provider, getActiveProvider } from './types';
 import { APP_VERSION, UPDATE_MANIFEST, UpdateManifest, isNewerVersion } from './version';
 import { DownloadProgress, NativeUpdate, downloadNativeUpdate, findNativeUpdate, installNativeUpdate, isDesktopApp } from './lib/updater';
+import { BrandMark } from './components/BrandMark';
+import { ThemeSelector } from './components/ThemeSelector';
 
 const starterChats: Chat[] = [{ id: 1, title: 'Welcome to Nova', time: 'Today', messages: [] }];
 const settingMeta = {
@@ -15,14 +17,6 @@ const settingMeta = {
   about: ['About Nova', 'Version, licensing and deployment details.'],
 } as const;
 type SettingsTab = keyof typeof settingMeta;
-
-function BrandMark({ config, className = '' }: { config: Config; className?: string }) {
-  return <span className={`brand-mark ${config.branding.logoDataUrl ? 'custom-mark' : 'default-mark'} ${className}`} style={{ '--brand-accent': config.branding.accent } as CSSProperties}><img alt="" src={config.branding.logoDataUrl || `${import.meta.env.BASE_URL}brand/nova-mark-white-256.png`}/></span>;
-}
-
-function ThemeCard({ id, value, icon, title, description, onSelect }: { id: ThemePreference; value: ThemePreference; icon: ReactNode; title: string; description: string; onSelect: (value: ThemePreference) => void }) {
-  return <button className={`theme-card ${value === id ? 'selected' : ''}`} onClick={() => onSelect(id)}><span className={`theme-swatch ${id}`}><i/><i/><i/></span><span className="theme-label">{icon}<span><b>{title}</b><small>{description}</small></span>{value === id && <Check/>}</span></button>;
-}
 
 export default function App() {
   const [sidebar, setSidebar] = useState(true);
@@ -109,7 +103,7 @@ export default function App() {
       <aside className="settings-sidebar"><div className="settings-brand"><BrandMark config={draftConfig}/><span><b>{draftConfig.branding.appName}</b><small>Settings</small></span></div><nav>{([['general',SlidersHorizontal,'General'],['models',Bot,'Models'],['data',Database,'Data & memory'],['updates',Download,'Updates'],['about',Info,'About']] as const).map(([id,Icon,label]) => <button key={id} className={settingsTab === id ? 'active' : ''} onClick={() => setSettingsTab(id)}><Icon/><span>{label}</span>{id === 'updates' && updateState === 'available' && <i/>}</button>)}</nav><div className="settings-sidebar-actions"><button onClick={() => configFileRef.current?.click()}><Upload/>Import config</button><button onClick={exportConfig}><Download/>Export config</button><input hidden ref={configFileRef} type="file" accept="application/json,.json" onChange={importConfig}/></div></aside>
       <section className="settings-panel"><header><div><h2>{settingMeta[settingsTab][0]}</h2><p>{settingMeta[settingsTab][1]}</p></div><button className="icon-button" onClick={() => setSettingsOpen(false)}><X/></button></header><div className="settings-scroll">
         {settingsTab === 'general' && <>
-          <section className="settings-section"><div className="section-copy"><h3>Appearance</h3><p>Follow your device automatically or choose a fixed theme.</p></div><div className="theme-grid"><ThemeCard id="system" value={draftConfig.theme} icon={<Laptop/>} title="System" description="Match this device" onSelect={theme => setDraftConfig(current => ({ ...current, theme }))}/><ThemeCard id="light" value={draftConfig.theme} icon={<Sun/>} title="Light" description="Always light" onSelect={theme => setDraftConfig(current => ({ ...current, theme }))}/><ThemeCard id="dark" value={draftConfig.theme} icon={<Moon/>} title="Dark" description="Always dark" onSelect={theme => setDraftConfig(current => ({ ...current, theme }))}/></div></section>
+          <section className="settings-section compact-section"><div className="setting-lead"><div className="section-copy"><h3>Appearance</h3><p>Follow your device or keep a fixed theme.</p></div><ThemeSelector value={draftConfig.theme} onChange={theme => setDraftConfig(current => ({ ...current, theme }))}/></div></section>
           <section className="settings-section"><div className="section-copy"><h3>Workspace identity</h3><p>Customize Nova for personal use or your organization.</p></div><div className="identity-row"><BrandMark config={draftConfig} className="identity-preview"/><div><b>Workspace logo</b><small>Transparent PNG, SVG or WebP · up to 2 MB</small><div><button className="secondary" onClick={() => logoFileRef.current?.click()}>Choose image</button>{draftConfig.branding.logoDataUrl && <button className="quiet-button" onClick={() => setDraftConfig(current => ({ ...current, branding: { ...current.branding, logoDataUrl: '' } }))}>Use default</button>}</div></div><input hidden ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/webp" onChange={uploadLogo}/></div><div className="field-grid"><label>Application name<input value={draftConfig.branding.appName} onChange={e => setDraftConfig(current => ({ ...current, branding: { ...current.branding, appName: e.target.value } }))}/></label><label>Workspace name<input value={draftConfig.branding.workspaceName} onChange={e => setDraftConfig(current => ({ ...current, branding: { ...current.branding, workspaceName: e.target.value } }))}/></label></div><label>Accent color<div className="color-input"><input type="color" value={draftConfig.branding.accent} onChange={e => setDraftConfig(current => ({ ...current, branding: { ...current.branding, accent: e.target.value } }))}/><code>{draftConfig.branding.accent}</code></div></label></section>
           <section className="settings-section"><div className="section-copy"><h3>Response style</h3><p>Choose how creative or predictable model responses should be.</p></div><label className="range-control"><span>Creativity <b>{draftConfig.temperature.toFixed(1)}</b></span><input type="range" min="0" max="1" step="0.1" value={draftConfig.temperature} onChange={e => setDraftConfig(current => ({ ...current, temperature: Number(e.target.value) }))}/><span className="range-labels"><small>Precise</small><small>Creative</small></span></label></section>
         </>}

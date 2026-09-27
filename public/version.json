@@ -1,6 +1,6 @@
 {
-  "version": "0.5.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.5.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.5.0/IDK.Nova_0.5.0_x64-setup.exe",
-  "notes": ["Native in-app updater with download progress and restart-to-install", "Cleaner ChatGPT-style navigation with Work and Agents previews", "Messaging is safely locked until a model is selected", "Simplified Settings hierarchy and corrected logo alignment", "Improved local configuration persistence"]
+  "version": "0.5.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.5.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.5.1/IDK.Nova_0.5.1_x64-setup.exe",
+  "notes": ["A quieter, clearer General settings layout", "Compact system, light and dark theme selector", "Pixel-correct Settings logo alignment", "Reusable brand and theme UI components", "Improved small-window settings layout"]
 }
