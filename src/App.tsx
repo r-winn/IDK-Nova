@@ -2474,7 +2474,7 @@ export default function App() {
           ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
           <div className="browser-surface" ref={browserSurfaceRef}>
             <div
-              className="workspace-view"
+              className={`workspace-view workspace-view-${activeBrowserTab?.kind || "home"}`}
               key={`${activeBrowserTab?.id}-${activeBrowserTab?.kind}-${activeBrowserTab?.url}-${activeBrowserTab?.historyIndex}-${activeBrowserTab?.artifactView || ""}-${browserFrameKey}`}
             >
             {activeBrowserTab?.kind === "browser" && activeBrowserTab.url ? (

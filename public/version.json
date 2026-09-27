@@ -1,6 +1,6 @@
 {
-  "version": "0.9.15",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.15",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.15/IDK.Nova_0.9.15_x64-setup.exe",
-  "notes": ["One animated gradient surface now continues through Workspace Home, Browser, Files, Side Chat, code, and image views", "Page transitions use a soft blur cross-fade with no sideways page motion", "White flashes between Workspace views have been removed", "Browser loading and fallback surfaces now respect light and dark themes"]
+  "version": "0.9.16",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.16",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.16/IDK.Nova_0.9.16_x64-setup.exe",
+  "notes": ["Workspace transitions now use a smooth GPU-friendly ease-in-out blur without a mid-animation jump", "Browser, Files, Temporary Chat, code, images, and Home each have a distinct coordinated animated gradient", "Transition opacity was tuned to prevent background flashes", "Tab motion uses the same smooth timing language"]
 }
