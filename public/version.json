@@ -1,6 +1,6 @@
 {
-  "version": "0.7.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.7.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.7.1/IDK.Nova_0.7.1_x64-setup.exe",
-  "notes": ["Goldiran OpenAI-compatible provider support", "Clear HTTP provider guidance for web users", "Explicit SSE streaming negotiation"]
+  "version": "0.7.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.7.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.7.2/IDK.Nova_0.7.2_x64-setup.exe",
+  "notes": ["Native desktop HTTP client for internal providers", "CORS-free Goldiran API connections", "Reliable chat scrolling and message rendering"]
 }

@@ -182,15 +182,18 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedDark ? "dark" : "light";
   }, [resolvedDark]);
-  useEffect(() => saveChats(chats), [chats]);
+  useEffect(() => {
+    saveChats(chats);
+  }, [chats]);
   useEffect(
-    () => localStorage.setItem("idk-nova-active", JSON.stringify(active)),
+    () => {
+      localStorage.setItem("idk-nova-active", JSON.stringify(active));
+    },
     [active],
   );
-  useEffect(
-    () => endRef.current?.scrollIntoView({ behavior: "smooth" }),
-    [chat?.messages, busy],
-  );
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat?.messages, busy]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 2400);

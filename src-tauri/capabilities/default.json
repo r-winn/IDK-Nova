@@ -3,5 +3,17 @@
   "identifier": "default",
   "description": "Default permissions for the IDK Nova desktop window",
   "windows": ["main"],
-  "permissions": ["core:default", "updater:default", "process:allow-restart", "dialog:allow-open"]
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "process:allow-restart",
+    "dialog:allow-open",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://*" },
+        { "url": "https://*" }
+      ]
+    }
+  ]
 }
