@@ -1,6 +1,6 @@
 {
-  "version": "0.9.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.0/IDK.Nova_0.9.0_x64-setup.exe",
-  "notes": ["Custom text selection toolbar with Copy and Reply", "Quoted-context questions sent to the model", "Framed code artifacts", "Slide-in artifact workspace with Edit, Preview, Copy and Save", "Sandboxed HTML browser preview"]
+  "version": "0.9.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.1/IDK.Nova_0.9.1_x64-setup.exe",
+  "notes": ["Right-side Nova Browse panel with mirrored navigation animation", "Links from AI responses open inside Nova", "Search and address bar with embedded results", "Open the current page in the system browser", "Markdown and plain URL link detection"]
 }

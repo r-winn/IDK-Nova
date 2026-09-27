@@ -518,7 +518,8 @@ main {
   color: var(--muted);
   font-size: 11px;
 }
-.share {
+.share,
+.browser-toggle {
   height: 34px;
   padding: 0 12px;
   border: 1px solid var(--line);
@@ -531,10 +532,13 @@ main {
   font-size: 11px;
   font-weight: 600;
 }
-.share:hover {
+.share:hover,
+.browser-toggle:hover,
+.browser-toggle.active {
   background: var(--hover);
 }
-.share svg {
+.share svg,
+.browser-toggle svg {
   width: 15px;
 }
 .tooltip {
@@ -687,6 +691,8 @@ main {
 }
 .rich-content { display: contents; }
 .prose-segment { white-space: pre-wrap; unicode-bidi: plaintext; }
+.prose-segment a { color: color-mix(in srgb, var(--brand) 72%, var(--text)); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 38%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.prose-segment a:hover { text-decoration-color: currentColor; }
 .message-quote,
 .reply-preview {
   border-left: 2px solid var(--line-strong);
@@ -768,16 +774,16 @@ main {
 .artifact-backdrop { position: fixed; inset: 0; z-index: 110; background: rgba(8,10,8,.38); backdrop-filter: blur(3px); }
 .artifact-panel {
   position: absolute;
-  inset: 0 auto 0 0;
+  inset: 0 0 0 auto;
   width: min(760px, 92vw);
   display: grid;
   grid-template-rows: 68px 43px minmax(0,1fr);
-  border-right: 1px solid var(--line-strong);
+  border-left: 1px solid var(--line-strong);
   background: var(--bg);
-  box-shadow: 24px 0 70px rgba(0,0,0,.28);
+  box-shadow: -24px 0 70px rgba(0,0,0,.28);
   animation: artifact-in .28s cubic-bezier(.22,.75,.18,1);
 }
-@keyframes artifact-in { from { transform: translateX(-100%); } }
+@keyframes artifact-in { from { transform: translateX(100%); } }
 .artifact-panel > header { padding: 0 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
 .artifact-panel > header > div { display: flex; align-items: center; gap: 10px; }
 .artifact-panel > header > div > span:not(.artifact-icon) { display: flex; flex-direction: column; }
@@ -804,6 +810,58 @@ main {
 .browser-preview span svg { width: 12px; }
 .browser-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 .document-preview { height: 100%; overflow: auto; padding: 28px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); white-space: pre-wrap; line-height: 1.75; unicode-bidi: plaintext; }
+
+.nova-browser {
+  position: fixed;
+  z-index: 108;
+  inset: 0 0 0 auto;
+  width: min(640px, 92vw);
+  display: grid;
+  grid-template-rows: 62px 54px minmax(0, 1fr);
+  border-left: 1px solid var(--line-strong);
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  backdrop-filter: blur(28px) saturate(125%);
+  -webkit-backdrop-filter: blur(28px) saturate(125%);
+  box-shadow: -24px 0 70px rgba(0,0,0,.24);
+  transform: translateX(0);
+  transition: transform .32s cubic-bezier(.22,.75,.18,1), visibility 0s;
+  will-change: transform;
+}
+.nova-browser.closed { transform: translateX(100%); visibility: hidden; pointer-events: none; transition: transform .32s cubic-bezier(.22,.75,.18,1), visibility 0s .32s; }
+.nova-browser > header { padding: 0 14px 0 17px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+.browser-title, .browser-title > div, .browser-header-actions { display: flex; align-items: center; }
+.browser-title { gap: 10px; }
+.browser-title > span { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--hover); }
+.browser-title > span svg { width: 17px; }
+.browser-title > div { align-items: flex-start; flex-direction: column; }
+.browser-title b { font-size: 12px; }
+.browser-title small { margin-top: 2px; color: var(--faint); font-size: 9px; }
+.browser-header-actions { gap: 3px; }
+.browser-header-actions button { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; display: grid; place-items: center; background: transparent; color: var(--muted); }
+.browser-header-actions button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.browser-header-actions button:disabled { opacity: .35; cursor: default; }
+.browser-header-actions svg { width: 15px; }
+.browser-address { margin: 9px 14px; padding: 0 5px 0 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); display: flex; align-items: center; gap: 8px; box-shadow: 0 3px 14px rgba(0,0,0,.04); }
+.browser-address:focus-within { border-color: var(--line-strong); box-shadow: 0 0 0 3px var(--hover); }
+.browser-address > svg { width: 14px; color: var(--faint); }
+.browser-address input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 11px; }
+.browser-address button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; display: grid; place-items: center; background: transparent; color: var(--muted); }
+.browser-address button:hover { background: var(--hover); color: var(--text); }
+.browser-address button svg { width: 13px; }
+.browser-address .browser-go { background: var(--text); color: var(--bg); }
+.browser-surface { position: relative; min-height: 0; margin: 0 14px 14px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.browser-surface iframe { width: 100%; height: calc(100% - 34px); border: 0; background: #fff; }
+.browser-fallback { height: 34px; padding: 0 9px 0 12px; border-top: 1px solid #e5e7e5; background: #f7f8f7; color: #747874; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 9px; }
+.browser-fallback button { height: 25px; padding: 0 8px; border: 0; border-radius: 7px; background: #e8eae8; color: #353835; display: flex; align-items: center; gap: 5px; font-size: 9px; }
+.browser-fallback svg { width: 12px; }
+.browser-empty { height: 100%; padding: 30px; color: #222622; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; background: radial-gradient(circle at 50% 20%, #f1f4ef, #fff 55%); }
+.browser-empty > span { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: #edf0ec; }
+.browser-empty > span svg { width: 23px; }
+.browser-empty h3 { margin: 18px 0 6px; font-size: 16px; }
+.browser-empty p { margin: 0; color: #737873; font-size: 11px; }
+.browser-empty > div { margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; }
+.browser-empty button { height: 31px; padding: 0 11px; border: 1px solid #e0e3e0; border-radius: 9px; background: #fff; color: #4d524d; font-size: 10px; }
+.browser-empty button:hover { background: #f1f3f1; }
 .attachments {
   display: flex;
   gap: 8px;

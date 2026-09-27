@@ -22,6 +22,7 @@ import {
   Copy,
   Database,
   Download,
+  ExternalLink,
   FileText,
   Folder,
   FolderPlus,
@@ -37,6 +38,7 @@ import {
   Mic,
   MoreHorizontal,
   PanelLeftClose,
+  PanelRight,
   Paperclip,
   Pencil,
   Plus,
@@ -57,6 +59,7 @@ import {
   X,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
 import { discoverModels, streamCompletion, testModel } from "./lib/ai";
 import {
@@ -181,6 +184,9 @@ export default function App() {
   const [artifact, setArtifact] = useState<Artifact>(null);
   const [artifactDraft, setArtifactDraft] = useState("");
   const [artifactTab, setArtifactTab] = useState<"edit" | "preview">("edit");
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserInput, setBrowserInput] = useState("");
+  const [browserUrl, setBrowserUrl] = useState("");
   const [importingLocalModel, setImportingLocalModel] = useState(false);
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
@@ -432,9 +438,30 @@ export default function App() {
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
   };
   const openArtifact = (title: string, language: string, content: string) => {
+    setBrowserOpen(false);
     setArtifact({ title, language, content });
     setArtifactDraft(content);
     setArtifactTab(language.toLowerCase() === "html" ? "preview" : "edit");
+  };
+  const normalizeBrowserTarget = (value: string) => {
+    const target = value.trim();
+    if (!target) return "";
+    if (/^https?:\/\//i.test(target)) return target;
+    if (/^[\w.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(target)) return `https://${target}`;
+    return `https://www.google.com/search?igu=1&q=${encodeURIComponent(target)}`;
+  };
+  const navigateBrowser = (value: string) => {
+    const target = normalizeBrowserTarget(value);
+    if (!target) return;
+    setArtifact(null);
+    setBrowserInput(target);
+    setBrowserUrl(target);
+    setBrowserOpen(true);
+  };
+  const openSystemBrowser = async () => {
+    if (!browserUrl) return;
+    if (isDesktopApp()) await openUrl(browserUrl);
+    else window.open(browserUrl, "_blank", "noopener,noreferrer");
   };
   const downloadArtifact = () => {
     if (!artifact) return;
@@ -904,7 +931,15 @@ export default function App() {
           </header>
           <pre><code>{part.content}</code></pre>
         </section>
-      ) : <span className="prose-segment" key={index}>{part.content}</span>)}
+      ) : (
+        <span className="prose-segment" key={index}>
+          {part.content.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<)]+)/g).map((piece, pieceIndex) => {
+            const markdownLink = piece.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+            const target = markdownLink?.[2] || (/^https?:\/\//i.test(piece) ? piece : "");
+            return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target); }}>{markdownLink?.[1] || piece}</a> : piece;
+          })}
+        </span>
+      ))}
     </div>
   );
   if (!chat) return null;
@@ -1072,6 +1107,10 @@ export default function App() {
               </button>
               <span>Temporary chat · Coming soon</span>
             </span>
+            <button className={`browser-toggle ${browserOpen ? "active" : ""}`} onClick={() => { setArtifact(null); setBrowserOpen((value) => !value); }}>
+              <PanelRight />
+              Browse
+            </button>
             <button className="share" onClick={share}>
               <Globe2 />
               Share
@@ -2110,6 +2149,51 @@ export default function App() {
           </aside>
         </div>
       )}
+      <aside className={`nova-browser ${browserOpen ? "" : "closed"}`} aria-label="Nova browser" aria-hidden={!browserOpen}>
+          <header>
+            <div className="browser-title">
+              <span><Globe2 /></span>
+              <div><b>Nova Browse</b><small>Private in-app viewer</small></div>
+            </div>
+            <div className="browser-header-actions">
+              <button disabled={!browserUrl} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>
+              <button onClick={() => setBrowserOpen(false)} title="Close"><X /></button>
+            </div>
+          </header>
+          <form className="browser-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(browserInput); }}>
+            <Globe2 />
+            <input
+              aria-label="Search or enter address"
+              value={browserInput}
+              onChange={(event) => setBrowserInput(event.target.value)}
+              placeholder="Search the web or enter a URL"
+            />
+            {browserInput && <button type="button" onClick={() => { setBrowserInput(""); setBrowserUrl(""); }} aria-label="Clear"><X /></button>}
+            <button type="submit" className="browser-go" aria-label="Go"><ArrowRight /></button>
+          </form>
+          <div className="browser-surface">
+            {browserUrl ? (
+              <>
+                <iframe key={browserUrl} title="Nova browser" src={browserUrl} sandbox="allow-forms allow-scripts allow-same-origin allow-popups" />
+                <div className="browser-fallback">
+                  <span>Some websites may block embedded viewing.</span>
+                  <button onClick={openSystemBrowser}><ExternalLink />Open externally</button>
+                </div>
+              </>
+            ) : (
+              <div className="browser-empty">
+                <span><Globe2 /></span>
+                <h3>Browse without leaving your chat</h3>
+                <p>Search the web or open links from Nova responses here.</p>
+                <div>
+                  <button onClick={() => navigateBrowser("AI news today")}>AI news</button>
+                  <button onClick={() => navigateBrowser("developer documentation")}>Developer docs</button>
+                  <button onClick={() => navigateBrowser("local AI models")}>Local AI</button>
+                </div>
+              </div>
+            )}
+          </div>
+      </aside>
       {chatMenu && (
         <div className="context-layer" onMouseDown={() => setChatMenu(null)}>
           <div
