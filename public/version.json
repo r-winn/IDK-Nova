@@ -1,6 +1,6 @@
 {
-  "version": "0.8.2",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.8.2",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.8.2/IDK.Nova_0.8.2_x64-setup.exe",
-  "notes": ["Inline Folder accordion beneath its navigation item", "Refined folder editor with one primary action", "Responsive icon and color preview", "Polished spacing and motion"]
+  "version": "0.8.3",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.8.3",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.8.3/IDK.Nova_0.8.3_x64-setup.exe",
+  "notes": ["Smoother Folder expand and collapse motion", "Folder conversations removed from the main history", "Clean separation between workspace and folder chats"]
 }

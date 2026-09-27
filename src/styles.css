@@ -820,13 +820,32 @@ main {
 }
 
 .folder-list {
-  max-height: 248px;
-  overflow: auto;
-  padding: 4px 2px 7px 11px;
-  margin: -1px 5px 4px 17px;
-  border-left: 1px solid var(--line-strong);
-  animation: folder-drop .2s cubic-bezier(.22,.75,.18,1);
+  max-height: 0;
+  overflow: hidden auto;
+  padding: 0 2px 0 11px;
+  margin: -1px 5px 0 17px;
+  border-left: 1px solid transparent;
+  opacity: 0;
+  transform: translateY(-7px);
   transform-origin: top;
+  pointer-events: none;
+  transition:
+    max-height .36s cubic-bezier(.22,.75,.18,1),
+    padding .3s cubic-bezier(.22,.75,.18,1),
+    margin .3s cubic-bezier(.22,.75,.18,1),
+    opacity .18s ease,
+    transform .3s cubic-bezier(.22,.75,.18,1),
+    border-color .2s ease;
+}
+.folder-list.open {
+  max-height: 248px;
+  padding-top: 4px;
+  padding-bottom: 7px;
+  margin-bottom: 4px;
+  border-left-color: var(--line-strong);
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 .folder-heading {
   height: 26px;
@@ -891,10 +910,6 @@ main {
 .folder-edit { margin-right: 3px; opacity: 0; }
 .folder-row:hover .folder-edit { opacity: 1; }
 .empty-folder-action { color: var(--muted) !important; }
-@keyframes folder-drop {
-  from { opacity: 0; transform: translateY(-6px) scaleY(.94); }
-  to { opacity: 1; transform: translateY(0) scaleY(1); }
-}
 
 .sidebar-stage {
   flex: 1;

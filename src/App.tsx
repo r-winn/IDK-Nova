@@ -195,6 +195,7 @@ export default function App() {
       chats.filter(
         (item) =>
           !item.archived &&
+          !item.folderId &&
           item.title.toLowerCase().includes(query.toLowerCase()),
       ),
     [chats, query],
@@ -858,8 +859,7 @@ export default function App() {
                   <span>Folder</span>
                   <ChevronDown className={foldersOpen ? "turned" : ""} />
                 </button>
-                {foldersOpen && (
-                  <div className="folder-list">
+                  <div className={`folder-list ${foldersOpen ? "open" : ""}`} aria-hidden={!foldersOpen}>
                     <div className="folder-heading">
                       <span>Your folders</span>
                       <button title="New folder" onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}><FolderPlus /></button>
@@ -879,7 +879,6 @@ export default function App() {
                     })}
                     {!folders.length && <button className="empty-folder-action" onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}><FolderPlus /><span>Create your first folder</span></button>}
                   </div>
-                )}
                 <button onClick={() => setSearchOpen(!searchOpen)}>
                   <Search />
                   <span>Search</span>
