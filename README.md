@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/brand/nova-readme.jpg" width="86" alt="IDK Nova logo">
+  <img src="app-icon.svg" width="86" alt="IDK Nova logo">
   <h1>IDK Nova</h1>
   <p><strong>Your private, configurable AI workspace for Windows and the web.</strong></p>
   <p>Connect local Ollama or LM Studio models, company AI servers, and OpenAI-compatible cloud providers from one clean desktop experience.</p>
