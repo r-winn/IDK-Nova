@@ -1,6 +1,6 @@
 {
-  "version": "0.9.3",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.3",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.3/IDK.Nova_0.9.3_x64-setup.exe",
-  "notes": ["True multi-tab mini browser", "Independent navigation history for every tab", "Back, forward and reload controls", "Links from chat open in a new browser tab", "Native desktop webviews for sites that block iframe embedding", "Safe fallback to the system browser on the web edition"]
+  "version": "0.9.4",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.4",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.4/IDK.Nova_0.9.4_x64-setup.exe",
+  "notes": ["Unified Nova Workspace for browser, code, text and files", "Consistent tabs and controls across every workspace tool", "Animated multicolor home experience with distinct light and dark palettes", "Code and text artifacts now open as workspace tabs", "Files workspace for conversation attachments", "Removed the duplicated legacy artifact panel"]
 }

@@ -771,44 +771,6 @@ main {
 .selection-toolbar svg { width: 13px; }
 @keyframes selection-pop { from { opacity: 0; transform: translate(-50%, calc(-100% + 5px)) scale(.97); } }
 
-.artifact-backdrop { position: fixed; inset: 0; z-index: 110; background: rgba(8,10,8,.38); backdrop-filter: blur(3px); }
-.artifact-panel {
-  position: absolute;
-  inset: 0 0 0 auto;
-  width: min(760px, 92vw);
-  display: grid;
-  grid-template-rows: 68px 43px minmax(0,1fr);
-  border-left: 1px solid var(--line-strong);
-  background: var(--bg);
-  box-shadow: -24px 0 70px rgba(0,0,0,.28);
-  animation: artifact-in .28s cubic-bezier(.22,.75,.18,1);
-}
-@keyframes artifact-in { from { transform: translateX(100%); } }
-.artifact-panel > header { padding: 0 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
-.artifact-panel > header > div { display: flex; align-items: center; gap: 10px; }
-.artifact-panel > header > div > span:not(.artifact-icon) { display: flex; flex-direction: column; }
-.artifact-panel > header b { font-size: 12px; }
-.artifact-panel > header small { margin-top: 2px; color: var(--faint); font-size: 9px; text-transform: uppercase; }
-.artifact-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--hover); display: grid; place-items: center; }
-.artifact-icon svg { width: 17px; }
-.artifact-actions button,
-.artifact-panel > nav button { height: 31px; padding: 0 9px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 6px; font-size: 9px; }
-.artifact-actions button:hover,
-.artifact-panel > nav button:hover,
-.artifact-panel > nav button.active { background: var(--hover); color: var(--text); }
-.artifact-actions svg,
-.artifact-panel > nav svg { width: 13px; }
-.artifact-actions .artifact-close { width: 31px; padding: 0; justify-content: center; margin-left: 3px; }
-.artifact-panel > nav { padding: 5px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 3px; }
-.artifact-workspace { min-height: 0; padding: 14px; }
-.artifact-workspace > textarea { width: 100%; height: 100%; resize: none; padding: 18px; border: 1px solid var(--line); border-radius: 13px; outline: 0; background: var(--surface); color: var(--text); font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }
-.artifact-workspace > textarea:focus { border-color: var(--line-strong); box-shadow: 0 0 0 3px var(--hover); }
-.browser-preview { height: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: #fff; display: grid; grid-template-rows: 42px minmax(0,1fr); }
-.browser-preview > div { padding: 0 11px; border-bottom: 1px solid #dedede; background: #f3f4f3; display: flex; align-items: center; gap: 6px; }
-.browser-preview i { width: 8px; height: 8px; border-radius: 50%; background: #c8cbc8; }
-.browser-preview span { height: 26px; margin-left: 8px; padding: 0 10px; border: 1px solid #dedede; border-radius: 7px; background: #fff; color: #686b68; display: flex; align-items: center; gap: 6px; font-size: 9px; }
-.browser-preview span svg { width: 12px; }
-.browser-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 .document-preview { height: 100%; overflow: auto; padding: 28px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); white-space: pre-wrap; line-height: 1.75; unicode-bidi: plaintext; }
 
 .nova-browser {
@@ -879,6 +841,13 @@ body.resizing-browser iframe { pointer-events: none; }
 .browser-address button svg { width: 13px; }
 .browser-address .browser-back { transform: rotate(180deg); }
 .browser-address .browser-go { background: var(--text); color: var(--bg); }
+.workspace-toolbar { margin: 9px 14px; padding: 0 5px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); display: flex; align-items: center; gap: 3px; }
+.workspace-toolbar > span { flex: 1; padding: 0 8px; color: var(--muted); font-size: 10px; }
+.workspace-toolbar button { height: 30px; padding: 0 9px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 6px; font-size: 9px; }
+.workspace-toolbar button:hover,
+.workspace-toolbar button.active { background: var(--hover); color: var(--text); }
+.workspace-toolbar button svg { width: 13px; }
+.workspace-context { justify-content: flex-start; }
 .browser-surface { position: relative; min-height: 0; margin: 0 14px 14px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
 .browser-surface iframe { width: 100%; height: calc(100% - 34px); border: 0; background: #fff; }
 .browser-fallback { height: 34px; padding: 0 9px 0 12px; border-top: 1px solid #e5e7e5; background: #f7f8f7; color: #747874; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 9px; }
@@ -892,6 +861,42 @@ body.resizing-browser iframe { pointer-events: none; }
 .browser-empty > div { margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; }
 .browser-empty button { height: 31px; padding: 0 11px; border: 1px solid #e0e3e0; border-radius: 9px; background: #fff; color: #4d524d; font-size: 10px; }
 .browser-empty button:hover { background: #f1f3f1; }
+.workspace-home { position: relative; isolation: isolate; height: 100%; overflow: hidden; padding: 34px; color: #19211d; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; background: linear-gradient(135deg, #f8fbf6 0%, #eef6f2 36%, #f4effb 72%, #fdf7f1 100%); }
+.workspace-home::before,
+.workspace-home::after { content: ""; position: absolute; z-index: -1; width: 55%; aspect-ratio: 1; border-radius: 50%; filter: blur(68px); opacity: .42; animation: workspace-drift 13s ease-in-out infinite alternate; }
+.workspace-home::before { left: -12%; top: -18%; background: linear-gradient(135deg, #70d7ba, #8da9ff); }
+.workspace-home::after { right: -13%; bottom: -23%; background: linear-gradient(135deg, #bc8cff, #ffbb83); animation-delay: -6s; animation-direction: alternate-reverse; }
+@keyframes workspace-drift { from { transform: translate3d(-4%, -3%, 0) scale(.94) rotate(-5deg); } to { transform: translate3d(9%, 7%, 0) scale(1.12) rotate(9deg); } }
+:root[data-theme="dark"] .workspace-home { color: #f3f5f2; background: linear-gradient(135deg, #101411 0%, #111917 38%, #171321 72%, #19140f 100%); }
+:root[data-theme="dark"] .workspace-home::before { background: linear-gradient(135deg, #126c5c, #294a9a); opacity: .5; }
+:root[data-theme="dark"] .workspace-home::after { background: linear-gradient(135deg, #66309c, #8a4926); opacity: .42; }
+.workspace-orb { width: 62px; height: 62px; padding: 7px; border: 1px solid rgba(255,255,255,.42); border-radius: 20px; background: rgba(255,255,255,.2); backdrop-filter: blur(18px); box-shadow: 0 18px 45px rgba(35,55,45,.14); display: grid; place-items: center; }
+.workspace-orb .brand-mark { width: 42px; height: 42px; border-radius: 13px; }
+.workspace-home > span { margin-top: 20px; color: currentColor; opacity: .55; font-size: 8px; font-weight: 700; letter-spacing: 1.8px; }
+.workspace-home h2 { margin: 8px 0 5px; font-size: clamp(18px, 2.5vw, 27px); letter-spacing: -.7px; }
+.workspace-home > p { margin: 0; opacity: .58; font-size: 11px; }
+.workspace-launchers { width: min(520px, 100%); margin-top: 27px; display: grid; gap: 8px; }
+.workspace-launchers button { width: 100%; min-height: 58px; padding: 0 14px; border: 1px solid rgba(120,130,122,.2); border-radius: 14px; background: color-mix(in srgb, var(--surface) 68%, transparent); color: var(--text); backdrop-filter: blur(18px) saturate(130%); box-shadow: 0 8px 28px rgba(30,45,35,.06); display: flex; align-items: center; gap: 12px; text-align: left; transition: transform .18s, background .18s, border-color .18s; }
+.workspace-launchers button:hover { transform: translateY(-2px); background: color-mix(in srgb, var(--surface) 86%, transparent); border-color: var(--line-strong); }
+.workspace-launchers button > svg { width: 18px; opacity: .68; }
+.workspace-launchers button > svg:last-child { width: 14px; margin-left: auto; }
+.workspace-launchers button span { display: flex; flex-direction: column; }
+.workspace-launchers b { font-size: 11px; }
+.workspace-launchers small { margin-top: 2px; color: var(--muted); font-size: 9px; }
+.workspace-artifact { height: 100%; padding: 12px; background: var(--bg); }
+.workspace-artifact textarea { width: 100%; height: 100%; resize: none; padding: 20px; border: 1px solid var(--line); border-radius: 12px; outline: 0; background: var(--surface); color: var(--text); font: 12px/1.72 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.workspace-artifact iframe { width: 100%; height: 100%; border: 0; border-radius: 12px; background: #fff; }
+.workspace-files { height: 100%; padding: 30px; background: var(--bg); color: var(--text); display: flex; align-items: center; flex-direction: column; overflow: auto; text-align: center; }
+.workspace-files > span { width: 54px; height: 54px; margin-top: min(14vh, 110px); border-radius: 17px; background: var(--hover); display: grid; place-items: center; }
+.workspace-files > span svg { width: 24px; }
+.workspace-files h3 { margin: 15px 0 5px; font-size: 16px; }
+.workspace-files > p { margin: 0; color: var(--muted); font-size: 10px; }
+.workspace-files > button { height: 34px; margin-top: 18px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); display: flex; align-items: center; gap: 7px; font-size: 10px; }
+.workspace-files > button svg { width: 14px; }
+.workspace-files > div { width: min(480px, 100%); margin-top: 20px; display: grid; gap: 6px; text-align: left; }
+.workspace-files article { height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); display: flex; align-items: center; gap: 9px; font-size: 10px; }
+.workspace-files article svg { width: 15px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .workspace-home::before, .workspace-home::after { animation: none; } }
 .attachments {
   display: flex;
   gap: 8px;

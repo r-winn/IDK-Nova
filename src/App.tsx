@@ -122,8 +122,18 @@ type ChatDialog = {
 type FolderDialog = { mode: "create" | "rename"; id?: string; name: string; color: string; icon: ChatFolder["icon"] } | null;
 type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
-type Artifact = { title: string; language: string; content: string } | null;
-type BrowserTab = { id: string; title: string; url: string; input: string; history: string[]; historyIndex: number };
+type BrowserTab = {
+  id: string;
+  kind: "home" | "browser" | "artifact" | "files";
+  title: string;
+  url: string;
+  input: string;
+  history: string[];
+  historyIndex: number;
+  language?: string;
+  content?: string;
+  artifactView?: "edit" | "preview";
+};
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 
 const folderIcons = {
@@ -188,11 +198,8 @@ export default function App() {
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar>(null);
   const [replyQuote, setReplyQuote] = useState("");
-  const [artifact, setArtifact] = useState<Artifact>(null);
-  const [artifactDraft, setArtifactDraft] = useState("");
-  const [artifactTab, setArtifactTab] = useState<"edit" | "preview">("edit");
   const [browserOpen, setBrowserOpen] = useState(false);
-  const [browserTabs, setBrowserTabs] = useState<BrowserTab[]>([{ id: "start", title: "New tab", url: "", input: "", history: [], historyIndex: -1 }]);
+  const [browserTabs, setBrowserTabs] = useState<BrowserTab[]>([{ id: "start", kind: "home", title: "Workspace", url: "", input: "", history: [], historyIndex: -1 }]);
   const [activeBrowserTabId, setActiveBrowserTabId] = useState("start");
   const [browserFrameKey, setBrowserFrameKey] = useState(0);
   const [browserWidth, setBrowserWidth] = useState(() => loadValue<number>("idk-nova-browser-width", 560));
@@ -284,7 +291,7 @@ export default function App() {
       for (const [id, entry] of views) {
         if (!browserOpen || id !== activeBrowserTabId) await entry.webview.hide().catch(() => undefined);
       }
-      if (!browserOpen || !activeBrowserTab?.url || !browserSurfaceRef.current) return;
+      if (!browserOpen || activeBrowserTab?.kind !== "browser" || !activeBrowserTab.url || !browserSurfaceRef.current) return;
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       if (cancelled || !browserSurfaceRef.current) return;
       const rect = browserSurfaceRef.current.getBoundingClientRect();
@@ -507,10 +514,10 @@ export default function App() {
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
   };
   const openArtifact = (title: string, language: string, content: string) => {
-    setBrowserOpen(false);
-    setArtifact({ title, language, content });
-    setArtifactDraft(content);
-    setArtifactTab(language.toLowerCase() === "html" ? "preview" : "edit");
+    const id = `artifact-${Date.now()}`;
+    setBrowserTabs((tabs) => [...tabs, { id, kind: "artifact", title, language, content, artifactView: language.toLowerCase() === "html" ? "preview" : "edit", url: "", input: "", history: [], historyIndex: -1 }]);
+    setActiveBrowserTabId(id);
+    setBrowserOpen(true);
   };
   const normalizeBrowserTarget = (value: string) => {
     const target = value.trim();
@@ -522,12 +529,11 @@ export default function App() {
   const navigateBrowser = (value: string, openInNewTab = false) => {
     const target = normalizeBrowserTarget(value);
     if (!target) return;
-    setArtifact(null);
     let title = "Search";
     try { title = new URL(target).hostname.replace(/^www\./, "") || "Search"; } catch { /* search URL */ }
-    if (openInNewTab && activeBrowserTab?.url) {
+    if (openInNewTab || activeBrowserTab?.kind !== "browser") {
       const id = `tab-${Date.now()}`;
-      setBrowserTabs((tabs) => [...tabs, { id, title, url: target, input: target, history: [target], historyIndex: 0 }]);
+      setBrowserTabs((tabs) => [...tabs, { id, kind: "browser", title, url: target, input: target, history: [target], historyIndex: 0 }]);
       setActiveBrowserTabId(id);
     } else {
       setBrowserTabs((tabs) => tabs.map((tab) => {
@@ -550,7 +556,12 @@ export default function App() {
   const updateBrowserInput = (input: string) => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, input } : tab));
   const addBrowserTab = () => {
     const id = `tab-${Date.now()}`;
-    setBrowserTabs((tabs) => [...tabs, { id, title: "New tab", url: "", input: "", history: [], historyIndex: -1 }]);
+    setBrowserTabs((tabs) => [...tabs, { id, kind: "browser", title: "New tab", url: "", input: "", history: [], historyIndex: -1 }]);
+    setActiveBrowserTabId(id);
+  };
+  const addFilesTab = () => {
+    const id = `files-${Date.now()}`;
+    setBrowserTabs((tabs) => [...tabs, { id, kind: "files", title: "Files", url: "", input: "", history: [], historyIndex: -1 }]);
     setActiveBrowserTabId(id);
   };
   const closeBrowserTab = (id: string) => {
@@ -560,7 +571,7 @@ export default function App() {
       nativeBrowserViewsRef.current.delete(id);
     }
     setBrowserTabs((tabs) => {
-      if (tabs.length === 1) return [{ id: "start", title: "New tab", url: "", input: "", history: [], historyIndex: -1 }];
+      if (tabs.length === 1) return [{ id: "start", kind: "home", title: "Workspace", url: "", input: "", history: [], historyIndex: -1 }];
       const index = tabs.findIndex((tab) => tab.id === id);
       const next = tabs.filter((tab) => tab.id !== id);
       if (id === activeBrowserTabId) setActiveBrowserTabId(next[Math.max(0, index - 1)].id);
@@ -603,10 +614,10 @@ export default function App() {
     window.addEventListener("pointerup", stop);
   };
   const downloadArtifact = () => {
-    if (!artifact) return;
-    const extension = ({ javascript: "js", typescript: "ts", python: "py", html: "html", css: "css", json: "json", text: "txt" } as Record<string, string>)[artifact.language.toLowerCase()] || "txt";
+    if (activeBrowserTab?.kind !== "artifact") return;
+    const extension = ({ javascript: "js", typescript: "ts", python: "py", html: "html", css: "css", json: "json", text: "txt" } as Record<string, string>)[(activeBrowserTab.language || "text").toLowerCase()] || "txt";
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(new Blob([artifactDraft], { type: "text/plain" }));
+    link.href = URL.createObjectURL(new Blob([activeBrowserTab.content || ""], { type: "text/plain" }));
     link.download = `nova-artifact.${extension}`;
     link.click();
     URL.revokeObjectURL(link.href);
@@ -1247,7 +1258,6 @@ export default function App() {
               <span>Temporary chat · Coming soon</span>
             </span>
             <button className={`browser-toggle ${browserOpen ? "active" : ""}`} onClick={() => {
-              setArtifact(null);
               if (browserOpen) {
                 setBrowserOpen(false);
                 setBrowserMaximized(false);
@@ -1259,7 +1269,7 @@ export default function App() {
               }
             }}>
               <PanelRight />
-              Browse
+              Workspace
             </button>
             <button className="share" onClick={share}>
               <Globe2 />
@@ -2269,36 +2279,6 @@ export default function App() {
           <button onMouseDown={(event) => event.preventDefault()} onClick={() => replyToSelection(selectionToolbar.text)}><Reply />Reply</button>
         </div>
       )}
-      {artifact && (
-        <div className="artifact-backdrop" onMouseDown={() => setArtifact(null)}>
-          <aside className="artifact-panel" onMouseDown={(event) => event.stopPropagation()}>
-            <header>
-              <div><span className="artifact-icon"><Code2 /></span><span><b>{artifact.title}</b><small>{artifact.language || "document"}</small></span></div>
-              <div className="artifact-actions">
-                <button onClick={() => copy(artifactDraft)}><Copy />Copy</button>
-                <button onClick={downloadArtifact}><Download />Save</button>
-                <button className="artifact-close" aria-label="Close artifact" onClick={() => setArtifact(null)}><X /></button>
-              </div>
-            </header>
-            <nav>
-              <button className={artifactTab === "edit" ? "active" : ""} onClick={() => setArtifactTab("edit")}><Pencil />Edit</button>
-              <button className={artifactTab === "preview" ? "active" : ""} onClick={() => setArtifactTab("preview")}><Globe2 />Preview</button>
-            </nav>
-            <div className="artifact-workspace">
-              {artifactTab === "edit" ? (
-                <textarea spellCheck={artifact.language === "text"} value={artifactDraft} onChange={(event) => setArtifactDraft(event.target.value)} />
-              ) : artifact.language.toLowerCase() === "html" ? (
-                <div className="browser-preview">
-                  <div><i /><i /><i /><span><Globe2 />nova://preview/artifact</span></div>
-                  <iframe title="Artifact preview" sandbox="" srcDoc={artifactDraft} />
-                </div>
-              ) : (
-                <div className="document-preview" dir="auto">{artifactDraft}</div>
-              )}
-            </div>
-          </aside>
-        </div>
-      )}
       <aside
         className={`nova-browser ${browserOpen ? "" : "closed"} ${browserMaximized ? "maximized" : ""}`}
         style={{ "--browser-width": `${browserWidth}px` } as CSSProperties}
@@ -2308,11 +2288,11 @@ export default function App() {
           <div className="browser-resizer" onPointerDown={startBrowserResize}><span /></div>
           <header>
             <div className="browser-title">
-              <span><Globe2 /></span>
-              <div><b>Nova Browse</b><small>Private in-app viewer</small></div>
+              <span><Sparkles /></span>
+              <div><b>Nova Workspace</b><small>Chat, browse, create</small></div>
             </div>
             <div className="browser-header-actions">
-              <button disabled={!activeBrowserTab?.url} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>
+              {activeBrowserTab?.kind === "browser" && <button disabled={!activeBrowserTab.url} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>}
               <button onClick={() => setBrowserMaximized((value) => !value)} title={browserMaximized ? "Restore split view" : "Full screen"}>{browserMaximized ? <Minimize2 /> : <Maximize2 />}</button>
               <button onClick={() => { setBrowserOpen(false); setBrowserMaximized(false); }} title="Close"><X /></button>
             </div>
@@ -2321,13 +2301,14 @@ export default function App() {
             <div>
               {browserTabs.map((tab) => (
                 <button className={tab.id === activeBrowserTabId ? "active" : ""} key={tab.id} onClick={() => setActiveBrowserTabId(tab.id)} title={tab.title}>
-                  <Globe2 /><span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
+                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "files" ? <Folder /> : <Sparkles />}
+                  <span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
                 </button>
               ))}
             </div>
             <button className="new-browser-tab" onClick={addBrowserTab} aria-label="New browser tab"><Plus /></button>
           </div>
-          <form className="browser-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(activeBrowserTab?.input || ""); }}>
+          {activeBrowserTab?.kind === "browser" ? <form className="browser-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(activeBrowserTab.input || ""); }}>
             <button type="button" disabled={!activeBrowserTab || activeBrowserTab.historyIndex <= 0} onClick={() => moveBrowserHistory(-1)} aria-label="Back"><ArrowRight className="browser-back" /></button>
             <button type="button" disabled={!activeBrowserTab || activeBrowserTab.historyIndex >= activeBrowserTab.history.length - 1} onClick={() => moveBrowserHistory(1)} aria-label="Forward"><ArrowRight /></button>
             <button type="button" disabled={!activeBrowserTab?.url} onClick={() => setBrowserFrameKey((key) => key + 1)} aria-label="Reload"><RefreshCw /></button>
@@ -2340,9 +2321,17 @@ export default function App() {
             />
             {activeBrowserTab?.input && <button type="button" onClick={() => updateBrowserInput("")} aria-label="Clear"><X /></button>}
             <button type="submit" className="browser-go" aria-label="Go"><ArrowRight /></button>
-          </form>
+          </form> : activeBrowserTab?.kind === "artifact" ? (
+            <div className="workspace-toolbar">
+              <button className={activeBrowserTab.artifactView === "edit" ? "active" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, artifactView: "edit" } : tab))}><Pencil />Edit</button>
+              <button className={activeBrowserTab.artifactView === "preview" ? "active" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, artifactView: "preview" } : tab))}><Globe2 />Preview</button>
+              <span />
+              <button onClick={() => copy(activeBrowserTab.content || "")}><Copy />Copy</button>
+              <button onClick={downloadArtifact}><Download />Save</button>
+            </div>
+          ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? "Files shared in this conversation" : "Choose a workspace tool"}</span></div>}
           <div className="browser-surface" ref={browserSurfaceRef}>
-            {activeBrowserTab?.url ? (
+            {activeBrowserTab?.kind === "browser" && activeBrowserTab.url ? (
               <>
                 {!isDesktopApp() && <iframe key={`${activeBrowserTab.id}-${activeBrowserTab.url}-${browserFrameKey}`} title="Nova browser" src={activeBrowserTab.url} sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin" />}
                 <div className="browser-fallback">
@@ -2350,7 +2339,7 @@ export default function App() {
                   <button onClick={openSystemBrowser}><ExternalLink />Open externally</button>
                 </div>
               </>
-            ) : (
+            ) : activeBrowserTab?.kind === "browser" ? (
               <div className="browser-empty">
                 <span><Globe2 /></span>
                 <h3>Browse without leaving your chat</h3>
@@ -2359,6 +2348,32 @@ export default function App() {
                   <button onClick={() => navigateBrowser("AI news today")}>AI news</button>
                   <button onClick={() => navigateBrowser("developer documentation")}>Developer docs</button>
                   <button onClick={() => navigateBrowser("local AI models")}>Local AI</button>
+                </div>
+              </div>
+            ) : activeBrowserTab?.kind === "artifact" ? (
+              <div className="workspace-artifact">
+                {activeBrowserTab.artifactView === "edit" ? (
+                  <textarea spellCheck={activeBrowserTab.language === "text"} value={activeBrowserTab.content || ""} onChange={(event) => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, content: event.target.value } : tab))} />
+                ) : activeBrowserTab.language?.toLowerCase() === "html" ? (
+                  <iframe title="Artifact preview" sandbox="" srcDoc={activeBrowserTab.content || ""} />
+                ) : <div className="document-preview" dir="auto">{activeBrowserTab.content}</div>}
+              </div>
+            ) : activeBrowserTab?.kind === "files" ? (
+              <div className="workspace-files">
+                <span><Folder /></span><h3>Conversation files</h3><p>Attach documents or images and keep them close to your work.</p>
+                <button onClick={() => fileRef.current?.click()}><Paperclip />Choose a file</button>
+                {files.length > 0 && <div>{files.map((file) => <article key={file.name}><FileText /><span>{file.name}</span></article>)}</div>}
+              </div>
+            ) : (
+              <div className="workspace-home">
+                <div className="workspace-orb"><BrandMark config={config} /></div>
+                <span>YOUR AI WORKSPACE</span>
+                <h2>What would you like to open?</h2>
+                <p>Everything lives in one unified, focused workspace.</p>
+                <div className="workspace-launchers">
+                  <button onClick={() => { fresh(); setBrowserOpen(false); }}><MessageSquare /><span><b>Side chat</b><small>Start a focused conversation</small></span><ArrowRight /></button>
+                  <button onClick={addBrowserTab}><Globe2 /><span><b>Browser</b><small>Research without leaving Nova</small></span><ArrowRight /></button>
+                  <button onClick={addFilesTab}><Folder /><span><b>Files</b><small>Work with documents and images</small></span><ArrowRight /></button>
                 </div>
               </div>
             )}
