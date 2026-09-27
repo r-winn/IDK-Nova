@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ArrowUp,
   Bot,
+  BookOpen,
   BriefcaseBusiness,
   Check,
   ChevronDown,
@@ -23,8 +24,10 @@ import {
   FileText,
   Folder,
   FolderPlus,
+  FlaskConical,
   Globe2,
   HardDriveUpload,
+  Heart,
   Image as ImageIcon,
   Info,
   Menu,
@@ -36,14 +39,17 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Rocket,
   Search,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Star,
   Square,
   Trash2,
   Upload,
+  GraduationCap,
   Workflow,
   X,
 } from "lucide-react";
@@ -110,8 +116,14 @@ const folderIcons = {
   work: BriefcaseBusiness,
   code: Code2,
   sparkles: Sparkles,
+  book: BookOpen,
+  heart: Heart,
+  star: Star,
+  rocket: Rocket,
+  lab: FlaskConical,
+  study: GraduationCap,
 };
-const folderColors = ["#5b8def", "#8b5cf6", "#e8793e", "#2aa876", "#d4546a", "#64748b"];
+const folderColors = ["#5b8def", "#8b5cf6", "#c65fd4", "#e8793e", "#e8ad3e", "#2aa876", "#24a6a8", "#d4546a", "#64748b", "#1f2937"];
 
 export default function App() {
   const [sidebar, setSidebar] = useState(true);
@@ -143,7 +155,8 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [chatDialog, setChatDialog] = useState<ChatDialog>(null);
   const [folders, setFolders] = useState<ChatFolder[]>(() => loadValue("idk-nova-folders", []));
-  const [folderFilter, setFolderFilter] = useState<string | null>(null);
+  const [foldersOpen, setFoldersOpen] = useState(false);
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const [folderDialog, setFolderDialog] = useState<FolderDialog>(null);
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
   const [importingLocalModel, setImportingLocalModel] = useState(false);
@@ -182,10 +195,9 @@ export default function App() {
       chats.filter(
         (item) =>
           !item.archived &&
-          (!folderFilter || item.folderId === folderFilter) &&
           item.title.toLowerCase().includes(query.toLowerCase()),
       ),
-    [chats, query, folderFilter],
+    [chats, query],
   );
   const resolvedDark =
     config.theme === "system" ? systemDark : config.theme === "dark";
@@ -306,7 +318,8 @@ export default function App() {
         icon: folderDialog.icon,
       };
       setFolders((current) => [...current, folder]);
-      setFolderFilter(folder.id);
+      setOpenFolderId(folder.id);
+      setFoldersOpen(false);
     } else {
       setFolders((current) => current.map((folder) => folder.id === folderDialog.id ? { ...folder, name: folderDialog.name.trim(), color: folderDialog.color, icon: folderDialog.icon } : folder));
     }
@@ -315,7 +328,7 @@ export default function App() {
   const deleteFolder = (id: string) => {
     setFolders((current) => current.filter((folder) => folder.id !== id));
     setChats((current) => current.map((item) => item.folderId === id ? { ...item, folderId: undefined } : item));
-    if (folderFilter === id) setFolderFilter(null);
+    if (openFolderId === id) setOpenFolderId(null);
     setToast("Folder removed · conversations kept");
   };
   const moveChat = (chatId: number, folderId?: string) => {
@@ -773,6 +786,46 @@ export default function App() {
     setSettingsOpen(false);
     setToast("Settings saved");
   };
+  const activeFolder = folders.find((folder) => folder.id === openFolderId);
+  const freshInFolder = () => {
+    if (!activeFolder) return fresh();
+    const id = Date.now();
+    setChats((current) => [
+      { id, title: "New conversation", time: "Today", messages: [], folderId: activeFolder.id },
+      ...current,
+    ]);
+    setActive(id);
+    setText("");
+  };
+  const renderChatRows = (items: Chat[]) => ["Today", "Yesterday", "Previous 7 days"].map((group) => (
+    <section key={group}>
+      <h5>{group}</h5>
+      {items.filter((item) => item.time === group).map((item) => (
+        <div
+          className={`chat-row ${active === item.id ? "active" : ""}`}
+          key={item.id}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setChatMenu({ chatId: item.id, x: event.clientX, y: event.clientY });
+          }}
+        >
+          <button className="chat-select" onClick={() => setActive(item.id)}>
+            <MessageSquare />
+            <span>{item.title}</span>
+          </button>
+          <div className="row-actions">
+            <button
+              title="Conversation options"
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setChatMenu({ chatId: item.id, x: rect.right, y: rect.bottom });
+              }}
+            ><MoreHorizontal /></button>
+          </div>
+        </div>
+      ))}
+    </section>
+  ));
   if (!chat) return null;
 
   return (
@@ -791,119 +844,86 @@ export default function App() {
             <PanelLeftClose />
           </button>
         </div>
-        <div className="primary-nav">
-          <button onClick={fresh}>
-            <Pencil />
-            <span>New chat</span>
-            <kbd>⌘ K</kbd>
-          </button>
-          <button onClick={() => setSearchOpen(!searchOpen)}>
-            <Search />
-            <span>Search</span>
-          </button>
-          <span className="nav-tooltip">
-            <button disabled>
-              <BriefcaseBusiness />
-              <span>Work</span>
-              <small>Soon</small>
-            </button>
-            <i>Coming soon</i>
-          </span>
-          <span className="nav-tooltip">
-            <button disabled>
-              <Workflow />
-              <span>Agents</span>
-              <small>Soon</small>
-            </button>
-            <i>Coming soon</i>
-          </span>
-        </div>
-        {searchOpen && (
-          <div className="search-field">
-            <Search />
-            <input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
-            />
-            <button
-              onClick={() => {
-                setQuery("");
-                setSearchOpen(false);
-              }}
-            >
-              <X />
-            </button>
-          </div>
-        )}
-        <div className="folder-list">
-          <div className="folder-heading">
-            <span>Folders</span>
-            <button
-              title="New folder"
-              onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}
-            >
-              <FolderPlus />
-            </button>
-          </div>
-          <button className={!folderFilter ? "active" : ""} onClick={() => setFolderFilter(null)}>
-            <MessageSquare />
-            <span>All chats</span>
-          </button>
-          {folders.map((folder) => {
-            const Icon = folderIcons[folder.icon];
-            return (
-              <div className={`folder-row ${folderFilter === folder.id ? "active" : ""}`} key={folder.id}>
-                <button onClick={() => setFolderFilter(folder.id)}>
-                  <Icon style={{ color: folder.color }} />
-                  <span>{folder.name}</span>
-                  <small>{chats.filter((item) => item.folderId === folder.id && !item.archived).length}</small>
+        <div className="sidebar-stage">
+          <div className={`sidebar-track ${activeFolder ? "inside-folder" : ""}`}>
+            <div className="sidebar-panel sidebar-main">
+              <div className="primary-nav">
+                <button onClick={fresh}>
+                  <Pencil />
+                  <span>New chat</span>
+                  <kbd>⌘ K</kbd>
                 </button>
-                <button className="folder-edit" title="Edit folder" onClick={() => setFolderDialog({ mode: "rename", ...folder })}>
-                  <MoreHorizontal />
+                <button onClick={() => setFoldersOpen(!foldersOpen)}>
+                  <Folder />
+                  <span>Folder</span>
+                  <ChevronDown className={foldersOpen ? "turned" : ""} />
                 </button>
+                <button onClick={() => setSearchOpen(!searchOpen)}>
+                  <Search />
+                  <span>Search</span>
+                </button>
+                <span className="nav-tooltip">
+                  <button disabled><BriefcaseBusiness /><span>Work</span><small>Soon</small></button>
+                  <i>Coming soon</i>
+                </span>
+                <span className="nav-tooltip">
+                  <button disabled><Workflow /><span>Agents</span><small>Soon</small></button>
+                  <i>Coming soon</i>
+                </span>
               </div>
-            );
-          })}
-        </div>
-        <div className="history">
-          {["Today", "Yesterday", "Previous 7 days"].map((group) => (
-            <section key={group}>
-              <h5>{group}</h5>
-              {visibleChats
-                .filter((item) => item.time === group)
-                .map((item) => (
-                  <div
-                    className={`chat-row ${active === item.id ? "active" : ""}`}
-                    key={item.id}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      setChatMenu({ chatId: item.id, x: event.clientX, y: event.clientY });
-                    }}
-                  >
-                    <button
-                      className="chat-select"
-                      onClick={() => setActive(item.id)}
-                    >
-                      <MessageSquare />
-                      <span>{item.title}</span>
-                    </button>
-                    <div className="row-actions">
-                      <button
-                        title="Conversation options"
-                        onClick={(event) => {
-                          const rect = event.currentTarget.getBoundingClientRect();
-                          setChatMenu({ chatId: item.id, x: rect.right, y: rect.bottom });
-                        }}
-                      >
-                        <MoreHorizontal />
-                      </button>
-                    </div>
+              {foldersOpen && (
+                <div className="folder-list">
+                  <div className="folder-heading">
+                    <span>Your folders</span>
+                    <button title="New folder" onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}><FolderPlus /></button>
                   </div>
-                ))}
-            </section>
-          ))}
+                  {folders.map((folder) => {
+                    const Icon = folderIcons[folder.icon];
+                    return (
+                      <div className="folder-row" key={folder.id}>
+                        <button onClick={() => { setOpenFolderId(folder.id); setFoldersOpen(false); }}>
+                          <Icon style={{ color: folder.color }} />
+                          <span>{folder.name}</span>
+                          <small>{chats.filter((item) => item.folderId === folder.id && !item.archived).length}</small>
+                        </button>
+                        <button className="folder-edit" title="Edit folder" onClick={() => setFolderDialog({ mode: "rename", ...folder })}><MoreHorizontal /></button>
+                      </div>
+                    );
+                  })}
+                  {!folders.length && <button className="empty-folder-action" onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}><FolderPlus /><span>Create your first folder</span></button>}
+                </div>
+              )}
+              {searchOpen && (
+                <div className="search-field">
+                  <Search />
+                  <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" />
+                  <button onClick={() => { setQuery(""); setSearchOpen(false); }}><X /></button>
+                </div>
+              )}
+              <div className="history">{renderChatRows(visibleChats)}</div>
+            </div>
+            <div className="sidebar-panel folder-view">
+              {activeFolder && (() => {
+                const Icon = folderIcons[activeFolder.icon];
+                const folderChats = chats.filter((item) => !item.archived && item.folderId === activeFolder.id);
+                return <>
+                  <div className="folder-view-head">
+                    <button className="folder-back" onClick={() => setOpenFolderId(null)}><ArrowRight /><span>Back</span></button>
+                    <button title="Edit folder" onClick={() => setFolderDialog({ mode: "rename", ...activeFolder })}><MoreHorizontal /></button>
+                  </div>
+                  <div className="folder-hero">
+                    <span style={{ background: `${activeFolder.color}1f`, color: activeFolder.color }}><Icon /></span>
+                    <div><b>{activeFolder.name}</b><small>{folderChats.length} conversations</small></div>
+                  </div>
+                  <button className="folder-new-chat" onClick={freshInFolder}><Plus />New chat in this folder</button>
+                  <div className="history folder-history">
+                    {renderChatRows(folderChats)}
+                    {!folderChats.length && <div className="folder-empty"><MessageSquare /><b>No conversations yet</b><span>Move a chat here or start a new one.</span></div>}
+                  </div>
+                </>;
+              })()}
+            </div>
+          </div>
         </div>
         <button className="profile-button" onClick={openSettings}>
           <span className="avatar">
@@ -1988,7 +2008,7 @@ export default function App() {
       {folderDialog && (
         <div className="confirm-backdrop" onMouseDown={() => setFolderDialog(null)}>
           <div className="confirm-dialog folder-dialog" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="confirm-icon"><Folder /></div>
+            {(() => { const PreviewIcon = folderIcons[folderDialog.icon]; return <div className="confirm-icon" style={{ color: folderDialog.color, background: `${folderDialog.color}1f` }}><PreviewIcon /></div>; })()}
             <h3>{folderDialog.mode === "create" ? "Create folder" : "Edit folder"}</h3>
             <p>Organize related conversations with a name, color, and icon.</p>
             <input
@@ -1998,6 +2018,7 @@ export default function App() {
               onChange={(event) => setFolderDialog({ ...folderDialog, name: event.target.value })}
               onKeyDown={(event) => event.key === "Enter" && saveFolder()}
             />
+            {(() => { const PreviewIcon = folderIcons[folderDialog.icon]; return <div className="folder-live-preview"><span style={{ color: folderDialog.color, background: `${folderDialog.color}1f` }}><PreviewIcon /></span><div><b>{folderDialog.name.trim() || "Folder name"}</b><small>Live preview</small></div><ChevronDown /></div>; })()}
             <div className="folder-choices">
               <span>Icon</span>
               <div>{(Object.keys(folderIcons) as ChatFolder["icon"][]).map((icon) => {

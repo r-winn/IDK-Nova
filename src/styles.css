@@ -820,8 +820,10 @@ main {
 }
 
 .folder-list {
-  padding: 10px 2px 4px;
+  padding: 5px 2px 10px;
+  margin: -8px 0 6px;
   border-bottom: 1px solid var(--line);
+  animation: reveal .16s ease;
 }
 .folder-heading {
   height: 26px;
@@ -885,6 +887,101 @@ main {
 .folder-row small { margin-left: auto; color: var(--faint); font-size: 9px; }
 .folder-edit { margin-right: 3px; opacity: 0; }
 .folder-row:hover .folder-edit { opacity: 1; }
+.empty-folder-action { color: var(--muted) !important; }
+
+.sidebar-stage {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.sidebar-track {
+  width: 200%;
+  height: 100%;
+  display: flex;
+  transform: translateX(0);
+  transition: transform .32s cubic-bezier(.22, .75, .18, 1);
+  will-change: transform;
+}
+.sidebar-track.inside-folder { transform: translateX(-50%); }
+.sidebar-panel {
+  width: 50%;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0 1px;
+}
+.primary-nav > button > svg:last-child { margin-left: auto; width: 14px; color: var(--faint); transition: transform .18s; }
+.primary-nav > button > svg.turned { transform: rotate(180deg); }
+.folder-view-head {
+  height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+.folder-view-head button {
+  height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.folder-view-head button:hover { background: var(--hover); color: var(--text); }
+.folder-view-head svg { width: 16px; }
+.folder-back svg { transform: rotate(180deg); }
+.folder-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 7px 14px;
+}
+.folder-hero > span {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+}
+.folder-hero svg { width: 20px; }
+.folder-hero > div { display: flex; flex-direction: column; min-width: 0; }
+.folder-hero b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-hero small { margin-top: 3px; color: var(--faint); font-size: 9px; }
+.folder-new-chat {
+  height: 38px;
+  margin: 0 3px 7px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  box-shadow: var(--soft-shadow);
+}
+.folder-new-chat:hover { border-color: var(--line-strong); }
+.folder-new-chat svg { width: 16px; }
+.folder-history { margin-top: 2px; }
+.folder-empty {
+  min-height: 180px;
+  padding: 20px;
+  color: var(--faint);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.folder-empty svg { width: 22px; margin-bottom: 10px; }
+.folder-empty b { color: var(--muted); font-size: 11px; }
+.folder-empty span { margin-top: 5px; font-size: 9px; line-height: 1.5; }
 
 .context-layer { position: fixed; inset: 0; z-index: 80; }
 .context-menu {
@@ -910,6 +1007,23 @@ main {
 .context-menu em { display: block; padding: 8px 9px; color: var(--faint); font-size: 10px; font-style: normal; }
 .context-separator { height: 1px; margin: 5px 3px; background: var(--line); }
 .folder-dialog .confirm-icon { color: var(--text); background: var(--hover); }
+.folder-live-preview {
+  min-height: 64px;
+  margin: -6px 0 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface) 78%, var(--hover));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.folder-live-preview > span { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; transition: .18s; }
+.folder-live-preview > span svg { width: 19px; }
+.folder-live-preview > div { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.folder-live-preview b { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-live-preview small { color: var(--faint); font-size: 9px; margin-top: 3px; }
+.folder-live-preview > svg { width: 14px; color: var(--faint); }
 .folder-choices { width: 100%; margin: 4px 0 14px; }
 .folder-choices > span { display: block; margin: 10px 0 6px; color: var(--faint); font-size: 10px; }
 .folder-choices > div { display: flex; gap: 7px; }

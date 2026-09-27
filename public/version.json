@@ -1,6 +1,6 @@
 {
-  "version": "0.8.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.8.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.8.0/IDK.Nova_0.8.0_x64-setup.exe",
-  "notes": ["Folders with icons and colors", "Native conversation context menu", "Stop response control", "Reliable compressed image uploads", "Improved bilingual text and sidebar motion"]
+  "version": "0.8.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.8.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.8.1/IDK.Nova_0.8.1_x64-setup.exe",
+  "notes": ["Full folder workspace navigation", "Smooth horizontal folder transitions", "Ten folder icons and colors", "Live folder preview", "Dedicated folder chat creation"]
 }
