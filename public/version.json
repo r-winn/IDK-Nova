@@ -1,6 +1,6 @@
 {
-  "version": "0.9.10",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.10",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.10/IDK.Nova_0.9.10_x64-setup.exe",
-  "notes": ["Workspace tabs and window controls now share one compact top row", "Reply controls stay above the Workspace and native browser view", "Generic Open and Archive actions were removed from message footers", "Sent images open in a dedicated Workspace viewer with zoom, reset, and download controls", "Browser and editor content receive substantially more vertical room"]
+  "version": "0.9.11",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.11",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.11/IDK.Nova_0.9.11_x64-setup.exe",
+  "notes": ["Temporary Side Chat now uses the same message layout and composer as the main chat", "Nova and user avatars, code blocks, Copy, and Helpful actions are consistent in both chat modes", "A subtle Temporary badge and unsaved notice clearly explain the privacy behavior", "The model connection prompt is available inside Temporary Chat too"]
 }

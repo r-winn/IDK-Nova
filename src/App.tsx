@@ -2516,27 +2516,58 @@ export default function App() {
               </div>
             ) : activeBrowserTab?.kind === "temporary" ? (
               <div className="workspace-sidechat">
-                <div className="sidechat-messages">
-                  {!activeBrowserTab.messages?.length ? <div className="sidechat-empty"><MessageSquare /><h3>Temporary side chat</h3><p>Use this space for a quick question. Nothing here is added to your chat history.</p></div> : activeBrowserTab.messages.map((message, index) => (
+                <div className="sidechat-conversation">
+                  {!activeBrowserTab.messages?.length ? (
+                    <div className="welcome temporary-welcome">
+                      <span className="temporary-badge"><Clock3 />Temporary chat</span>
+                      <h1>How can I help?</h1>
+                      <p>This conversation disappears when you close this tab or refresh Nova.</p>
+                    </div>
+                  ) : <div className="message-list workspace-message-list">{activeBrowserTab.messages.map((message, index) => (
                     <article className={message.role} key={index}>
-                      <small>{message.role === "assistant" ? (config.branding.appName || "Nova") : "You"}</small>
-                      <div dir="auto">{message.content ? renderMessageContent(message) : <span className="typing"><i /><i /><i /></span>}</div>
+                      <div className="speaker">{message.role === "assistant" ? <BrandMark config={config} /> : <CircleUserRound />}</div>
+                      <div className="message-body">
+                        <div className="content">{message.content ? renderMessageContent(message) : <span className="typing"><i /><i /><i /></span>}</div>
+                        {message.role === "assistant" && message.content && <div className="message-actions">
+                          <button onClick={() => copy(message.content)}><Copy />Copy</button>
+                          <button className={message.liked ? "selected" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTab.id ? { ...tab, messages: (tab.messages || []).map((item, itemIndex) => itemIndex === index ? { ...item, liked: !item.liked } : item) } : tab))}>
+                            {message.liked ? <CheckCheck /> : <Check />}<span>Helpful</span>
+                          </button>
+                        </div>}
+                      </div>
                     </article>
-                  ))}
+                  ))}</div>}
                 </div>
-                <div className="sidechat-composer">
-                  <textarea
-                    value={activeBrowserTab.draft || ""}
-                    placeholder="Ask a temporary question…"
-                    onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { draft: event.target.value })}
-                    onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendTemporaryChat(); } }}
-                  />
-                  <button
-                    className={activeBrowserTab.busy ? "stop" : ""}
-                    disabled={!activeBrowserTab.busy && !activeBrowserTab.draft?.trim()}
-                    onClick={activeBrowserTab.busy ? stopResponse : sendTemporaryChat}
-                    aria-label={activeBrowserTab.busy ? "Stop response" : "Send"}
-                  >{activeBrowserTab.busy ? <Square /> : <ArrowUp />}</button>
+                <div className="composer-zone workspace-composer-zone">
+                  {!config.activeModel && <button className="model-required" onClick={() => { setSettingsTab("models"); openSettings(); }}>
+                    <Bot /><span><b>Connect a model to start chatting</b><small>Open Models & providers in Settings</small></span><ArrowRight />
+                  </button>}
+                  <div className="temporary-notice"><Clock3 /><span><b>Temporary chat</b><small>Not saved to history</small></span></div>
+                  <div className={`composer ${!config.activeModel ? "locked" : ""}`}>
+                    <textarea
+                      disabled={!config.activeModel}
+                      value={activeBrowserTab.draft || ""}
+                      rows={1}
+                      placeholder={config.activeModel ? `Message ${config.branding.appName}…` : "Choose a model before sending a message"}
+                      onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { draft: event.target.value })}
+                      onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendTemporaryChat(); } }}
+                    />
+                    <div className="composer-tools">
+                      <div>
+                        <button disabled title="Attachments are not kept in temporary chat"><Paperclip /></button>
+                        <button disabled title="Images are not kept in temporary chat"><ImageIcon /></button>
+                      </div>
+                      <div>
+                        <button disabled title="Voice input"><Mic /></button>
+                        <button
+                          className={`send ${activeBrowserTab.busy ? "stop" : ""}`}
+                          disabled={!activeBrowserTab.busy && (!config.activeModel || !activeBrowserTab.draft?.trim())}
+                          onClick={activeBrowserTab.busy ? stopResponse : sendTemporaryChat}
+                          title={activeBrowserTab.busy ? "Stop response" : "Send message"}
+                        >{activeBrowserTab.busy ? <Square /> : <ArrowUp />}</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
