@@ -15,6 +15,7 @@ import {
   BookOpen,
   BriefcaseBusiness,
   Check,
+  CheckCheck,
   ChevronDown,
   ChevronRight,
   CircleUserRound,
@@ -124,7 +125,7 @@ type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
 type BrowserTab = {
   id: string;
-  kind: "home" | "browser" | "artifact" | "files";
+  kind: "home" | "browser" | "artifact" | "files" | "temporary";
   title: string;
   url: string;
   input: string;
@@ -133,6 +134,9 @@ type BrowserTab = {
   language?: string;
   content?: string;
   artifactView?: "edit" | "preview";
+  messages?: Message[];
+  draft?: string;
+  busy?: boolean;
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 
@@ -243,6 +247,16 @@ export default function App() {
   const activeProvider = getActiveProvider(config),
     activeDraftProvider = getActiveProvider(draftConfig);
   const activeBrowserTab = browserTabs.find((tab) => tab.id === activeBrowserTabId) || browserTabs[0];
+  const workspaceArtifacts = useMemo(() => chats.flatMap((sourceChat) => sourceChat.messages.flatMap((message, messageIndex) => {
+    if (message.role !== "assistant") return [];
+    return splitContent(message.content).flatMap((part, partIndex) => part.type === "code" ? [{
+      id: `${sourceChat.id}-${messageIndex}-${partIndex}`,
+      title: `${part.language || "code"}-${messageIndex + 1}-${partIndex + 1}.${({ javascript: "js", typescript: "ts", python: "py", html: "html", css: "css", json: "json" } as Record<string, string>)[part.language.toLowerCase()] || "txt"}`,
+      language: part.language || "text",
+      content: part.content,
+      chatTitle: sourceChat.title,
+    }] : []);
+  })), [chats]);
   const visibleChats = useMemo(
     () =>
       chats.filter(
@@ -573,6 +587,11 @@ export default function App() {
     else window.open(activeBrowserTab.url, "_blank", "noopener,noreferrer");
   };
   const updateBrowserInput = (input: string) => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, input } : tab));
+  const addWorkspaceHomeTab = () => {
+    const id = `workspace-${Date.now()}`;
+    setBrowserTabs((tabs) => [...tabs, { id, kind: "home", title: "Workspace", url: "", input: "", history: [], historyIndex: -1 }]);
+    setActiveBrowserTabId(id);
+  };
   const addBrowserTab = () => {
     const id = `tab-${Date.now()}`;
     setBrowserTabs((tabs) => [...tabs, { id, kind: "browser", title: "New tab", url: "", input: "", history: [], historyIndex: -1 }]);
@@ -582,6 +601,69 @@ export default function App() {
     const id = `files-${Date.now()}`;
     setBrowserTabs((tabs) => [...tabs, { id, kind: "files", title: "Files", url: "", input: "", history: [], historyIndex: -1 }]);
     setActiveBrowserTabId(id);
+  };
+  const addTemporaryChatTab = () => {
+    const id = `temporary-${Date.now()}`;
+    setBrowserTabs((tabs) => [...tabs, {
+      id,
+      kind: "temporary",
+      title: "Side chat",
+      url: "",
+      input: "",
+      history: [],
+      historyIndex: -1,
+      messages: [],
+      draft: "",
+      busy: false,
+    }]);
+    setActiveBrowserTabId(id);
+  };
+  const updateWorkspaceTab = (id: string, changes: Partial<BrowserTab>) =>
+    setBrowserTabs((tabs) => tabs.map((tab) => tab.id === id ? { ...tab, ...changes } : tab));
+  const sendTemporaryChat = async () => {
+    const tab = browserTabs.find((item) => item.id === activeBrowserTabId);
+    if (!tab || tab.kind !== "temporary" || tab.busy || !tab.draft?.trim()) return;
+    if (!activeProvider || !config.activeModel) {
+      setToast("Connect and select a model before sending a message");
+      setDraftConfig(config);
+      setSettingsTab("models");
+      setSettingsOpen(true);
+      return;
+    }
+    const user: Message = { role: "user", content: tab.draft.trim() };
+    const conversation = [...(tab.messages || []), user];
+    updateWorkspaceTab(tab.id, {
+      draft: "",
+      busy: true,
+      messages: [...conversation, { role: "assistant", content: "" }],
+    });
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      await streamCompletion(config, conversation, (token) => setBrowserTabs((tabs) => tabs.map((item) => {
+        if (item.id !== tab.id) return item;
+        const messages = [...(item.messages || [])];
+        const last = messages.length - 1;
+        messages[last] = { ...messages[last], content: messages[last].content + token };
+        return { ...item, messages };
+      })), controller.signal);
+    } catch (error) {
+      setBrowserTabs((tabs) => tabs.map((item) => {
+        if (item.id !== tab.id) return item;
+        const messages = [...(item.messages || [])];
+        const last = messages.length - 1;
+        messages[last] = {
+          ...messages[last],
+          content: controller.signal.aborted
+            ? (messages[last].content || "Response stopped.")
+            : `I couldn’t connect to ${config.activeModel}.\n\n${error instanceof Error ? error.message : "Unknown error"}`,
+        };
+        return { ...item, messages };
+      }));
+    } finally {
+      abortRef.current = null;
+      updateWorkspaceTab(tab.id, { busy: false });
+    }
   };
   const closeBrowserTab = (id: string) => {
     const nativeView = nativeBrowserViewsRef.current.get(id);
@@ -1443,8 +1525,8 @@ export default function App() {
                           }
                           className={message.liked ? "selected" : ""}
                         >
-                          <Check />
-                          Helpful
+                          {message.liked ? <CheckCheck /> : <Check />}
+                          <span>Helpful</span>
                         </button>
                         <button onClick={() => archiveChat(active)}>
                           <Archive />
@@ -2344,12 +2426,12 @@ export default function App() {
             <div>
               {browserTabs.map((tab) => (
                 <button className={tab.id === activeBrowserTabId ? "active" : ""} key={tab.id} onClick={() => setActiveBrowserTabId(tab.id)} title={tab.title}>
-                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "files" ? <Folder /> : <Sparkles />}
+                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "files" ? <Folder /> : tab.kind === "temporary" ? <MessageSquare /> : <Sparkles />}
                   <span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
                 </button>
               ))}
             </div>
-            <button className="new-browser-tab" onClick={addBrowserTab} aria-label="New browser tab"><Plus /></button>
+            <button className="new-browser-tab" onClick={addWorkspaceHomeTab} aria-label="New workspace tab" title="New workspace tab"><Plus /></button>
           </div>
           {activeBrowserTab?.kind === "browser" ? <form className="browser-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(activeBrowserTab.input || ""); }}>
             <button type="button" disabled={!activeBrowserTab || activeBrowserTab.historyIndex <= 0} onClick={() => moveBrowserHistory(-1)} aria-label="Back"><ArrowRight className="browser-back" /></button>
@@ -2372,7 +2454,7 @@ export default function App() {
               <button onClick={() => copy(activeBrowserTab.content || "")}><Copy />Copy</button>
               <button onClick={downloadArtifact}><Download />Save</button>
             </div>
-          ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? "Files shared in this conversation" : "Choose a workspace tool"}</span></div>}
+          ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
           <div className="browser-surface" ref={browserSurfaceRef}>
             {activeBrowserTab?.kind === "browser" && activeBrowserTab.url ? (
               <>
@@ -2403,9 +2485,38 @@ export default function App() {
               </div>
             ) : activeBrowserTab?.kind === "files" ? (
               <div className="workspace-files">
-                <span><Folder /></span><h3>Conversation files</h3><p>Attach documents or images and keep them close to your work.</p>
-                <button onClick={() => fileRef.current?.click()}><Paperclip />Choose a file</button>
-                {files.length > 0 && <div>{files.map((file) => <article key={file.name}><FileText /><span>{file.name}</span></article>)}</div>}
+                <header><div><h3>Generated files</h3><p>Every code block created in your conversations appears here.</p></div><button onClick={() => fileRef.current?.click()}><Paperclip />Attach</button></header>
+                {workspaceArtifacts.length ? <div className="workspace-file-list">{workspaceArtifacts.map((artifact) => (
+                  <button key={artifact.id} onClick={() => openArtifact(artifact.title, artifact.language, artifact.content)}>
+                    <Code2 /><span><b>{artifact.title}</b><small>{artifact.chatTitle} · {artifact.language}</small></span><ArrowRight />
+                  </button>
+                ))}</div> : <div className="workspace-files-empty"><Folder /><h3>No generated files yet</h3><p>Ask your model to create code. Each code block will be collected here automatically.</p></div>}
+                {files.length > 0 && <section className="workspace-attachments"><small>Current attachments</small>{files.map((file) => <article key={file.name}><FileText /><span>{file.name}</span></article>)}</section>}
+              </div>
+            ) : activeBrowserTab?.kind === "temporary" ? (
+              <div className="workspace-sidechat">
+                <div className="sidechat-messages">
+                  {!activeBrowserTab.messages?.length ? <div className="sidechat-empty"><MessageSquare /><h3>Temporary side chat</h3><p>Use this space for a quick question. Nothing here is added to your chat history.</p></div> : activeBrowserTab.messages.map((message, index) => (
+                    <article className={message.role} key={index}>
+                      <small>{message.role === "assistant" ? (config.branding.appName || "Nova") : "You"}</small>
+                      <div dir="auto">{message.content ? renderMessageContent(message) : <span className="typing"><i /><i /><i /></span>}</div>
+                    </article>
+                  ))}
+                </div>
+                <div className="sidechat-composer">
+                  <textarea
+                    value={activeBrowserTab.draft || ""}
+                    placeholder="Ask a temporary question…"
+                    onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { draft: event.target.value })}
+                    onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendTemporaryChat(); } }}
+                  />
+                  <button
+                    className={activeBrowserTab.busy ? "stop" : ""}
+                    disabled={!activeBrowserTab.busy && !activeBrowserTab.draft?.trim()}
+                    onClick={activeBrowserTab.busy ? stopResponse : sendTemporaryChat}
+                    aria-label={activeBrowserTab.busy ? "Stop response" : "Send"}
+                  >{activeBrowserTab.busy ? <Square /> : <ArrowUp />}</button>
+                </div>
               </div>
             ) : (
               <div className="workspace-home">
@@ -2413,7 +2524,7 @@ export default function App() {
                 <h2>What would you like to open?</h2>
                 <p>Everything lives in one unified, focused workspace.</p>
                 <div className="workspace-launchers">
-                  <button onClick={() => { fresh(); setBrowserOpen(false); }}><MessageSquare /><span><b>Side chat</b><small>Start a focused conversation</small></span><ArrowRight /></button>
+                  <button onClick={addTemporaryChatTab}><MessageSquare /><span><b>Side chat</b><small>Temporary and never saved</small></span><ArrowRight /></button>
                   <button onClick={addBrowserTab}><Globe2 /><span><b>Browser</b><small>Research without leaving Nova</small></span><ArrowRight /></button>
                   <button onClick={addFilesTab}><Folder /><span><b>Files</b><small>Work with documents and images</small></span><ArrowRight /></button>
                 </div>
