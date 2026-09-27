@@ -2568,6 +2568,7 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                  <p>{config.branding.appName} can make mistakes. Verify important information.</p>
                 </div>
               </div>
             ) : (
