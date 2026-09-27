@@ -40,7 +40,7 @@ import {
   Minimize2,
   MoreHorizontal,
   PanelLeftClose,
-  PanelRight,
+  PanelsTopLeft,
   Paperclip,
   Pencil,
   Plus,
@@ -204,6 +204,7 @@ export default function App() {
   const [browserFrameKey, setBrowserFrameKey] = useState(0);
   const [browserWidth, setBrowserWidth] = useState(() => loadValue<number>("idk-nova-browser-width", 560));
   const [browserMaximized, setBrowserMaximized] = useState(false);
+  const [browserRestoring, setBrowserRestoring] = useState(false);
   const [importingLocalModel, setImportingLocalModel] = useState(false);
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
@@ -326,6 +327,19 @@ export default function App() {
   useEffect(() => () => {
     for (const entry of nativeBrowserViewsRef.current.values()) entry.webview.close().catch(() => undefined);
   }, []);
+  useEffect(() => {
+    if (!isDesktopApp() || !browserOpen || !browserSurfaceRef.current) return;
+    const surface = browserSurfaceRef.current;
+    const observer = new ResizeObserver(() => {
+      const entry = nativeBrowserViewsRef.current.get(activeBrowserTabId);
+      if (!entry) return;
+      const rect = surface.getBoundingClientRect();
+      entry.webview.setPosition(new LogicalPosition(rect.left, rect.top)).catch(() => undefined);
+      entry.webview.setSize(new LogicalSize(Math.max(1, rect.width), Math.max(1, rect.height - 34))).catch(() => undefined);
+    });
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, [browserOpen, activeBrowserTabId]);
   useEffect(
     () => {
       localStorage.setItem("idk-nova-active", JSON.stringify(active));
@@ -589,10 +603,17 @@ export default function App() {
     setBrowserFrameKey((key) => key + 1);
   };
   const setWorkspaceMaximized = (maximized: boolean) => {
-    const update = () => setBrowserMaximized(maximized);
-    const documentWithTransitions = document as Document & { startViewTransition?: (callback: () => void) => void };
-    if (documentWithTransitions.startViewTransition) documentWithTransitions.startViewTransition(update);
-    else update();
+    if (maximized) {
+      setBrowserRestoring(false);
+      setBrowserMaximized(true);
+      return;
+    }
+    if (!browserMaximized) return;
+    setBrowserRestoring(true);
+    window.setTimeout(() => {
+      setBrowserMaximized(false);
+      setBrowserRestoring(false);
+    }, 320);
   };
   const toggleWorkspaceMaximized = () => setWorkspaceMaximized(!browserMaximized);
   const startBrowserResize = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1274,7 +1295,7 @@ export default function App() {
               </button>
               <span>Temporary chat · Coming soon</span>
             </span>
-            <button className={`browser-toggle ${browserOpen ? "active" : ""}`} onClick={() => {
+            <button className={`icon-button workspace-button ${browserOpen ? "active" : ""}`} aria-label="Workspace" title="Workspace" onClick={() => {
               if (browserOpen) {
                 setBrowserOpen(false);
                 setBrowserMaximized(false);
@@ -1285,8 +1306,7 @@ export default function App() {
                 setBrowserOpen(true);
               }
             }}>
-              <PanelRight />
-              Workspace
+              <PanelsTopLeft />
             </button>
             <button className="share" onClick={share}>
               <Globe2 />
@@ -2297,7 +2317,7 @@ export default function App() {
         </div>
       )}
       <aside
-        className={`nova-browser ${browserOpen ? "" : "closed"} ${browserMaximized ? "maximized" : ""}`}
+        className={`nova-browser ${browserOpen ? "" : "closed"} ${browserMaximized ? "maximized" : ""} ${browserRestoring ? "restoring" : ""}`}
         style={{ "--browser-width": `${browserWidth}px` } as CSSProperties}
         aria-label="Nova browser"
         aria-hidden={!browserOpen}

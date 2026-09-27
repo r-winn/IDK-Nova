@@ -790,16 +790,16 @@ main {
   overflow: hidden;
   transition: width .32s cubic-bezier(.22,.75,.18,1), visibility 0s;
   will-change: width;
-  view-transition-name: nova-workspace;
 }
 .nova-browser.closed { width: 0; visibility: hidden; pointer-events: none; border-left-color: transparent; box-shadow: none; transition: width .32s cubic-bezier(.22,.75,.18,1), visibility 0s .32s; }
-.nova-browser.maximized { position: fixed; inset: 0; width: 100vw; --browser-width: 100vw !important; }
-::view-transition-old(nova-workspace),
-::view-transition-new(nova-workspace) { animation-duration: .32s; animation-timing-function: cubic-bezier(.22,.75,.18,1); }
-.nova-browser > header { width: var(--browser-width); min-width: 420px; }
-.nova-browser > .browser-tabs { width: var(--browser-width); min-width: 420px; }
-.nova-browser > .browser-address { width: calc(var(--browser-width) - 28px); min-width: 392px; }
-.nova-browser > .browser-surface { width: var(--browser-width); min-width: 420px; }
+.nova-browser.maximized { position: fixed; inset: 0; width: 100vw; animation: workspace-expand .32s cubic-bezier(.22,.75,.18,1) both; }
+.nova-browser.maximized.restoring { animation: workspace-restore .32s cubic-bezier(.22,.75,.18,1) both; pointer-events: none; }
+@keyframes workspace-expand { from { width: var(--browser-width); } to { width: 100vw; } }
+@keyframes workspace-restore { from { width: 100vw; } to { width: var(--browser-width); } }
+.nova-browser > header { width: 100%; min-width: 420px; }
+.nova-browser > .browser-tabs { width: 100%; min-width: 420px; }
+.nova-browser > .browser-address { width: calc(100% - 28px); min-width: 392px; }
+.nova-browser > .browser-surface { width: 100%; min-width: 420px; }
 .browser-resizer { position: absolute; z-index: 4; left: -5px; top: 0; width: 10px; height: 100%; cursor: col-resize; touch-action: none; display: flex; align-items: center; justify-content: center; }
 .browser-resizer::after { content: ""; width: 1px; height: 100%; background: transparent; transition: background .15s; }
 .browser-resizer:hover::after,
@@ -820,6 +820,7 @@ body.resizing-browser iframe { pointer-events: none; }
 .browser-header-actions button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .browser-header-actions button:disabled { opacity: .35; cursor: default; }
 .browser-header-actions svg { width: 15px; }
+.workspace-button.active { background: var(--hover); color: var(--text); }
 .browser-tabs { padding: 5px 10px 0 12px; border-bottom: 0; background: transparent; display: flex; align-items: flex-end; gap: 5px; overflow: hidden; }
 .browser-tabs > div { min-width: 0; flex: 1; display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
 .browser-tabs > div::-webkit-scrollbar { display: none; }
