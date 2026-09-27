@@ -21,7 +21,12 @@ type SettingsTab = keyof typeof settingMeta;
 export default function App() {
   const [sidebar, setSidebar] = useState(true);
   const [active, setActive] = useState(() => loadValue('idk-nova-active', 1));
-  const [chats, setChats] = useState<Chat[]>(() => loadValue('idk-nova-history', starterChats));
+  const [chats, setChats] = useState<Chat[]>(() => {
+    const stored = loadValue<Chat[]>('idk-nova-history', starterChats);
+    if (!Array.isArray(stored)) return starterChats;
+    const valid = stored.filter((item): item is Chat => Boolean(item && typeof item.id === 'number' && typeof item.title === 'string')).map(item => ({ ...item, messages: Array.isArray(item.messages) ? item.messages : [] }));
+    return valid.length ? valid : starterChats;
+  });
   const [text, setText] = useState('');
   const [files, setFiles] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
