@@ -60,6 +60,8 @@ import {
   GraduationCap,
   Workflow,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -125,7 +127,7 @@ type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
 type BrowserTab = {
   id: string;
-  kind: "home" | "browser" | "artifact" | "files" | "temporary";
+  kind: "home" | "browser" | "artifact" | "files" | "temporary" | "image";
   title: string;
   url: string;
   input: string;
@@ -137,6 +139,8 @@ type BrowserTab = {
   messages?: Message[];
   draft?: string;
   busy?: boolean;
+  imageUrl?: string;
+  imageZoom?: number;
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 
@@ -307,7 +311,7 @@ export default function App() {
     let cancelled = false;
     const syncNativeBrowser = async () => {
       const views = nativeBrowserViewsRef.current;
-      const overlayOpen = Boolean(chatDialog || folderDialog || settingsOpen);
+      const overlayOpen = Boolean(chatDialog || folderDialog || settingsOpen || selectionToolbar);
       for (const [id, entry] of views) {
         if (!browserOpen || overlayOpen || id !== activeBrowserTabId) await entry.webview.hide().catch(() => undefined);
       }
@@ -342,7 +346,7 @@ export default function App() {
     };
     syncNativeBrowser().catch(() => setToast("This page could not be opened inside Nova"));
     return () => { cancelled = true; };
-  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized, chatDialog, folderDialog, settingsOpen]);
+  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized, chatDialog, folderDialog, settingsOpen, selectionToolbar]);
   useEffect(() => () => {
     for (const entry of nativeBrowserViewsRef.current.values()) entry.webview.close().catch(() => undefined);
   }, []);
@@ -533,9 +537,12 @@ export default function App() {
         return;
       }
       const rect = selection.getRangeAt(0).getBoundingClientRect();
+      const workspaceEdge = browserOpen && !browserMaximized
+        ? window.innerWidth - browserWidth
+        : window.innerWidth;
       setSelectionToolbar({
         text: text.slice(0, 4000),
-        x: Math.max(86, Math.min(window.innerWidth - 86, rect.left + rect.width / 2)),
+        x: Math.max(86, Math.min(workspaceEdge - 86, rect.left + rect.width / 2)),
         y: Math.max(54, rect.top - 10),
       });
     });
@@ -551,6 +558,19 @@ export default function App() {
     setBrowserTabs((tabs) => [...tabs, { id, kind: "artifact", title, language, content, artifactView: "edit", url: "", input: "", history: [], historyIndex: -1 }]);
     setActiveBrowserTabId(id);
     setBrowserOpen(true);
+  };
+  const openWorkspaceImage = (name: string, imageUrl: string) => {
+    const id = `image-${Date.now()}`;
+    setBrowserTabs((tabs) => [...tabs, { id, kind: "image", title: name || "Image", imageUrl, imageZoom: 1, url: "", input: "", history: [], historyIndex: -1 }]);
+    setActiveBrowserTabId(id);
+    setBrowserOpen(true);
+  };
+  const downloadWorkspaceImage = () => {
+    if (activeBrowserTab?.kind !== "image" || !activeBrowserTab.imageUrl) return;
+    const link = document.createElement("a");
+    link.href = activeBrowserTab.imageUrl;
+    link.download = activeBrowserTab.title || "nova-image";
+    link.click();
   };
   const normalizeBrowserTarget = (value: string) => {
     const target = value.trim();
@@ -1477,7 +1497,9 @@ export default function App() {
                       <div className="attachments">
                         {message.attachments.map((attachment, itemIndex) =>
                           attachment.type.startsWith("image/") ? (
-                            <img key={itemIndex} src={attachment.url} />
+                            <button className="attachment-image" key={itemIndex} onClick={() => openWorkspaceImage(attachment.name, attachment.url)} title="Open image in Workspace">
+                              <img src={attachment.url} alt={attachment.name} />
+                            </button>
                           ) : (
                             <div className="file" key={itemIndex}>
                               <FileText />
@@ -1502,10 +1524,6 @@ export default function App() {
                           <Copy />
                           Copy
                         </button>
-                        <button onClick={() => openArtifact("Assistant response", "text", message.content)}>
-                          <Maximize2 />
-                          Open
-                        </button>
                         <button
                           onClick={() =>
                             setChats((items) =>
@@ -1527,10 +1545,6 @@ export default function App() {
                         >
                           {message.liked ? <CheckCheck /> : <Check />}
                           <span>Helpful</span>
-                        </button>
-                        <button onClick={() => archiveChat(active)}>
-                          <Archive />
-                          Archive
                         </button>
                       </div>
                     )}
@@ -2412,26 +2426,21 @@ export default function App() {
         aria-hidden={!browserOpen}
       >
           <div className="browser-resizer" onPointerDown={startBrowserResize}><span /></div>
-          <header>
-            <div className="browser-title">
-              <div><b>Nova Workspace</b><small>Chat, browse, create</small></div>
-            </div>
-            <div className="browser-header-actions">
-              {activeBrowserTab?.kind === "browser" && <button disabled={!activeBrowserTab.url} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>}
-              <button onClick={toggleWorkspaceMaximized} title={browserMaximized ? "Restore split view" : "Full screen"}>{browserMaximized ? <Minimize2 /> : <Maximize2 />}</button>
-              <button onClick={() => { setBrowserOpen(false); setBrowserMaximized(false); }} title="Close"><X /></button>
-            </div>
-          </header>
           <div className="browser-tabs">
             <div>
               {browserTabs.map((tab) => (
                 <button className={tab.id === activeBrowserTabId ? "active" : ""} key={tab.id} onClick={() => setActiveBrowserTabId(tab.id)} title={tab.title}>
-                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "files" ? <Folder /> : tab.kind === "temporary" ? <MessageSquare /> : <Sparkles />}
+                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "files" ? <Folder /> : tab.kind === "temporary" ? <MessageSquare /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
                   <span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
                 </button>
               ))}
             </div>
             <button className="new-browser-tab" onClick={addWorkspaceHomeTab} aria-label="New workspace tab" title="New workspace tab"><Plus /></button>
+            <div className="browser-header-actions">
+              {activeBrowserTab?.kind === "browser" && <button disabled={!activeBrowserTab.url} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>}
+              <button onClick={toggleWorkspaceMaximized} title={browserMaximized ? "Restore split view" : "Full screen"}>{browserMaximized ? <Minimize2 /> : <Maximize2 />}</button>
+              <button onClick={() => { setBrowserOpen(false); setBrowserMaximized(false); }} title="Close Workspace"><X /></button>
+            </div>
           </div>
           {activeBrowserTab?.kind === "browser" ? <form className="browser-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(activeBrowserTab.input || ""); }}>
             <button type="button" disabled={!activeBrowserTab || activeBrowserTab.historyIndex <= 0} onClick={() => moveBrowserHistory(-1)} aria-label="Back"><ArrowRight className="browser-back" /></button>
@@ -2453,6 +2462,14 @@ export default function App() {
               <span />
               <button onClick={() => copy(activeBrowserTab.content || "")}><Copy />Copy</button>
               <button onClick={downloadArtifact}><Download />Save</button>
+            </div>
+          ) : activeBrowserTab?.kind === "image" ? (
+            <div className="workspace-toolbar image-toolbar">
+              <span>{Math.round((activeBrowserTab.imageZoom || 1) * 100)}%</span>
+              <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: Math.max(.25, (activeBrowserTab.imageZoom || 1) - .25) })}><ZoomOut />Zoom out</button>
+              <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: Math.min(4, (activeBrowserTab.imageZoom || 1) + .25) })}><ZoomIn />Zoom in</button>
+              <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: 1 })}>Reset</button>
+              <button onClick={downloadWorkspaceImage}><Download />Download</button>
             </div>
           ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
           <div className="browser-surface" ref={browserSurfaceRef}>
@@ -2482,6 +2499,10 @@ export default function App() {
                 ) : activeBrowserTab.language?.toLowerCase() === "html" ? (
                   <iframe title="Artifact preview" sandbox="" srcDoc={activeBrowserTab.content || ""} />
                 ) : <div className="document-preview" dir="auto">{activeBrowserTab.content}</div>}
+              </div>
+            ) : activeBrowserTab?.kind === "image" ? (
+              <div className="workspace-image-viewer">
+                <div><img src={activeBrowserTab.imageUrl} alt={activeBrowserTab.title} style={{ transform: `scale(${activeBrowserTab.imageZoom || 1})` }} /></div>
               </div>
             ) : activeBrowserTab?.kind === "files" ? (
               <div className="workspace-files">

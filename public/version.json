@@ -1,6 +1,6 @@
 {
-  "version": "0.9.9",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.9",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.9/IDK.Nova_0.9.9_x64-setup.exe",
-  "notes": ["A compact Workspace header gives browser and editor content more room", "New tabs open the Workspace home instead of launching the browser", "Temporary Side Chat stays private to its tab and disappears when closed or refreshed", "Generated code blocks are collected as files and open directly in the Workspace editor", "Helpful feedback now uses a clear green double-check state"]
+  "version": "0.9.10",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.10",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.10/IDK.Nova_0.9.10_x64-setup.exe",
+  "notes": ["Workspace tabs and window controls now share one compact top row", "Reply controls stay above the Workspace and native browser view", "Generic Open and Archive actions were removed from message footers", "Sent images open in a dedicated Workspace viewer with zoom, reset, and download controls", "Browser and editor content receive substantially more vertical room"]
 }
