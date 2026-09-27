@@ -31,6 +31,7 @@ import {
   Heart,
   Image as ImageIcon,
   Info,
+  Maximize2,
   Menu,
   MessageSquare,
   Mic,
@@ -40,6 +41,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Reply,
   Rocket,
   Search,
   Settings,
@@ -111,6 +113,8 @@ type ChatDialog = {
 } | null;
 type FolderDialog = { mode: "create" | "rename"; id?: string; name: string; color: string; icon: ChatFolder["icon"] } | null;
 type ChatMenu = { chatId: number; x: number; y: number } | null;
+type SelectionToolbar = { text: string; x: number; y: number } | null;
+type Artifact = { title: string; language: string; content: string } | null;
 
 const folderIcons = {
   folder: Folder,
@@ -125,6 +129,18 @@ const folderIcons = {
   study: GraduationCap,
 };
 const folderColors = ["#5b8def", "#8b5cf6", "#c65fd4", "#e8793e", "#e8ad3e", "#2aa876", "#24a6a8", "#d4546a", "#64748b", "#1f2937"];
+const splitContent = (content: string) => {
+  const parts: { type: "text" | "code"; content: string; language: string }[] = [];
+  const pattern = /```([\w+-]*)\n([\s\S]*?)```/g;
+  let cursor = 0;
+  for (const match of content.matchAll(pattern)) {
+    if (match.index! > cursor) parts.push({ type: "text", content: content.slice(cursor, match.index), language: "" });
+    parts.push({ type: "code", content: match[2].replace(/\n$/, ""), language: match[1] || "code" });
+    cursor = match.index! + match[0].length;
+  }
+  if (cursor < content.length) parts.push({ type: "text", content: content.slice(cursor), language: "" });
+  return parts.length ? parts : [{ type: "text" as const, content, language: "" }];
+};
 
 export default function App() {
   const [sidebar, setSidebar] = useState(true);
@@ -160,6 +176,11 @@ export default function App() {
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const [folderDialog, setFolderDialog] = useState<FolderDialog>(null);
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
+  const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar>(null);
+  const [replyQuote, setReplyQuote] = useState("");
+  const [artifact, setArtifact] = useState<Artifact>(null);
+  const [artifactDraft, setArtifactDraft] = useState("");
+  const [artifactTab, setArtifactTab] = useState<"edit" | "preview">("edit");
   const [importingLocalModel, setImportingLocalModel] = useState(false);
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
@@ -388,6 +409,42 @@ export default function App() {
     await navigator.clipboard.writeText(value);
     setToast("Copied to clipboard");
   };
+  const captureSelection = (container: HTMLElement) => {
+    requestAnimationFrame(() => {
+      const selection = window.getSelection();
+      const text = selection?.toString().trim() || "";
+      if (!selection || selection.rangeCount === 0 || !text || !container.contains(selection.anchorNode)) {
+        setSelectionToolbar(null);
+        return;
+      }
+      const rect = selection.getRangeAt(0).getBoundingClientRect();
+      setSelectionToolbar({
+        text: text.slice(0, 4000),
+        x: Math.max(86, Math.min(window.innerWidth - 86, rect.left + rect.width / 2)),
+        y: Math.max(54, rect.top - 10),
+      });
+    });
+  };
+  const replyToSelection = (value: string) => {
+    setReplyQuote(value);
+    setSelectionToolbar(null);
+    window.getSelection()?.removeAllRanges();
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
+  };
+  const openArtifact = (title: string, language: string, content: string) => {
+    setArtifact({ title, language, content });
+    setArtifactDraft(content);
+    setArtifactTab(language.toLowerCase() === "html" ? "preview" : "edit");
+  };
+  const downloadArtifact = () => {
+    if (!artifact) return;
+    const extension = ({ javascript: "js", typescript: "ts", python: "py", html: "html", css: "css", json: "json", text: "txt" } as Record<string, string>)[artifact.language.toLowerCase()] || "txt";
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([artifactDraft], { type: "text/plain" }));
+    link.download = `nova-artifact.${extension}`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
   const toggleVoice = () => {
     const Recognition = (
       window as typeof window & { webkitSpeechRecognition?: new () => any }
@@ -422,6 +479,7 @@ export default function App() {
       role: "user",
       content: text.trim(),
       attachments: files,
+      quote: replyQuote || undefined,
     };
     const title = chat.messages.length
       ? chat.title
@@ -443,6 +501,7 @@ export default function App() {
     );
     setText("");
     setFiles([]);
+    setReplyQuote("");
     setBusy(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -828,6 +887,26 @@ export default function App() {
       ))}
     </section>
   ));
+  const renderMessageContent = (message: Message) => (
+    <div
+      className="rich-content"
+      dir="auto"
+      onMouseUp={(event) => captureSelection(event.currentTarget)}
+    >
+      {splitContent(message.content).map((part, index) => part.type === "code" ? (
+        <section className="code-artifact" key={index} dir="ltr">
+          <header>
+            <span><Code2 />{part.language}</span>
+            <div>
+              <button onClick={() => copy(part.content)}><Copy />Copy</button>
+              <button onClick={() => openArtifact(`${part.language} artifact`, part.language, part.content)}><Maximize2 />Open</button>
+            </div>
+          </header>
+          <pre><code>{part.content}</code></pre>
+        </section>
+      ) : <span className="prose-segment" key={index}>{part.content}</span>)}
+    </div>
+  );
   if (!chat) return null;
 
   return (
@@ -1066,6 +1145,9 @@ export default function App() {
                     )}
                   </div>
                   <div className="message-body">
+                    {message.quote && (
+                      <div className="message-quote" dir="auto"><Reply />{message.quote}</div>
+                    )}
                     {message.attachments?.length ? (
                       <div className="attachments">
                         {message.attachments.map((attachment, itemIndex) =>
@@ -1080,8 +1162,8 @@ export default function App() {
                         )}
                       </div>
                     ) : null}
-                    <div className="content" dir="auto">
-                      {message.content || (
+                    <div className="content">
+                      {message.content ? renderMessageContent(message) : (
                         <span className="typing">
                           <i />
                           <i />
@@ -1094,6 +1176,10 @@ export default function App() {
                         <button onClick={() => copy(message.content)}>
                           <Copy />
                           Copy
+                        </button>
+                        <button onClick={() => openArtifact("Assistant response", "text", message.content)}>
+                          <Maximize2 />
+                          Open
                         </button>
                         <button
                           onClick={() =>
@@ -1146,6 +1232,13 @@ export default function App() {
               </span>
               <ArrowRight />
             </button>
+          )}
+          {replyQuote && (
+            <div className="reply-preview" dir="auto">
+              <Reply />
+              <div><b>Replying to selection</b><span>{replyQuote}</span></div>
+              <button aria-label="Cancel reply" onClick={() => setReplyQuote("")}><X /></button>
+            </div>
           )}
           {files.length > 0 && (
             <div className="file-preview">
@@ -1979,6 +2072,42 @@ export default function App() {
               </footer>
             </section>
           </div>
+        </div>
+      )}
+      {selectionToolbar && (
+        <div className="selection-toolbar" style={{ left: selectionToolbar.x, top: selectionToolbar.y }}>
+          <button onMouseDown={(event) => event.preventDefault()} onClick={() => { copy(selectionToolbar.text); setSelectionToolbar(null); }}><Copy />Copy</button>
+          <button onMouseDown={(event) => event.preventDefault()} onClick={() => replyToSelection(selectionToolbar.text)}><Reply />Reply</button>
+        </div>
+      )}
+      {artifact && (
+        <div className="artifact-backdrop" onMouseDown={() => setArtifact(null)}>
+          <aside className="artifact-panel" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <div><span className="artifact-icon"><Code2 /></span><span><b>{artifact.title}</b><small>{artifact.language || "document"}</small></span></div>
+              <div className="artifact-actions">
+                <button onClick={() => copy(artifactDraft)}><Copy />Copy</button>
+                <button onClick={downloadArtifact}><Download />Save</button>
+                <button className="artifact-close" aria-label="Close artifact" onClick={() => setArtifact(null)}><X /></button>
+              </div>
+            </header>
+            <nav>
+              <button className={artifactTab === "edit" ? "active" : ""} onClick={() => setArtifactTab("edit")}><Pencil />Edit</button>
+              <button className={artifactTab === "preview" ? "active" : ""} onClick={() => setArtifactTab("preview")}><Globe2 />Preview</button>
+            </nav>
+            <div className="artifact-workspace">
+              {artifactTab === "edit" ? (
+                <textarea spellCheck={artifact.language === "text"} value={artifactDraft} onChange={(event) => setArtifactDraft(event.target.value)} />
+              ) : artifact.language.toLowerCase() === "html" ? (
+                <div className="browser-preview">
+                  <div><i /><i /><i /><span><Globe2 />nova://preview/artifact</span></div>
+                  <iframe title="Artifact preview" sandbox="" srcDoc={artifactDraft} />
+                </div>
+              ) : (
+                <div className="document-preview" dir="auto">{artifactDraft}</div>
+              )}
+            </div>
+          </aside>
         </div>
       )}
       {chatMenu && (

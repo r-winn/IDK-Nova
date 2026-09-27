@@ -44,9 +44,9 @@ export async function streamCompletion(config: Config, messages: Message[], onTo
   const content = messages.map((message, index) => ({
     role: message.role,
     content: index === messages.length - 1 && message.attachments?.length ? [
-      { type: 'text', text: message.content || 'Describe this attachment.' },
+      { type: 'text', text: `${message.quote ? `Replying to this excerpt:\n\"${message.quote}\"\n\n` : ''}${message.content || 'Describe this attachment.'}` },
       ...message.attachments.filter(file => file.type.startsWith('image/')).map(file => ({ type: 'image_url', image_url: { url: file.url } })),
-    ] : (message.content || (message.attachments?.length ? '[Image shared in an earlier turn]' : '')),
+    ] : `${message.quote ? `Replying to this excerpt:\n\"${message.quote}\"\n\n` : ''}${message.content || (message.attachments?.length ? '[Image shared in an earlier turn]' : '')}`,
   }));
   const response = await request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: { ...headers(provider), Accept: 'text/event-stream' }, body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, messages: content }), signal });
   if (!response.ok) throw new Error(`Provider returned ${response.status}: ${await response.text()}`);
