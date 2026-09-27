@@ -867,7 +867,7 @@ body.resizing-browser iframe { pointer-events: none; }
   height: 100%;
   overflow: hidden;
   background: linear-gradient(135deg, color-mix(in srgb, var(--bg) 84%, var(--ws-tint-a)), color-mix(in srgb, var(--bg) 84%, var(--ws-tint-b)));
-  animation: workspace-view-enter .44s ease-in-out both;
+  animation: workspace-view-enter .52s cubic-bezier(.4, 0, .2, 1) both;
   will-change: opacity, filter;
   backface-visibility: hidden;
   transform: translateZ(0);
@@ -887,7 +887,7 @@ body.resizing-browser iframe { pointer-events: none; }
 :root[data-theme="dark"] .workspace-view { background: linear-gradient(135deg, color-mix(in srgb, var(--bg) 91%, var(--ws-tint-a)), color-mix(in srgb, var(--bg) 91%, var(--ws-tint-b))); }
 :root[data-theme="dark"] .workspace-view::before { opacity: .3; }
 :root[data-theme="dark"] .workspace-view::after { opacity: .27; }
-@keyframes workspace-view-enter { from { opacity: .72; filter: blur(8px); } to { opacity: 1; filter: blur(0); } }
+@keyframes workspace-view-enter { from { opacity: .84; filter: blur(4px); } to { opacity: 1; filter: blur(0); } }
 @keyframes workspace-tab-enter { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 .browser-surface iframe { width: 100%; height: calc(100% - 34px); border: 0; background: transparent; }
 .browser-fallback { height: 34px; padding: 0 9px 0 12px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 82%, transparent); color: var(--muted); display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 9px; }
