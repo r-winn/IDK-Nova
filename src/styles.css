@@ -782,7 +782,7 @@ main {
   flex: none;
   display: grid;
   grid-template-rows: 62px 40px 54px minmax(0, 1fr);
-  border-left: 1px solid var(--line-strong);
+  border-left: 0;
   background: color-mix(in srgb, var(--bg) 96%, transparent);
   backdrop-filter: blur(28px) saturate(125%);
   -webkit-backdrop-filter: blur(28px) saturate(125%);
@@ -790,13 +790,16 @@ main {
   overflow: hidden;
   transition: width .32s cubic-bezier(.22,.75,.18,1), visibility 0s;
   will-change: width;
+  view-transition-name: nova-workspace;
 }
 .nova-browser.closed { width: 0; visibility: hidden; pointer-events: none; border-left-color: transparent; box-shadow: none; transition: width .32s cubic-bezier(.22,.75,.18,1), visibility 0s .32s; }
 .nova-browser.maximized { position: fixed; inset: 0; width: 100vw; --browser-width: 100vw !important; }
+::view-transition-old(nova-workspace),
+::view-transition-new(nova-workspace) { animation-duration: .32s; animation-timing-function: cubic-bezier(.22,.75,.18,1); }
 .nova-browser > header { width: var(--browser-width); min-width: 420px; }
 .nova-browser > .browser-tabs { width: var(--browser-width); min-width: 420px; }
-.nova-browser > .browser-address,
-.nova-browser > .browser-surface { width: calc(var(--browser-width) - 28px); min-width: 392px; }
+.nova-browser > .browser-address { width: calc(var(--browser-width) - 28px); min-width: 392px; }
+.nova-browser > .browser-surface { width: var(--browser-width); min-width: 420px; }
 .browser-resizer { position: absolute; z-index: 4; left: -5px; top: 0; width: 10px; height: 100%; cursor: col-resize; touch-action: none; display: flex; align-items: center; justify-content: center; }
 .browser-resizer::after { content: ""; width: 1px; height: 100%; background: transparent; transition: background .15s; }
 .browser-resizer:hover::after,
@@ -806,11 +809,9 @@ body.resizing-browser .browser-resizer::after { background: var(--line-strong); 
 body.resizing-browser .browser-resizer span { opacity: 1; }
 body.resizing-browser { cursor: col-resize; user-select: none; }
 body.resizing-browser iframe { pointer-events: none; }
-.nova-browser > header { padding: 0 14px 0 17px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+.nova-browser > header { padding: 0 14px 0 18px; border-bottom: 0; display: flex; align-items: center; justify-content: space-between; }
 .browser-title, .browser-title > div, .browser-header-actions { display: flex; align-items: center; }
-.browser-title { gap: 10px; }
-.browser-title > span { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--hover); }
-.browser-title > span svg { width: 17px; }
+.browser-title { gap: 0; }
 .browser-title > div { align-items: flex-start; flex-direction: column; }
 .browser-title b { font-size: 12px; }
 .browser-title small { margin-top: 2px; color: var(--faint); font-size: 9px; }
@@ -819,20 +820,20 @@ body.resizing-browser iframe { pointer-events: none; }
 .browser-header-actions button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .browser-header-actions button:disabled { opacity: .35; cursor: default; }
 .browser-header-actions svg { width: 15px; }
-.browser-tabs { padding: 5px 10px 0 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--sidebar) 68%, var(--surface)); display: flex; align-items: flex-end; gap: 5px; overflow: hidden; }
+.browser-tabs { padding: 5px 10px 0 12px; border-bottom: 0; background: transparent; display: flex; align-items: flex-end; gap: 5px; overflow: hidden; }
 .browser-tabs > div { min-width: 0; flex: 1; display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
 .browser-tabs > div::-webkit-scrollbar { display: none; }
-.browser-tabs button { flex: 0 1 168px; min-width: 92px; height: 33px; padding: 0 7px 0 9px; border: 1px solid transparent; border-radius: 9px 9px 0 0; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 7px; font-size: 9px; }
+.browser-tabs button { flex: 0 1 168px; min-width: 92px; height: 33px; padding: 0 7px 0 9px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 7px; font-size: 9px; }
 .browser-tabs button:hover { background: var(--hover); color: var(--text); }
-.browser-tabs button.active { border-color: var(--line); border-bottom-color: var(--surface); background: var(--surface); color: var(--text); }
+.browser-tabs button.active { background: var(--hover); color: var(--text); }
 .browser-tabs button > svg { width: 12px; }
 .browser-tabs button span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .browser-tabs button i { width: 19px; height: 19px; border-radius: 6px; display: grid; place-items: center; font-style: normal; }
 .browser-tabs button i:hover { background: var(--line); }
 .browser-tabs button i svg { width: 11px; }
 .browser-tabs .new-browser-tab { flex: none; min-width: 30px; width: 30px; padding: 0; border-radius: 8px; justify-content: center; margin-bottom: 2px; }
-.browser-address { margin: 9px 14px; padding: 0 5px 0 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); display: flex; align-items: center; gap: 8px; box-shadow: 0 3px 14px rgba(0,0,0,.04); }
-.browser-address:focus-within { border-color: var(--line-strong); box-shadow: 0 0 0 3px var(--hover); }
+.browser-address { margin: 9px 14px; padding: 0 5px 0 12px; border: 0; border-radius: 11px; background: var(--hover); display: flex; align-items: center; gap: 8px; box-shadow: none; }
+.browser-address:focus-within { background: color-mix(in srgb, var(--hover) 72%, var(--surface)); }
 .browser-address > svg { width: 14px; color: var(--faint); }
 .browser-address input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 11px; }
 .browser-address button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; display: grid; place-items: center; background: transparent; color: var(--muted); }
@@ -841,14 +842,14 @@ body.resizing-browser iframe { pointer-events: none; }
 .browser-address button svg { width: 13px; }
 .browser-address .browser-back { transform: rotate(180deg); }
 .browser-address .browser-go { background: var(--text); color: var(--bg); }
-.workspace-toolbar { margin: 9px 14px; padding: 0 5px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); display: flex; align-items: center; gap: 3px; }
+.workspace-toolbar { margin: 9px 14px; padding: 0 5px; border: 0; border-radius: 11px; background: var(--hover); display: flex; align-items: center; gap: 3px; }
 .workspace-toolbar > span { flex: 1; padding: 0 8px; color: var(--muted); font-size: 10px; }
 .workspace-toolbar button { height: 30px; padding: 0 9px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 6px; font-size: 9px; }
 .workspace-toolbar button:hover,
 .workspace-toolbar button.active { background: var(--hover); color: var(--text); }
 .workspace-toolbar button svg { width: 13px; }
-.workspace-context { justify-content: flex-start; }
-.browser-surface { position: relative; min-height: 0; margin: 0 14px 14px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.workspace-context { justify-content: flex-start; background: transparent; }
+.browser-surface { position: relative; min-height: 0; margin: 0; overflow: hidden; border: 0; border-radius: 0; background: #fff; }
 .browser-surface iframe { width: 100%; height: calc(100% - 34px); border: 0; background: #fff; }
 .browser-fallback { height: 34px; padding: 0 9px 0 12px; border-top: 1px solid #e5e7e5; background: #f7f8f7; color: #747874; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 9px; }
 .browser-fallback button { height: 25px; padding: 0 8px; border: 0; border-radius: 7px; background: #e8eae8; color: #353835; display: flex; align-items: center; gap: 5px; font-size: 9px; }
@@ -870,13 +871,11 @@ body.resizing-browser iframe { pointer-events: none; }
 :root[data-theme="dark"] .workspace-home { color: #f3f5f2; background: linear-gradient(135deg, #101411 0%, #111917 38%, #171321 72%, #19140f 100%); }
 :root[data-theme="dark"] .workspace-home::before { background: linear-gradient(135deg, #126c5c, #294a9a); opacity: .5; }
 :root[data-theme="dark"] .workspace-home::after { background: linear-gradient(135deg, #66309c, #8a4926); opacity: .42; }
-.workspace-orb { width: 62px; height: 62px; padding: 7px; border: 1px solid rgba(255,255,255,.42); border-radius: 20px; background: rgba(255,255,255,.2); backdrop-filter: blur(18px); box-shadow: 0 18px 45px rgba(35,55,45,.14); display: grid; place-items: center; }
-.workspace-orb .brand-mark { width: 42px; height: 42px; border-radius: 13px; }
-.workspace-home > span { margin-top: 20px; color: currentColor; opacity: .55; font-size: 8px; font-weight: 700; letter-spacing: 1.8px; }
+.workspace-home > span { margin-top: 0; color: currentColor; opacity: .55; font-size: 8px; font-weight: 700; letter-spacing: 1.8px; }
 .workspace-home h2 { margin: 8px 0 5px; font-size: clamp(18px, 2.5vw, 27px); letter-spacing: -.7px; }
 .workspace-home > p { margin: 0; opacity: .58; font-size: 11px; }
 .workspace-launchers { width: min(520px, 100%); margin-top: 27px; display: grid; gap: 8px; }
-.workspace-launchers button { width: 100%; min-height: 58px; padding: 0 14px; border: 1px solid rgba(120,130,122,.2); border-radius: 14px; background: color-mix(in srgb, var(--surface) 68%, transparent); color: var(--text); backdrop-filter: blur(18px) saturate(130%); box-shadow: 0 8px 28px rgba(30,45,35,.06); display: flex; align-items: center; gap: 12px; text-align: left; transition: transform .18s, background .18s, border-color .18s; }
+.workspace-launchers button { width: 100%; min-height: 58px; padding: 0 14px; border: 0; border-radius: 14px; background: color-mix(in srgb, var(--surface) 58%, transparent); color: var(--text); backdrop-filter: blur(18px) saturate(130%); box-shadow: none; display: flex; align-items: center; gap: 12px; text-align: left; transition: transform .18s, background .18s; }
 .workspace-launchers button:hover { transform: translateY(-2px); background: color-mix(in srgb, var(--surface) 86%, transparent); border-color: var(--line-strong); }
 .workspace-launchers button > svg { width: 18px; opacity: .68; }
 .workspace-launchers button > svg:last-child { width: 14px; margin-left: auto; }

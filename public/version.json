@@ -1,6 +1,6 @@
 {
-  "version": "0.9.4",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.4",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.4/IDK.Nova_0.9.4_x64-setup.exe",
-  "notes": ["Unified Nova Workspace for browser, code, text and files", "Consistent tabs and controls across every workspace tool", "Animated multicolor home experience with distinct light and dark palettes", "Code and text artifacts now open as workspace tabs", "Files workspace for conversation attachments", "Removed the duplicated legacy artifact panel"]
+  "version": "0.9.5",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.5",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.5/IDK.Nova_0.9.5_x64-setup.exe",
+  "notes": ["Navigation-matched open, close, full-screen and restore motion", "Seamless edge-to-edge Workspace canvas", "Removed the home logo and unnecessary white outlines", "Flatter tabs, toolbars and launch actions", "Refined animated light and dark gradients", "Reduced-motion accessibility support"]
 }

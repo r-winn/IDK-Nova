@@ -588,20 +588,37 @@ export default function App() {
     }));
     setBrowserFrameKey((key) => key + 1);
   };
+  const setWorkspaceMaximized = (maximized: boolean) => {
+    const update = () => setBrowserMaximized(maximized);
+    const documentWithTransitions = document as Document & { startViewTransition?: (callback: () => void) => void };
+    if (documentWithTransitions.startViewTransition) documentWithTransitions.startViewTransition(update);
+    else update();
+  };
+  const toggleWorkspaceMaximized = () => setWorkspaceMaximized(!browserMaximized);
   const startBrowserResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const originX = event.clientX;
     const reservedForChat = (sidebar ? 272 : 0) + 430;
     const largestSplit = Math.max(420, window.innerWidth - reservedForChat);
     const originWidth = browserMaximized ? largestSplit + 36 : browserWidth;
-    if (browserMaximized) setBrowserMaximized(false);
+    let maximizedDuringDrag = browserMaximized;
+    if (browserMaximized) {
+      setWorkspaceMaximized(false);
+      maximizedDuringDrag = false;
+    }
     const resize = (moveEvent: PointerEvent) => {
       const requested = originWidth + originX - moveEvent.clientX;
       if (requested >= largestSplit + 36) {
-        setBrowserMaximized(true);
+        if (!maximizedDuringDrag) {
+          setWorkspaceMaximized(true);
+          maximizedDuringDrag = true;
+        }
         return;
       }
-      setBrowserMaximized(false);
+      if (maximizedDuringDrag) {
+        setWorkspaceMaximized(false);
+        maximizedDuringDrag = false;
+      }
       setBrowserWidth(Math.max(420, Math.min(requested, largestSplit)));
     };
     const stop = () => {
@@ -2288,12 +2305,11 @@ export default function App() {
           <div className="browser-resizer" onPointerDown={startBrowserResize}><span /></div>
           <header>
             <div className="browser-title">
-              <span><Sparkles /></span>
               <div><b>Nova Workspace</b><small>Chat, browse, create</small></div>
             </div>
             <div className="browser-header-actions">
               {activeBrowserTab?.kind === "browser" && <button disabled={!activeBrowserTab.url} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>}
-              <button onClick={() => setBrowserMaximized((value) => !value)} title={browserMaximized ? "Restore split view" : "Full screen"}>{browserMaximized ? <Minimize2 /> : <Maximize2 />}</button>
+              <button onClick={toggleWorkspaceMaximized} title={browserMaximized ? "Restore split view" : "Full screen"}>{browserMaximized ? <Minimize2 /> : <Maximize2 />}</button>
               <button onClick={() => { setBrowserOpen(false); setBrowserMaximized(false); }} title="Close"><X /></button>
             </div>
           </header>
@@ -2366,7 +2382,6 @@ export default function App() {
               </div>
             ) : (
               <div className="workspace-home">
-                <div className="workspace-orb"><BrandMark config={config} /></div>
                 <span>YOUR AI WORKSPACE</span>
                 <h2>What would you like to open?</h2>
                 <p>Everything lives in one unified, focused workspace.</p>
