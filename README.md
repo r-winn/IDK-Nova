@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="app-icon.svg" width="86" alt="IDK Nova logo">
+  <img src="public/brand/app-icon-master.png" width="86" alt="IDK Nova logo">
   <h1>IDK Nova</h1>
   <p><strong>Your private, configurable AI workspace for Windows and the web.</strong></p>
   <p>Connect local Ollama or LM Studio models, company AI servers, and OpenAI-compatible cloud providers from one clean desktop experience.</p>
@@ -54,6 +54,8 @@ Ollama normally starts its local server automatically. Keep it running while usi
 
 Nova only lists models returned by the real provider endpoint or model IDs you explicitly add. Manually entered models must answer a test completion before Nova accepts them.
 
+Alternatively, the desktop app can import a local `.gguf` file from **Settings → Models → Import a local model file**. Nova keeps a private copy in its application-data folder and registers it with Ollama automatically, so no endpoint or model ID is required. Ollama must be installed because it provides the local inference runtime.
+
 ## Use the web version
 
 Open **[IDK Nova Web](https://r-winn.github.io/IDK-Nova/)**. The web app has the same provider settings and updates automatically after each published release.
@@ -72,6 +74,7 @@ Your browser or provider must allow requests from the Nova website. The Windows 
 
 - Streaming AI conversations with searchable local history
 - Multiple providers and separate real model lists
+- Desktop GGUF import with private local storage and automatic Ollama registration
 - Connection discovery, completion tests, verification status, and latency
 - Text, image, PDF, Markdown, JSON, and CSV attachments
 - Voice input where the operating system supports it

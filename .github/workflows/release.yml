@@ -60,3 +60,11 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+      - name: Keep technical signatures out of public downloads
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name' |
+            Where-Object { $_ -like '*.sig' } |
+            ForEach-Object { gh release delete-asset $env:GITHUB_REF_NAME $_ --repo $env:GITHUB_REPOSITORY --yes }
