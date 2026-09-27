@@ -140,25 +140,33 @@ svg {
   width: 272px;
   flex: none;
   height: 100%;
-  padding: 14px 12px 12px;
+  padding: 14px 0 12px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--line);
   background: var(--sidebar);
   backdrop-filter: blur(28px) saturate(125%);
   -webkit-backdrop-filter: blur(28px) saturate(125%);
+  overflow: clip;
+  will-change: width;
   transition:
-    width 0.22s,
-    padding 0.22s;
-  overflow: hidden;
+    width .32s cubic-bezier(.22,.75,.18,1),
+    border-color .18s ease;
   z-index: 4;
+}
+.sidebar > .sidebar-head,
+.sidebar > .sidebar-stage,
+.sidebar > .profile-button {
+  width: 248px;
+  min-width: 248px;
+  margin-left: 12px;
+  flex-shrink: 0;
 }
 .sidebar.collapsed {
   width: 0;
-  padding-left: 0;
-  padding-right: 0;
   border: 0;
 }
+.sidebar.collapsed > * { pointer-events: none; }
 .sidebar-head {
   height: 42px;
   padding: 0 3px 8px 5px;
@@ -934,8 +942,8 @@ main {
   flex-direction: column;
   padding: 0 1px;
 }
-.primary-nav > button > svg:last-child { margin-left: auto; width: 14px; color: var(--faint); transition: transform .18s; }
-.primary-nav > button > svg.turned { transform: rotate(180deg); }
+.primary-nav > button > svg:last-child { margin-left: auto; width: 14px; color: var(--faint); transition: transform .24s cubic-bezier(.22,.75,.18,1); }
+.primary-nav > button > svg.open { transform: rotate(90deg); }
 .folder-view-head {
   height: 45px;
   display: flex;
@@ -2501,39 +2509,6 @@ main {
 }
 .center-panel {
   margin-top: 12px;
-}
-
-/* Fade labels before narrowing the rail, preventing squeezed text. */
-.sidebar > * {
-  opacity: 1;
-  transform: translateX(0);
-  transition:
-    opacity 0.13s ease 0.16s,
-    transform 0.18s ease 0.14s,
-    visibility 0s;
-}
-.sidebar.collapsed > * {
-  opacity: 0;
-  transform: translateX(-12px);
-  visibility: hidden;
-  pointer-events: none;
-  transition:
-    opacity 0.07s ease,
-    transform 0.12s ease,
-    visibility 0s 0.08s;
-}
-.sidebar {
-  will-change: width, padding;
-  transition:
-    width 0.26s cubic-bezier(0.4, 0, 0.2, 1),
-    padding 0.26s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.12s;
-}
-.sidebar.collapsed {
-  transition:
-    width 0.22s cubic-bezier(0.4, 0, 0.2, 1) 0.07s,
-    padding 0.22s cubic-bezier(0.4, 0, 0.2, 1) 0.07s,
-    border-color 0.12s 0.07s;
 }
 
 @media (max-width: 800px) {

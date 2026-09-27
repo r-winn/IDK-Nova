@@ -15,6 +15,7 @@ import {
   BriefcaseBusiness,
   Check,
   ChevronDown,
+  ChevronRight,
   CircleUserRound,
   Clock3,
   Code2,
@@ -857,7 +858,7 @@ export default function App() {
                 <button onClick={() => setFoldersOpen(!foldersOpen)}>
                   <Folder />
                   <span>Folder</span>
-                  <ChevronDown className={foldersOpen ? "turned" : ""} />
+                  <ChevronRight className={foldersOpen ? "open" : ""} />
                 </button>
                   <div className={`folder-list ${foldersOpen ? "open" : ""}`} aria-hidden={!foldersOpen}>
                     <div className="folder-heading">
