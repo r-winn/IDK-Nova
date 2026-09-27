@@ -1,6 +1,6 @@
 {
-  "version": "0.9.7",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.7",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.7/IDK.Nova_0.9.7_x64-setup.exe",
-  "notes": ["Workspace full-screen now extends the navigation reveal motion", "Content stays fixed beneath the animated clipping edge", "Streaming code blocks appear as soon as a fenced block begins", "Inline code actions for Copy, Reply, Edit and Full screen", "Code opens directly in the unified Workspace editor with Preview and Save"]
+  "version": "0.9.8",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.8",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.8/IDK.Nova_0.9.8_x64-setup.exe",
+  "notes": ["Right edge stays fixed while the Workspace left edge expands and retracts", "Workspace content remains underneath the reveal just like the main navigation", "Long Reply selections use compact previews without losing model context", "Confirmation and rename dialogs always appear above Workspace", "Native browser webviews pause while app dialogs are open", "Improved streaming fenced-code parsing and actions"]
 }

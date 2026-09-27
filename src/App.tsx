@@ -161,6 +161,10 @@ const splitContent = (content: string) => {
   if (cursor < content.length) parts.push({ type: "text", content: content.slice(cursor), language: "" });
   return parts.length ? parts : [{ type: "text" as const, content, language: "" }];
 };
+const quotePreview = (value: string, limit = 240) => {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length > limit ? `${compact.slice(0, limit).trimEnd()}…` : compact;
+};
 
 export default function App() {
   const [sidebar, setSidebar] = useState(true);
@@ -289,10 +293,11 @@ export default function App() {
     let cancelled = false;
     const syncNativeBrowser = async () => {
       const views = nativeBrowserViewsRef.current;
+      const overlayOpen = Boolean(chatDialog || folderDialog || settingsOpen);
       for (const [id, entry] of views) {
-        if (!browserOpen || id !== activeBrowserTabId) await entry.webview.hide().catch(() => undefined);
+        if (!browserOpen || overlayOpen || id !== activeBrowserTabId) await entry.webview.hide().catch(() => undefined);
       }
-      if (!browserOpen || activeBrowserTab?.kind !== "browser" || !activeBrowserTab.url || !browserSurfaceRef.current) return;
+      if (!browserOpen || overlayOpen || activeBrowserTab?.kind !== "browser" || !activeBrowserTab.url || !browserSurfaceRef.current) return;
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       if (cancelled || !browserSurfaceRef.current) return;
       const rect = browserSurfaceRef.current.getBoundingClientRect();
@@ -323,7 +328,7 @@ export default function App() {
     };
     syncNativeBrowser().catch(() => setToast("This page could not be opened inside Nova"));
     return () => { cancelled = true; };
-  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized]);
+  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized, chatDialog, folderDialog, settingsOpen]);
   useEffect(() => () => {
     for (const entry of nativeBrowserViewsRef.current.values()) entry.webview.close().catch(() => undefined);
   }, []);
@@ -1384,7 +1389,7 @@ export default function App() {
                   </div>
                   <div className="message-body">
                     {message.quote && (
-                      <div className="message-quote" dir="auto"><Reply />{message.quote}</div>
+                      <div className="message-quote" dir="auto" title={message.quote}><Reply />{quotePreview(message.quote, 320)}</div>
                     )}
                     {message.attachments?.length ? (
                       <div className="attachments">
@@ -1474,7 +1479,7 @@ export default function App() {
           {replyQuote && (
             <div className="reply-preview" dir="auto">
               <Reply />
-              <div><b>Replying to selection</b><span>{replyQuote}</span></div>
+              <div><b>Replying to selection</b><span title={replyQuote}>{quotePreview(replyQuote)}</span></div>
               <button aria-label="Cancel reply" onClick={() => setReplyQuote("")}><X /></button>
             </div>
           )}

@@ -792,10 +792,10 @@ main {
   will-change: width;
 }
 .nova-browser.closed { width: 0; visibility: hidden; pointer-events: none; border-left-color: transparent; box-shadow: none; transition: width .32s cubic-bezier(.22,.75,.18,1), visibility 0s .32s; }
-.nova-browser.maximized { position: fixed; inset: 0; width: 100vw; clip-path: inset(0); animation: workspace-reveal .32s cubic-bezier(.22,.75,.18,1) both; }
+.nova-browser.maximized { position: fixed; inset: 0 0 0 auto; width: 100vw; animation: workspace-reveal .32s cubic-bezier(.22,.75,.18,1) both; }
 .nova-browser.maximized.restoring { animation: workspace-conceal .32s cubic-bezier(.22,.75,.18,1) both; pointer-events: none; }
-@keyframes workspace-reveal { from { clip-path: inset(0 0 0 calc(100vw - var(--browser-width))); } to { clip-path: inset(0); } }
-@keyframes workspace-conceal { from { clip-path: inset(0); } to { clip-path: inset(0 0 0 calc(100vw - var(--browser-width))); } }
+@keyframes workspace-reveal { from { width: var(--browser-width); } to { width: 100vw; } }
+@keyframes workspace-conceal { from { width: 100vw; } to { width: var(--browser-width); } }
 .nova-browser > header { width: var(--browser-width); min-width: 420px; }
 .nova-browser > .browser-tabs { width: var(--browser-width); min-width: 420px; }
 .nova-browser > .browser-address { width: calc(var(--browser-width) - 28px); min-width: 392px; }
@@ -905,6 +905,7 @@ body.resizing-browser iframe { pointer-events: none; }
 .workspace-files article { height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); display: flex; align-items: center; gap: 9px; font-size: 10px; }
 .workspace-files article svg { width: 15px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .workspace-home::before, .workspace-home::after { animation: none; } }
+
 .attachments {
   display: flex;
   gap: 8px;
@@ -2870,3 +2871,8 @@ body.resizing-browser iframe { pointer-events: none; }
 .toast.success svg {
   color: #7cdaa9;
 }
+
+/* App overlays always sit above the unified workspace shell. */
+.context-layer { z-index: 300; }
+.confirm-backdrop { z-index: 320; }
+.settings-backdrop { z-index: 340; }
