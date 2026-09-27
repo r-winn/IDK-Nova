@@ -151,7 +151,7 @@ const folderIcons = {
 const folderColors = ["#5b8def", "#8b5cf6", "#c65fd4", "#e8793e", "#e8ad3e", "#2aa876", "#24a6a8", "#d4546a", "#64748b", "#1f2937"];
 const splitContent = (content: string) => {
   const parts: { type: "text" | "code"; content: string; language: string }[] = [];
-  const pattern = /```([\w+-]*)\n([\s\S]*?)```/g;
+  const pattern = /```([\w+-]*)\r?\n([\s\S]*?)(?:```|$)/g;
   let cursor = 0;
   for (const match of content.matchAll(pattern)) {
     if (match.index! > cursor) parts.push({ type: "text", content: content.slice(cursor, match.index), language: "" });
@@ -529,7 +529,7 @@ export default function App() {
   };
   const openArtifact = (title: string, language: string, content: string) => {
     const id = `artifact-${Date.now()}`;
-    setBrowserTabs((tabs) => [...tabs, { id, kind: "artifact", title, language, content, artifactView: language.toLowerCase() === "html" ? "preview" : "edit", url: "", input: "", history: [], historyIndex: -1 }]);
+    setBrowserTabs((tabs) => [...tabs, { id, kind: "artifact", title, language, content, artifactView: "edit", url: "", input: "", history: [], historyIndex: -1 }]);
     setActiveBrowserTabId(id);
     setBrowserOpen(true);
   };
@@ -1114,7 +1114,9 @@ export default function App() {
             <span><Code2 />{part.language}</span>
             <div>
               <button onClick={() => copy(part.content)}><Copy />Copy</button>
-              <button onClick={() => openArtifact(`${part.language} artifact`, part.language, part.content)}><Maximize2 />Open</button>
+              <button onClick={() => replyToSelection(part.content)}><Reply />Reply</button>
+              <button onClick={() => openArtifact(`${part.language} artifact`, part.language, part.content)}><Pencil />Edit</button>
+              <button onClick={() => openArtifact(`${part.language} artifact`, part.language, part.content)}><Maximize2 />Full screen</button>
             </div>
           </header>
           <pre><code>{part.content}</code></pre>

@@ -792,14 +792,22 @@ main {
   will-change: width;
 }
 .nova-browser.closed { width: 0; visibility: hidden; pointer-events: none; border-left-color: transparent; box-shadow: none; transition: width .32s cubic-bezier(.22,.75,.18,1), visibility 0s .32s; }
-.nova-browser.maximized { position: fixed; inset: 0; width: 100vw; animation: workspace-expand .32s cubic-bezier(.22,.75,.18,1) both; }
-.nova-browser.maximized.restoring { animation: workspace-restore .32s cubic-bezier(.22,.75,.18,1) both; pointer-events: none; }
-@keyframes workspace-expand { from { width: var(--browser-width); } to { width: 100vw; } }
-@keyframes workspace-restore { from { width: 100vw; } to { width: var(--browser-width); } }
-.nova-browser > header { width: 100%; min-width: 420px; }
-.nova-browser > .browser-tabs { width: 100%; min-width: 420px; }
-.nova-browser > .browser-address { width: calc(100% - 28px); min-width: 392px; }
-.nova-browser > .browser-surface { width: 100%; min-width: 420px; }
+.nova-browser.maximized { position: fixed; inset: 0; width: 100vw; clip-path: inset(0); animation: workspace-reveal .32s cubic-bezier(.22,.75,.18,1) both; }
+.nova-browser.maximized.restoring { animation: workspace-conceal .32s cubic-bezier(.22,.75,.18,1) both; pointer-events: none; }
+@keyframes workspace-reveal { from { clip-path: inset(0 0 0 calc(100vw - var(--browser-width))); } to { clip-path: inset(0); } }
+@keyframes workspace-conceal { from { clip-path: inset(0); } to { clip-path: inset(0 0 0 calc(100vw - var(--browser-width))); } }
+.nova-browser > header { width: var(--browser-width); min-width: 420px; }
+.nova-browser > .browser-tabs { width: var(--browser-width); min-width: 420px; }
+.nova-browser > .browser-address { width: calc(var(--browser-width) - 28px); min-width: 392px; }
+.nova-browser > .browser-surface { width: var(--browser-width); min-width: 420px; }
+.nova-browser > header,
+.nova-browser > .browser-tabs,
+.nova-browser > .browser-address,
+.nova-browser > .browser-surface { justify-self: end; }
+.nova-browser.maximized > header,
+.nova-browser.maximized > .browser-tabs,
+.nova-browser.maximized > .browser-surface { width: 100vw; }
+.nova-browser.maximized > .browser-address { width: calc(100vw - 28px); }
 .browser-resizer { position: absolute; z-index: 4; left: -5px; top: 0; width: 10px; height: 100%; cursor: col-resize; touch-action: none; display: flex; align-items: center; justify-content: center; }
 .browser-resizer::after { content: ""; width: 1px; height: 100%; background: transparent; transition: background .15s; }
 .browser-resizer:hover::after,

@@ -1,6 +1,6 @@
 {
-  "version": "0.9.6",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.6",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.6/IDK.Nova_0.9.6_x64-setup.exe",
-  "notes": ["Full-screen animation now changes panel geometry without scaling content", "Smooth width-only expansion and restoration", "Native webviews track every animation frame", "Workspace action is now a distinct icon-only control", "Removed snapshot zoom and content distortion"]
+  "version": "0.9.7",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.7",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.7/IDK.Nova_0.9.7_x64-setup.exe",
+  "notes": ["Workspace full-screen now extends the navigation reveal motion", "Content stays fixed beneath the animated clipping edge", "Streaming code blocks appear as soon as a fenced block begins", "Inline code actions for Copy, Reply, Edit and Full screen", "Code opens directly in the unified Workspace editor with Preview and Save"]
 }
