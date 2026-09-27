@@ -62,6 +62,9 @@ import {
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
+import { Webview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { discoverModels, streamCompletion, testModel } from "./lib/ai";
 import {
@@ -120,6 +123,8 @@ type FolderDialog = { mode: "create" | "rename"; id?: string; name: string; colo
 type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
 type Artifact = { title: string; language: string; content: string } | null;
+type BrowserTab = { id: string; title: string; url: string; input: string; history: string[]; historyIndex: number };
+type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 
 const folderIcons = {
   folder: Folder,
@@ -187,8 +192,9 @@ export default function App() {
   const [artifactDraft, setArtifactDraft] = useState("");
   const [artifactTab, setArtifactTab] = useState<"edit" | "preview">("edit");
   const [browserOpen, setBrowserOpen] = useState(false);
-  const [browserInput, setBrowserInput] = useState("");
-  const [browserUrl, setBrowserUrl] = useState("");
+  const [browserTabs, setBrowserTabs] = useState<BrowserTab[]>([{ id: "start", title: "New tab", url: "", input: "", history: [], historyIndex: -1 }]);
+  const [activeBrowserTabId, setActiveBrowserTabId] = useState("start");
+  const [browserFrameKey, setBrowserFrameKey] = useState(0);
   const [browserWidth, setBrowserWidth] = useState(() => loadValue<number>("idk-nova-browser-width", 560));
   const [browserMaximized, setBrowserMaximized] = useState(false);
   const [importingLocalModel, setImportingLocalModel] = useState(false);
@@ -218,10 +224,13 @@ export default function App() {
     endRef = useRef<HTMLDivElement>(null),
     configFileRef = useRef<HTMLInputElement>(null),
     logoFileRef = useRef<HTMLInputElement>(null),
+    browserSurfaceRef = useRef<HTMLDivElement>(null),
+    nativeBrowserViewsRef = useRef<Map<string, NativeBrowserView>>(new Map()),
     abortRef = useRef<AbortController | null>(null);
   const chat = chats.find((item) => item.id === active) || chats[0];
   const activeProvider = getActiveProvider(config),
     activeDraftProvider = getActiveProvider(draftConfig);
+  const activeBrowserTab = browserTabs.find((tab) => tab.id === activeBrowserTabId) || browserTabs[0];
   const visibleChats = useMemo(
     () =>
       chats.filter(
@@ -267,6 +276,49 @@ export default function App() {
     window.addEventListener("resize", adaptBrowser);
     return () => window.removeEventListener("resize", adaptBrowser);
   }, [browserOpen, browserMaximized, sidebar]);
+  useEffect(() => {
+    if (!isDesktopApp()) return;
+    let cancelled = false;
+    const syncNativeBrowser = async () => {
+      const views = nativeBrowserViewsRef.current;
+      for (const [id, entry] of views) {
+        if (!browserOpen || id !== activeBrowserTabId) await entry.webview.hide().catch(() => undefined);
+      }
+      if (!browserOpen || !activeBrowserTab?.url || !browserSurfaceRef.current) return;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (cancelled || !browserSurfaceRef.current) return;
+      const rect = browserSurfaceRef.current.getBoundingClientRect();
+      const width = Math.max(1, rect.width);
+      const height = Math.max(1, rect.height - 34);
+      let entry = views.get(activeBrowserTabId);
+      if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
+        await entry.webview.close().catch(() => undefined);
+        views.delete(activeBrowserTabId);
+        entry = undefined;
+      }
+      if (!entry) {
+        const label = `nova-browser-${activeBrowserTabId}-${browserFrameKey}`.replace(/[^a-zA-Z0-9-/:_]/g, "-");
+        const webview = new Webview(getCurrentWindow(), label, {
+          url: activeBrowserTab.url,
+          x: rect.left,
+          y: rect.top,
+          width,
+          height,
+        });
+        entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey };
+        views.set(activeBrowserTabId, entry);
+      } else {
+        await entry.webview.setPosition(new LogicalPosition(rect.left, rect.top)).catch(() => undefined);
+        await entry.webview.setSize(new LogicalSize(width, height)).catch(() => undefined);
+        await entry.webview.show().catch(() => undefined);
+      }
+    };
+    syncNativeBrowser().catch(() => setToast("This page could not be opened inside Nova"));
+    return () => { cancelled = true; };
+  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized]);
+  useEffect(() => () => {
+    for (const entry of nativeBrowserViewsRef.current.values()) entry.webview.close().catch(() => undefined);
+  }, []);
   useEffect(
     () => {
       localStorage.setItem("idk-nova-active", JSON.stringify(active));
@@ -467,21 +519,63 @@ export default function App() {
     if (/^[\w.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(target)) return `https://${target}`;
     return `https://www.google.com/search?igu=1&q=${encodeURIComponent(target)}`;
   };
-  const navigateBrowser = (value: string) => {
+  const navigateBrowser = (value: string, openInNewTab = false) => {
     const target = normalizeBrowserTarget(value);
     if (!target) return;
     setArtifact(null);
-    setBrowserInput(target);
-    setBrowserUrl(target);
+    let title = "Search";
+    try { title = new URL(target).hostname.replace(/^www\./, "") || "Search"; } catch { /* search URL */ }
+    if (openInNewTab && activeBrowserTab?.url) {
+      const id = `tab-${Date.now()}`;
+      setBrowserTabs((tabs) => [...tabs, { id, title, url: target, input: target, history: [target], historyIndex: 0 }]);
+      setActiveBrowserTabId(id);
+    } else {
+      setBrowserTabs((tabs) => tabs.map((tab) => {
+        if (tab.id !== activeBrowserTabId) return tab;
+        const history = [...tab.history.slice(0, tab.historyIndex + 1), target];
+        return { ...tab, title, url: target, input: target, history, historyIndex: history.length - 1 };
+      }));
+    }
+    setBrowserFrameKey((key) => key + 1);
     const available = window.innerWidth - (sidebar ? 272 : 0);
     if (available < 860) setBrowserMaximized(true);
     else setBrowserWidth((width) => Math.min(width, available - 430));
     setBrowserOpen(true);
   };
   const openSystemBrowser = async () => {
-    if (!browserUrl) return;
-    if (isDesktopApp()) await openUrl(browserUrl);
-    else window.open(browserUrl, "_blank", "noopener,noreferrer");
+    if (!activeBrowserTab?.url) return;
+    if (isDesktopApp()) await openUrl(activeBrowserTab.url);
+    else window.open(activeBrowserTab.url, "_blank", "noopener,noreferrer");
+  };
+  const updateBrowserInput = (input: string) => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, input } : tab));
+  const addBrowserTab = () => {
+    const id = `tab-${Date.now()}`;
+    setBrowserTabs((tabs) => [...tabs, { id, title: "New tab", url: "", input: "", history: [], historyIndex: -1 }]);
+    setActiveBrowserTabId(id);
+  };
+  const closeBrowserTab = (id: string) => {
+    const nativeView = nativeBrowserViewsRef.current.get(id);
+    if (nativeView) {
+      nativeView.webview.close().catch(() => undefined);
+      nativeBrowserViewsRef.current.delete(id);
+    }
+    setBrowserTabs((tabs) => {
+      if (tabs.length === 1) return [{ id: "start", title: "New tab", url: "", input: "", history: [], historyIndex: -1 }];
+      const index = tabs.findIndex((tab) => tab.id === id);
+      const next = tabs.filter((tab) => tab.id !== id);
+      if (id === activeBrowserTabId) setActiveBrowserTabId(next[Math.max(0, index - 1)].id);
+      return next;
+    });
+  };
+  const moveBrowserHistory = (direction: -1 | 1) => {
+    setBrowserTabs((tabs) => tabs.map((tab) => {
+      if (tab.id !== activeBrowserTabId) return tab;
+      const historyIndex = tab.historyIndex + direction;
+      if (historyIndex < 0 || historyIndex >= tab.history.length) return tab;
+      const url = tab.history[historyIndex];
+      return { ...tab, url, input: url, historyIndex };
+    }));
+    setBrowserFrameKey((key) => key + 1);
   };
   const startBrowserResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -981,7 +1075,7 @@ export default function App() {
           {part.content.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<)]+)/g).map((piece, pieceIndex) => {
             const markdownLink = piece.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
             const target = markdownLink?.[2] || (/^https?:\/\//i.test(piece) ? piece : "");
-            return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target); }}>{markdownLink?.[1] || piece}</a> : piece;
+            return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target, true); }}>{markdownLink?.[1] || piece}</a> : piece;
           })}
         </span>
       ))}
@@ -2218,28 +2312,41 @@ export default function App() {
               <div><b>Nova Browse</b><small>Private in-app viewer</small></div>
             </div>
             <div className="browser-header-actions">
-              <button disabled={!browserUrl} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>
+              <button disabled={!activeBrowserTab?.url} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>
               <button onClick={() => setBrowserMaximized((value) => !value)} title={browserMaximized ? "Restore split view" : "Full screen"}>{browserMaximized ? <Minimize2 /> : <Maximize2 />}</button>
               <button onClick={() => { setBrowserOpen(false); setBrowserMaximized(false); }} title="Close"><X /></button>
             </div>
           </header>
-          <form className="browser-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(browserInput); }}>
+          <div className="browser-tabs">
+            <div>
+              {browserTabs.map((tab) => (
+                <button className={tab.id === activeBrowserTabId ? "active" : ""} key={tab.id} onClick={() => setActiveBrowserTabId(tab.id)} title={tab.title}>
+                  <Globe2 /><span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
+                </button>
+              ))}
+            </div>
+            <button className="new-browser-tab" onClick={addBrowserTab} aria-label="New browser tab"><Plus /></button>
+          </div>
+          <form className="browser-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(activeBrowserTab?.input || ""); }}>
+            <button type="button" disabled={!activeBrowserTab || activeBrowserTab.historyIndex <= 0} onClick={() => moveBrowserHistory(-1)} aria-label="Back"><ArrowRight className="browser-back" /></button>
+            <button type="button" disabled={!activeBrowserTab || activeBrowserTab.historyIndex >= activeBrowserTab.history.length - 1} onClick={() => moveBrowserHistory(1)} aria-label="Forward"><ArrowRight /></button>
+            <button type="button" disabled={!activeBrowserTab?.url} onClick={() => setBrowserFrameKey((key) => key + 1)} aria-label="Reload"><RefreshCw /></button>
             <Globe2 />
             <input
               aria-label="Search or enter address"
-              value={browserInput}
-              onChange={(event) => setBrowserInput(event.target.value)}
+              value={activeBrowserTab?.input || ""}
+              onChange={(event) => updateBrowserInput(event.target.value)}
               placeholder="Search the web or enter a URL"
             />
-            {browserInput && <button type="button" onClick={() => { setBrowserInput(""); setBrowserUrl(""); }} aria-label="Clear"><X /></button>}
+            {activeBrowserTab?.input && <button type="button" onClick={() => updateBrowserInput("")} aria-label="Clear"><X /></button>}
             <button type="submit" className="browser-go" aria-label="Go"><ArrowRight /></button>
           </form>
-          <div className="browser-surface">
-            {browserUrl ? (
+          <div className="browser-surface" ref={browserSurfaceRef}>
+            {activeBrowserTab?.url ? (
               <>
-                <iframe key={browserUrl} title="Nova browser" src={browserUrl} sandbox="allow-forms allow-scripts allow-same-origin allow-popups" />
+                {!isDesktopApp() && <iframe key={`${activeBrowserTab.id}-${activeBrowserTab.url}-${browserFrameKey}`} title="Nova browser" src={activeBrowserTab.url} sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin" />}
                 <div className="browser-fallback">
-                  <span>Some websites may block embedded viewing.</span>
+                  <span>{isDesktopApp() ? "Native secure webview" : "Protected sites may require the system browser."}</span>
                   <button onClick={openSystemBrowser}><ExternalLink />Open externally</button>
                 </div>
               </>
