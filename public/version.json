@@ -1,6 +1,6 @@
 {
-  "version": "0.7.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.7.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.7.0/IDK.Nova_0.7.0_x64-setup.exe",
-  "notes": ["Exact Nova icon across desktop and taskbar", "In-app rename and delete confirmation dialogs", "Correct success and error notifications", "Desktop GGUF model file import", "Cleaner public release downloads"]
+  "version": "0.7.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.7.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.7.1/IDK.Nova_0.7.1_x64-setup.exe",
+  "notes": ["Goldiran OpenAI-compatible provider support", "Clear HTTP provider guidance for web users", "Explicit SSE streaming negotiation"]
 }
