@@ -858,6 +858,28 @@ export default function App() {
                   <span>Folder</span>
                   <ChevronDown className={foldersOpen ? "turned" : ""} />
                 </button>
+                {foldersOpen && (
+                  <div className="folder-list">
+                    <div className="folder-heading">
+                      <span>Your folders</span>
+                      <button title="New folder" onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}><FolderPlus /></button>
+                    </div>
+                    {folders.map((folder) => {
+                      const Icon = folderIcons[folder.icon];
+                      return (
+                        <div className="folder-row" key={folder.id}>
+                          <button onClick={() => { setOpenFolderId(folder.id); setFoldersOpen(false); }}>
+                            <Icon style={{ color: folder.color }} />
+                            <span>{folder.name}</span>
+                            <small>{chats.filter((item) => item.folderId === folder.id && !item.archived).length}</small>
+                          </button>
+                          <button className="folder-edit" title="Edit folder" onClick={() => setFolderDialog({ mode: "rename", ...folder })}><MoreHorizontal /></button>
+                        </div>
+                      );
+                    })}
+                    {!folders.length && <button className="empty-folder-action" onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}><FolderPlus /><span>Create your first folder</span></button>}
+                  </div>
+                )}
                 <button onClick={() => setSearchOpen(!searchOpen)}>
                   <Search />
                   <span>Search</span>
@@ -871,28 +893,6 @@ export default function App() {
                   <i>Coming soon</i>
                 </span>
               </div>
-              {foldersOpen && (
-                <div className="folder-list">
-                  <div className="folder-heading">
-                    <span>Your folders</span>
-                    <button title="New folder" onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}><FolderPlus /></button>
-                  </div>
-                  {folders.map((folder) => {
-                    const Icon = folderIcons[folder.icon];
-                    return (
-                      <div className="folder-row" key={folder.id}>
-                        <button onClick={() => { setOpenFolderId(folder.id); setFoldersOpen(false); }}>
-                          <Icon style={{ color: folder.color }} />
-                          <span>{folder.name}</span>
-                          <small>{chats.filter((item) => item.folderId === folder.id && !item.archived).length}</small>
-                        </button>
-                        <button className="folder-edit" title="Edit folder" onClick={() => setFolderDialog({ mode: "rename", ...folder })}><MoreHorizontal /></button>
-                      </div>
-                    );
-                  })}
-                  {!folders.length && <button className="empty-folder-action" onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}><FolderPlus /><span>Create your first folder</span></button>}
-                </div>
-              )}
               {searchOpen && (
                 <div className="search-field">
                   <Search />
@@ -2023,14 +2023,13 @@ export default function App() {
               <span>Icon</span>
               <div>{(Object.keys(folderIcons) as ChatFolder["icon"][]).map((icon) => {
                 const Icon = folderIcons[icon];
-                return <button className={folderDialog.icon === icon ? "selected" : ""} key={icon} onClick={() => setFolderDialog({ ...folderDialog, icon })}><Icon /></button>;
+                return <button title={icon} aria-label={`${icon} icon`} className={folderDialog.icon === icon ? "selected" : ""} key={icon} onClick={() => setFolderDialog({ ...folderDialog, icon })}><Icon /></button>;
               })}</div>
               <span>Color</span>
               <div>{folderColors.map((color) => <button aria-label={color} className={folderDialog.color === color ? "selected color" : "color"} style={{ background: color }} key={color} onClick={() => setFolderDialog({ ...folderDialog, color })} />)}</div>
             </div>
             <div>
               {folderDialog.mode === "rename" && <button className="confirm-delete" onClick={() => { deleteFolder(folderDialog.id!); setFolderDialog(null); }}>Delete folder</button>}
-              <button className="secondary" onClick={() => setFolderDialog(null)}>Cancel</button>
               <button className="save-button" disabled={!folderDialog.name.trim()} onClick={saveFolder}>Save folder</button>
             </div>
           </div>

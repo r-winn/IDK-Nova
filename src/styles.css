@@ -820,14 +820,17 @@ main {
 }
 
 .folder-list {
-  padding: 5px 2px 10px;
-  margin: -8px 0 6px;
-  border-bottom: 1px solid var(--line);
-  animation: reveal .16s ease;
+  max-height: 248px;
+  overflow: auto;
+  padding: 4px 2px 7px 11px;
+  margin: -1px 5px 4px 17px;
+  border-left: 1px solid var(--line-strong);
+  animation: folder-drop .2s cubic-bezier(.22,.75,.18,1);
+  transform-origin: top;
 }
 .folder-heading {
   height: 26px;
-  padding: 0 7px 0 9px;
+  padding: 0 3px 0 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -874,7 +877,7 @@ main {
   min-width: 0;
   flex: 1;
   height: 100%;
-  padding: 0 7px;
+  padding: 0 6px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -888,6 +891,10 @@ main {
 .folder-edit { margin-right: 3px; opacity: 0; }
 .folder-row:hover .folder-edit { opacity: 1; }
 .empty-folder-action { color: var(--muted) !important; }
+@keyframes folder-drop {
+  from { opacity: 0; transform: translateY(-6px) scaleY(.94); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
+}
 
 .sidebar-stage {
   flex: 1;
@@ -1026,12 +1033,14 @@ main {
 .folder-live-preview > svg { width: 14px; color: var(--faint); }
 .folder-choices { width: 100%; margin: 4px 0 14px; }
 .folder-choices > span { display: block; margin: 10px 0 6px; color: var(--faint); font-size: 10px; }
-.folder-choices > div { display: flex; gap: 7px; }
+.folder-choices > div { display: flex; flex-wrap: wrap; gap: 7px; }
 .folder-choices button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--muted); display: grid; place-items: center; }
 .folder-choices button svg { width: 16px; }
 .folder-choices button.selected { border-color: var(--text); color: var(--text); box-shadow: 0 0 0 1px var(--text); }
 .folder-choices button.color { width: 25px; height: 25px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--line); }
 .folder-choices button.color.selected { box-shadow: 0 0 0 2px var(--text); }
+.folder-dialog > div:last-child { align-items: center; }
+.folder-dialog > div:last-child .confirm-delete { margin-right: auto; background: transparent; color: var(--danger); }
 .composer-tools .listening {
   color: #dc5364;
   background: rgba(220, 83, 100, 0.09);
