@@ -825,6 +825,7 @@ body.resizing-browser iframe { pointer-events: none; }
 .browser-tabs > div:first-child { min-width: 0; flex: 1; display: flex; gap: 3px; overflow-x: auto; scrollbar-width: none; }
 .browser-tabs > div:first-child::-webkit-scrollbar { display: none; }
 .browser-tabs button { flex: 0 1 168px; min-width: 92px; height: 31px; padding: 0 7px 0 9px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 7px; font-size: 9px; }
+.browser-tabs > div:first-child > button { animation: workspace-tab-enter .24s cubic-bezier(.22,.75,.18,1) both; transition: background .16s, color .16s, opacity .2s, transform .2s; }
 .browser-tabs button:hover { background: var(--hover); color: var(--text); }
 .browser-tabs button.active { background: var(--hover); color: var(--text); }
 .browser-tabs button > svg { width: 12px; }
@@ -853,6 +854,9 @@ body.resizing-browser iframe { pointer-events: none; }
 .workspace-toolbar button svg { width: 13px; }
 .workspace-context { justify-content: flex-start; background: transparent; }
 .browser-surface { position: relative; min-height: 0; margin: 0; overflow: hidden; border: 0; border-radius: 0; background: #fff; }
+.workspace-view { width: 100%; height: 100%; overflow: hidden; background: var(--bg); animation: workspace-view-enter .3s cubic-bezier(.22,.75,.18,1) both; will-change: opacity, transform, filter; }
+@keyframes workspace-view-enter { from { opacity: 0; transform: translateX(11px); filter: blur(2px); } to { opacity: 1; transform: translateX(0); filter: blur(0); } }
+@keyframes workspace-tab-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .browser-surface iframe { width: 100%; height: calc(100% - 34px); border: 0; background: #fff; }
 .browser-fallback { height: 34px; padding: 0 9px 0 12px; border-top: 1px solid #e5e7e5; background: #f7f8f7; color: #747874; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 9px; }
 .browser-fallback button { height: 25px; padding: 0 8px; border: 0; border-radius: 7px; background: #e8eae8; color: #353835; display: flex; align-items: center; gap: 5px; font-size: 9px; }
@@ -935,7 +939,10 @@ body.resizing-browser iframe { pointer-events: none; }
 .temporary-notice > span { display: flex; flex-direction: column; }
 .temporary-notice b { color: var(--text); font-size: 9px; }
 .temporary-notice small { margin-top: 1px; color: var(--faint); font-size: 8px; }
-@media (prefers-reduced-motion: reduce) { .workspace-home::before, .workspace-home::after, .workspace-sidechat::before, .workspace-sidechat::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .workspace-home::before, .workspace-home::after, .workspace-sidechat::before, .workspace-sidechat::after,
+  .workspace-view, .browser-tabs > div:first-child > button { animation: none; }
+}
 
 .attachments {
   display: flex;

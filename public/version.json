@@ -1,6 +1,6 @@
 {
-  "version": "0.9.13",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.13",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.13/IDK.Nova_0.9.13_x64-setup.exe",
-  "notes": ["Temporary Chat now uses the exact same composer height, padding, typography, and footer spacing as the main chat", "A subtle animated Workspace gradient appears behind Temporary Chat", "The background adapts independently to light and dark themes"]
+  "version": "0.9.14",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.14",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.14/IDK.Nova_0.9.14_x64-setup.exe",
+  "notes": ["Unified animated transitions now connect Workspace Home, Browser, Files, Side Chat, code, and image views", "Tab creation, switching, closing, and browser Back or Forward navigation animate without layout jumps", "Native desktop webviews appear in sync with Workspace motion", "Reduced Motion system preferences are respected"]
 }

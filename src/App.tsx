@@ -316,7 +316,7 @@ export default function App() {
         if (!browserOpen || overlayOpen || id !== activeBrowserTabId) await entry.webview.hide().catch(() => undefined);
       }
       if (!browserOpen || overlayOpen || activeBrowserTab?.kind !== "browser" || !activeBrowserTab.url || !browserSurfaceRef.current) return;
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
       if (cancelled || !browserSurfaceRef.current) return;
       const rect = browserSurfaceRef.current.getBoundingClientRect();
       const width = Math.max(1, rect.width);
@@ -2473,6 +2473,10 @@ export default function App() {
             </div>
           ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
           <div className="browser-surface" ref={browserSurfaceRef}>
+            <div
+              className="workspace-view"
+              key={`${activeBrowserTab?.id}-${activeBrowserTab?.kind}-${activeBrowserTab?.url}-${activeBrowserTab?.historyIndex}-${activeBrowserTab?.artifactView || ""}-${browserFrameKey}`}
+            >
             {activeBrowserTab?.kind === "browser" && activeBrowserTab.url ? (
               <>
                 {!isDesktopApp() && <iframe key={`${activeBrowserTab.id}-${activeBrowserTab.url}-${browserFrameKey}`} title="Nova browser" src={activeBrowserTab.url} sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin" />}
@@ -2583,6 +2587,7 @@ export default function App() {
                 </div>
               </div>
             )}
+            </div>
           </div>
       </aside>
       {chatMenu && (
