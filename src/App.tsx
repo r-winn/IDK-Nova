@@ -1,5 +1,6 @@
 import {
   ChangeEvent,
+  CSSProperties,
   KeyboardEvent,
   useEffect,
   useMemo,
@@ -36,6 +37,7 @@ import {
   Menu,
   MessageSquare,
   Mic,
+  Minimize2,
   MoreHorizontal,
   PanelLeftClose,
   PanelRight,
@@ -187,6 +189,8 @@ export default function App() {
   const [browserOpen, setBrowserOpen] = useState(false);
   const [browserInput, setBrowserInput] = useState("");
   const [browserUrl, setBrowserUrl] = useState("");
+  const [browserWidth, setBrowserWidth] = useState(() => loadValue<number>("idk-nova-browser-width", 560));
+  const [browserMaximized, setBrowserMaximized] = useState(false);
   const [importingLocalModel, setImportingLocalModel] = useState(false);
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
@@ -250,6 +254,19 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("idk-nova-folders", JSON.stringify(folders));
   }, [folders]);
+  useEffect(() => {
+    localStorage.setItem("idk-nova-browser-width", JSON.stringify(browserWidth));
+  }, [browserWidth]);
+  useEffect(() => {
+    const adaptBrowser = () => {
+      if (!browserOpen || browserMaximized) return;
+      const available = window.innerWidth - (sidebar ? 272 : 0);
+      if (available < 860) setBrowserMaximized(true);
+      else setBrowserWidth((width) => Math.min(width, available - 430));
+    };
+    window.addEventListener("resize", adaptBrowser);
+    return () => window.removeEventListener("resize", adaptBrowser);
+  }, [browserOpen, browserMaximized, sidebar]);
   useEffect(
     () => {
       localStorage.setItem("idk-nova-active", JSON.stringify(active));
@@ -456,12 +473,40 @@ export default function App() {
     setArtifact(null);
     setBrowserInput(target);
     setBrowserUrl(target);
+    const available = window.innerWidth - (sidebar ? 272 : 0);
+    if (available < 860) setBrowserMaximized(true);
+    else setBrowserWidth((width) => Math.min(width, available - 430));
     setBrowserOpen(true);
   };
   const openSystemBrowser = async () => {
     if (!browserUrl) return;
     if (isDesktopApp()) await openUrl(browserUrl);
     else window.open(browserUrl, "_blank", "noopener,noreferrer");
+  };
+  const startBrowserResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const originX = event.clientX;
+    const reservedForChat = (sidebar ? 272 : 0) + 430;
+    const largestSplit = Math.max(420, window.innerWidth - reservedForChat);
+    const originWidth = browserMaximized ? largestSplit + 36 : browserWidth;
+    if (browserMaximized) setBrowserMaximized(false);
+    const resize = (moveEvent: PointerEvent) => {
+      const requested = originWidth + originX - moveEvent.clientX;
+      if (requested >= largestSplit + 36) {
+        setBrowserMaximized(true);
+        return;
+      }
+      setBrowserMaximized(false);
+      setBrowserWidth(Math.max(420, Math.min(requested, largestSplit)));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stop);
+      document.body.classList.remove("resizing-browser");
+    };
+    document.body.classList.add("resizing-browser");
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stop);
   };
   const downloadArtifact = () => {
     if (!artifact) return;
@@ -1107,7 +1152,18 @@ export default function App() {
               </button>
               <span>Temporary chat · Coming soon</span>
             </span>
-            <button className={`browser-toggle ${browserOpen ? "active" : ""}`} onClick={() => { setArtifact(null); setBrowserOpen((value) => !value); }}>
+            <button className={`browser-toggle ${browserOpen ? "active" : ""}`} onClick={() => {
+              setArtifact(null);
+              if (browserOpen) {
+                setBrowserOpen(false);
+                setBrowserMaximized(false);
+              } else {
+                const available = window.innerWidth - (sidebar ? 272 : 0);
+                if (available < 860) setBrowserMaximized(true);
+                else setBrowserWidth((width) => Math.min(width, available - 430));
+                setBrowserOpen(true);
+              }
+            }}>
               <PanelRight />
               Browse
             </button>
@@ -2149,7 +2205,13 @@ export default function App() {
           </aside>
         </div>
       )}
-      <aside className={`nova-browser ${browserOpen ? "" : "closed"}`} aria-label="Nova browser" aria-hidden={!browserOpen}>
+      <aside
+        className={`nova-browser ${browserOpen ? "" : "closed"} ${browserMaximized ? "maximized" : ""}`}
+        style={{ "--browser-width": `${browserWidth}px` } as CSSProperties}
+        aria-label="Nova browser"
+        aria-hidden={!browserOpen}
+      >
+          <div className="browser-resizer" onPointerDown={startBrowserResize}><span /></div>
           <header>
             <div className="browser-title">
               <span><Globe2 /></span>
@@ -2157,7 +2219,8 @@ export default function App() {
             </div>
             <div className="browser-header-actions">
               <button disabled={!browserUrl} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>
-              <button onClick={() => setBrowserOpen(false)} title="Close"><X /></button>
+              <button onClick={() => setBrowserMaximized((value) => !value)} title={browserMaximized ? "Restore split view" : "Full screen"}>{browserMaximized ? <Minimize2 /> : <Maximize2 />}</button>
+              <button onClick={() => { setBrowserOpen(false); setBrowserMaximized(false); }} title="Close"><X /></button>
             </div>
           </header>
           <form className="browser-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(browserInput); }}>

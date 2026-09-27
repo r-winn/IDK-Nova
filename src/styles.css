@@ -812,10 +812,12 @@ main {
 .document-preview { height: 100%; overflow: auto; padding: 28px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); white-space: pre-wrap; line-height: 1.75; unicode-bidi: plaintext; }
 
 .nova-browser {
-  position: fixed;
+  position: relative;
   z-index: 108;
-  inset: 0 0 0 auto;
-  width: min(640px, 92vw);
+  width: var(--browser-width);
+  min-width: 0;
+  height: 100%;
+  flex: none;
   display: grid;
   grid-template-rows: 62px 54px minmax(0, 1fr);
   border-left: 1px solid var(--line-strong);
@@ -823,11 +825,24 @@ main {
   backdrop-filter: blur(28px) saturate(125%);
   -webkit-backdrop-filter: blur(28px) saturate(125%);
   box-shadow: -24px 0 70px rgba(0,0,0,.24);
-  transform: translateX(0);
-  transition: transform .32s cubic-bezier(.22,.75,.18,1), visibility 0s;
-  will-change: transform;
+  overflow: hidden;
+  transition: width .32s cubic-bezier(.22,.75,.18,1), visibility 0s;
+  will-change: width;
 }
-.nova-browser.closed { transform: translateX(100%); visibility: hidden; pointer-events: none; transition: transform .32s cubic-bezier(.22,.75,.18,1), visibility 0s .32s; }
+.nova-browser.closed { width: 0; visibility: hidden; pointer-events: none; border-left-color: transparent; box-shadow: none; transition: width .32s cubic-bezier(.22,.75,.18,1), visibility 0s .32s; }
+.nova-browser.maximized { position: fixed; inset: 0; width: 100vw; --browser-width: 100vw !important; }
+.nova-browser > header { width: var(--browser-width); min-width: 420px; }
+.nova-browser > .browser-address,
+.nova-browser > .browser-surface { width: calc(var(--browser-width) - 28px); min-width: 392px; }
+.browser-resizer { position: absolute; z-index: 4; left: -5px; top: 0; width: 10px; height: 100%; cursor: col-resize; touch-action: none; display: flex; align-items: center; justify-content: center; }
+.browser-resizer::after { content: ""; width: 1px; height: 100%; background: transparent; transition: background .15s; }
+.browser-resizer:hover::after,
+body.resizing-browser .browser-resizer::after { background: var(--line-strong); }
+.browser-resizer span { position: absolute; width: 4px; height: 38px; border-radius: 8px; background: var(--line-strong); opacity: 0; transition: opacity .15s; }
+.browser-resizer:hover span,
+body.resizing-browser .browser-resizer span { opacity: 1; }
+body.resizing-browser { cursor: col-resize; user-select: none; }
+body.resizing-browser iframe { pointer-events: none; }
 .nova-browser > header { padding: 0 14px 0 17px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
 .browser-title, .browser-title > div, .browser-header-actions { display: flex; align-items: center; }
 .browser-title { gap: 10px; }

@@ -1,6 +1,6 @@
 {
-  "version": "0.9.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.1/IDK.Nova_0.9.1_x64-setup.exe",
-  "notes": ["Right-side Nova Browse panel with mirrored navigation animation", "Links from AI responses open inside Nova", "Search and address bar with embedded results", "Open the current page in the system browser", "Markdown and plain URL link detection"]
+  "version": "0.9.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.2/IDK.Nova_0.9.2_x64-setup.exe",
+  "notes": ["Resizable browser and chat split view", "Smooth mirrored open and close transitions", "Automatic full-screen mode before chat becomes too narrow", "Manual full-screen and restore controls", "Persistent browser panel width across sessions"]
 }
