@@ -1,6 +1,7 @@
 export type Attachment = { name: string; type: string; url: string };
 export type Message = { role: 'user' | 'assistant'; content: string; attachments?: Attachment[]; liked?: boolean };
-export type Chat = { id: number; title: string; time: string; messages: Message[]; archived?: boolean };
+export type Chat = { id: number; title: string; time: string; messages: Message[]; archived?: boolean; folderId?: string };
+export type ChatFolder = { id: string; name: string; color: string; icon: 'folder' | 'work' | 'code' | 'sparkles' };
 export type Provider = { id: string; name: string; baseUrl: string; apiKey: string; models: string[] };
 export type Branding = { appName: string; workspaceName: string; accent: string; logoDataUrl: string };
 export type DatabaseConfig = { enabled: boolean; kind: 'none' | 'postgresql' | 'mysql' | 'sqlite' | 'http'; url: string; useForMemory: boolean };

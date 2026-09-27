@@ -673,6 +673,9 @@ main {
 .content {
   white-space: pre-wrap;
   padding-top: 4px;
+  unicode-bidi: plaintext;
+  text-align: start;
+  overflow-wrap: anywhere;
 }
 .attachments {
   display: flex;
@@ -807,6 +810,114 @@ main {
 .composer-tools .send:disabled {
   opacity: 0.22;
 }
+.composer-tools .send.stop {
+  background: var(--text);
+  color: var(--surface);
+}
+.composer-tools .send.stop svg {
+  width: 11px;
+  fill: currentColor;
+}
+
+.folder-list {
+  padding: 10px 2px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.folder-heading {
+  height: 26px;
+  padding: 0 7px 0 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .55px;
+  text-transform: uppercase;
+}
+.folder-heading button,
+.folder-edit {
+  width: 25px;
+  height: 25px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+.folder-heading button:hover,
+.folder-edit:hover { background: var(--hover); color: var(--text); }
+.folder-heading svg,
+.folder-edit svg { width: 14px; }
+.folder-list > button,
+.folder-row {
+  width: 100%;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+}
+.folder-list > button { padding: 0 9px; gap: 9px; }
+.folder-list > button:hover,
+.folder-list > button.active,
+.folder-row:hover,
+.folder-row.active { background: var(--hover); color: var(--text); }
+.folder-list > button svg,
+.folder-row svg { width: 15px; flex: none; }
+.folder-row > button:first-child {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0 7px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+}
+.folder-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-row small { margin-left: auto; color: var(--faint); font-size: 9px; }
+.folder-edit { margin-right: 3px; opacity: 0; }
+.folder-row:hover .folder-edit { opacity: 1; }
+
+.context-layer { position: fixed; inset: 0; z-index: 80; }
+.context-menu {
+  position: fixed;
+  width: 224px;
+  max-height: 350px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(24px) saturate(130%);
+  box-shadow: 0 20px 55px rgba(0,0,0,.18);
+}
+.context-menu button {
+  width: 100%; height: 34px; padding: 0 9px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); display: flex; align-items: center; gap: 9px; text-align: left;
+}
+.context-menu button:hover { background: var(--hover); }
+.context-menu button.danger { color: #d45454; }
+.context-menu svg { width: 15px; }
+.context-menu > small { display: block; padding: 7px 9px 4px; color: var(--faint); font-size: 9px; text-transform: uppercase; letter-spacing: .6px; }
+.context-menu em { display: block; padding: 8px 9px; color: var(--faint); font-size: 10px; font-style: normal; }
+.context-separator { height: 1px; margin: 5px 3px; background: var(--line); }
+.folder-dialog .confirm-icon { color: var(--text); background: var(--hover); }
+.folder-choices { width: 100%; margin: 4px 0 14px; }
+.folder-choices > span { display: block; margin: 10px 0 6px; color: var(--faint); font-size: 10px; }
+.folder-choices > div { display: flex; gap: 7px; }
+.folder-choices button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--muted); display: grid; place-items: center; }
+.folder-choices button svg { width: 16px; }
+.folder-choices button.selected { border-color: var(--text); color: var(--text); box-shadow: 0 0 0 1px var(--text); }
+.folder-choices button.color { width: 25px; height: 25px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.folder-choices button.color.selected { box-shadow: 0 0 0 2px var(--text); }
 .composer-tools .listening {
   color: #dc5364;
   background: rgba(220, 83, 100, 0.09);
@@ -2259,8 +2370,8 @@ main {
   opacity: 1;
   transform: translateX(0);
   transition:
-    opacity 0.11s ease 0.1s,
-    transform 0.18s ease 0.08s,
+    opacity 0.13s ease 0.16s,
+    transform 0.18s ease 0.14s,
     visibility 0s;
 }
 .sidebar.collapsed > * {
@@ -2274,13 +2385,17 @@ main {
     visibility 0s 0.08s;
 }
 .sidebar {
+  will-change: width, padding;
   transition:
-    width 0.24s cubic-bezier(0.4, 0, 0.2, 1) 0.04s,
-    padding 0.24s cubic-bezier(0.4, 0, 0.2, 1) 0.04s,
+    width 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.26s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.12s;
 }
 .sidebar.collapsed {
-  transition-delay: 0.08s;
+  transition:
+    width 0.22s cubic-bezier(0.4, 0, 0.2, 1) 0.07s,
+    padding 0.22s cubic-bezier(0.4, 0, 0.2, 1) 0.07s,
+    border-color 0.12s 0.07s;
 }
 
 @media (max-width: 800px) {

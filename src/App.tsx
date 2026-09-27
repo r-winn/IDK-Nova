@@ -21,6 +21,8 @@ import {
   Database,
   Download,
   FileText,
+  Folder,
+  FolderPlus,
   Globe2,
   HardDriveUpload,
   Image as ImageIcon,
@@ -28,6 +30,7 @@ import {
   Menu,
   MessageSquare,
   Mic,
+  MoreHorizontal,
   PanelLeftClose,
   Paperclip,
   Pencil,
@@ -38,6 +41,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Square,
   Trash2,
   Upload,
   Workflow,
@@ -56,6 +60,7 @@ import {
 import {
   Attachment,
   Chat,
+  ChatFolder,
   Config,
   Message,
   Provider,
@@ -97,6 +102,16 @@ type ChatDialog = {
   id: number;
   value: string;
 } | null;
+type FolderDialog = { mode: "create" | "rename"; id?: string; name: string; color: string; icon: ChatFolder["icon"] } | null;
+type ChatMenu = { chatId: number; x: number; y: number } | null;
+
+const folderIcons = {
+  folder: Folder,
+  work: BriefcaseBusiness,
+  code: Code2,
+  sparkles: Sparkles,
+};
+const folderColors = ["#5b8def", "#8b5cf6", "#e8793e", "#2aa876", "#d4546a", "#64748b"];
 
 export default function App() {
   const [sidebar, setSidebar] = useState(true);
@@ -127,6 +142,10 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("");
   const [chatDialog, setChatDialog] = useState<ChatDialog>(null);
+  const [folders, setFolders] = useState<ChatFolder[]>(() => loadValue("idk-nova-folders", []));
+  const [folderFilter, setFolderFilter] = useState<string | null>(null);
+  const [folderDialog, setFolderDialog] = useState<FolderDialog>(null);
+  const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
   const [importingLocalModel, setImportingLocalModel] = useState(false);
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
@@ -153,7 +172,8 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null),
     endRef = useRef<HTMLDivElement>(null),
     configFileRef = useRef<HTMLInputElement>(null),
-    logoFileRef = useRef<HTMLInputElement>(null);
+    logoFileRef = useRef<HTMLInputElement>(null),
+    abortRef = useRef<AbortController | null>(null);
   const chat = chats.find((item) => item.id === active) || chats[0];
   const activeProvider = getActiveProvider(config),
     activeDraftProvider = getActiveProvider(draftConfig);
@@ -162,9 +182,10 @@ export default function App() {
       chats.filter(
         (item) =>
           !item.archived &&
+          (!folderFilter || item.folderId === folderFilter) &&
           item.title.toLowerCase().includes(query.toLowerCase()),
       ),
-    [chats, query],
+    [chats, query, folderFilter],
   );
   const resolvedDark =
     config.theme === "system" ? systemDark : config.theme === "dark";
@@ -185,6 +206,9 @@ export default function App() {
   useEffect(() => {
     saveChats(chats);
   }, [chats]);
+  useEffect(() => {
+    localStorage.setItem("idk-nova-folders", JSON.stringify(folders));
+  }, [folders]);
   useEffect(
     () => {
       localStorage.setItem("idk-nova-active", JSON.stringify(active));
@@ -215,16 +239,41 @@ export default function App() {
     });
   }, []);
 
-  const upload = (event: ChangeEvent<HTMLInputElement>) => {
-    const selected = [...(event.target.files || [])]
-      .slice(0, 5)
-      .map((file) => ({
-        name: file.name,
-        type: file.type,
-        url: URL.createObjectURL(file),
-      }));
-    setFiles((current) => [...current, ...selected].slice(0, 5));
+  const prepareAttachment = (file: File): Promise<Attachment> =>
+    new Promise((resolve, reject) => {
+      if (!file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ name: file.name, type: file.type, url: String(reader.result) });
+        reader.onerror = () => reject(new Error("Could not read the selected file"));
+        reader.readAsDataURL(file);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Could not read the selected image"));
+      reader.onload = () => {
+        const image = new Image();
+        image.onerror = () => reject(new Error("Choose a valid image"));
+        image.onload = () => {
+          const scale = Math.min(1, 1024 / Math.max(image.width, image.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(image.width * scale));
+          canvas.height = Math.max(1, Math.round(image.height * scale));
+          canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+          resolve({ name: file.name, type: "image/jpeg", url: canvas.toDataURL("image/jpeg", 0.72) });
+        };
+        image.src = String(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
+  const upload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = [...(event.target.files || [])].slice(0, 5);
     event.target.value = "";
+    try {
+      const selected = await Promise.all(selectedFiles.map(prepareAttachment));
+      setFiles((current) => [...current, ...selected].slice(0, 5));
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Could not prepare the attachment");
+    }
   };
   const fresh = () => {
     const id = Date.now();
@@ -247,6 +296,33 @@ export default function App() {
       id,
       value: chats.find((item) => item.id === id)?.title || "",
     });
+  const saveFolder = () => {
+    if (!folderDialog?.name.trim()) return;
+    if (folderDialog.mode === "create") {
+      const folder: ChatFolder = {
+        id: `folder-${Date.now()}`,
+        name: folderDialog.name.trim(),
+        color: folderDialog.color,
+        icon: folderDialog.icon,
+      };
+      setFolders((current) => [...current, folder]);
+      setFolderFilter(folder.id);
+    } else {
+      setFolders((current) => current.map((folder) => folder.id === folderDialog.id ? { ...folder, name: folderDialog.name.trim(), color: folderDialog.color, icon: folderDialog.icon } : folder));
+    }
+    setFolderDialog(null);
+  };
+  const deleteFolder = (id: string) => {
+    setFolders((current) => current.filter((folder) => folder.id !== id));
+    setChats((current) => current.map((item) => item.folderId === id ? { ...item, folderId: undefined } : item));
+    if (folderFilter === id) setFolderFilter(null);
+    setToast("Folder removed · conversations kept");
+  };
+  const moveChat = (chatId: number, folderId?: string) => {
+    setChats((current) => current.map((item) => item.id === chatId ? { ...item, folderId } : item));
+    setChatMenu(null);
+    setToast(folderId ? "Conversation moved" : "Removed from folder");
+  };
   const confirmChatDialog = () => {
     if (!chatDialog) return;
     if (chatDialog.mode === "delete") {
@@ -353,6 +429,8 @@ export default function App() {
     setText("");
     setFiles([]);
     setBusy(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       await streamCompletion(config, [...chat.messages, user], (token) =>
         setChats((items) =>
@@ -368,9 +446,16 @@ export default function App() {
                 }
               : item,
           ),
-        ),
+        ), controller.signal,
       );
     } catch (error) {
+      if (controller.signal.aborted) {
+        setChats((items) => items.map((item) => item.id === active ? {
+          ...item,
+          messages: item.messages.map((message, index) => index === item.messages.length - 1 && !message.content ? { ...message, content: "Response stopped." } : message),
+        } : item));
+        return;
+      }
       setChats((items) =>
         items.map((item) =>
           item.id === active
@@ -389,9 +474,11 @@ export default function App() {
         ),
       );
     } finally {
+      abortRef.current = null;
       setBusy(false);
     }
   };
+  const stopResponse = () => abortRef.current?.abort();
   const key = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -750,6 +837,36 @@ export default function App() {
             </button>
           </div>
         )}
+        <div className="folder-list">
+          <div className="folder-heading">
+            <span>Folders</span>
+            <button
+              title="New folder"
+              onClick={() => setFolderDialog({ mode: "create", name: "", color: folderColors[0], icon: "folder" })}
+            >
+              <FolderPlus />
+            </button>
+          </div>
+          <button className={!folderFilter ? "active" : ""} onClick={() => setFolderFilter(null)}>
+            <MessageSquare />
+            <span>All chats</span>
+          </button>
+          {folders.map((folder) => {
+            const Icon = folderIcons[folder.icon];
+            return (
+              <div className={`folder-row ${folderFilter === folder.id ? "active" : ""}`} key={folder.id}>
+                <button onClick={() => setFolderFilter(folder.id)}>
+                  <Icon style={{ color: folder.color }} />
+                  <span>{folder.name}</span>
+                  <small>{chats.filter((item) => item.folderId === folder.id && !item.archived).length}</small>
+                </button>
+                <button className="folder-edit" title="Edit folder" onClick={() => setFolderDialog({ mode: "rename", ...folder })}>
+                  <MoreHorizontal />
+                </button>
+              </div>
+            );
+          })}
+        </div>
         <div className="history">
           {["Today", "Yesterday", "Previous 7 days"].map((group) => (
             <section key={group}>
@@ -760,6 +877,10 @@ export default function App() {
                   <div
                     className={`chat-row ${active === item.id ? "active" : ""}`}
                     key={item.id}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setChatMenu({ chatId: item.id, x: event.clientX, y: event.clientY });
+                    }}
                   >
                     <button
                       className="chat-select"
@@ -770,16 +891,13 @@ export default function App() {
                     </button>
                     <div className="row-actions">
                       <button
-                        title="Rename"
-                        onClick={() => requestRenameChat(item.id)}
+                        title="Conversation options"
+                        onClick={(event) => {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          setChatMenu({ chatId: item.id, x: rect.right, y: rect.bottom });
+                        }}
                       >
-                        <Pencil />
-                      </button>
-                      <button
-                        title="Delete"
-                        onClick={() => requestDeleteChat(item.id)}
-                      >
-                        <Trash2 />
+                        <MoreHorizontal />
                       </button>
                     </div>
                   </div>
@@ -942,7 +1060,7 @@ export default function App() {
                         )}
                       </div>
                     ) : null}
-                    <div className="content">
+                    <div className="content" dir="auto">
                       {message.content || (
                         <span className="typing">
                           <i />
@@ -1072,15 +1190,12 @@ export default function App() {
                   <Mic />
                 </button>
                 <button
-                  className="send"
-                  disabled={
-                    busy ||
-                    !config.activeModel ||
-                    (!text.trim() && !files.length)
-                  }
-                  onClick={send}
+                  className={`send ${busy ? "stop" : ""}`}
+                  disabled={!busy && (!config.activeModel || (!text.trim() && !files.length))}
+                  onClick={busy ? stopResponse : send}
+                  title={busy ? "Stop response" : "Send message"}
                 >
-                  <ArrowUp />
+                  {busy ? <Square /> : <ArrowUp />}
                 </button>
               </div>
             </div>
@@ -1843,6 +1958,60 @@ export default function App() {
                 </div>
               </footer>
             </section>
+          </div>
+        </div>
+      )}
+      {chatMenu && (
+        <div className="context-layer" onMouseDown={() => setChatMenu(null)}>
+          <div
+            className="context-menu"
+            style={{ left: Math.min(chatMenu.x, window.innerWidth - 238), top: Math.min(chatMenu.y, window.innerHeight - 360) }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button onClick={() => { requestRenameChat(chatMenu.chatId); setChatMenu(null); }}><Pencil />Rename</button>
+            <button onClick={() => { archiveChat(chatMenu.chatId); setChatMenu(null); }}><Archive />Archive</button>
+            <div className="context-separator" />
+            <small>Move to folder</small>
+            {folders.map((folder) => {
+              const Icon = folderIcons[folder.icon];
+              return <button key={folder.id} onClick={() => moveChat(chatMenu.chatId, folder.id)}><Icon style={{ color: folder.color }} />{folder.name}</button>;
+            })}
+            {chats.find((item) => item.id === chatMenu.chatId)?.folderId && (
+              <button onClick={() => moveChat(chatMenu.chatId)}><X />Remove from folder</button>
+            )}
+            {!folders.length && <em>Create a folder first</em>}
+            <div className="context-separator" />
+            <button className="danger" onClick={() => { requestDeleteChat(chatMenu.chatId); setChatMenu(null); }}><Trash2 />Delete</button>
+          </div>
+        </div>
+      )}
+      {folderDialog && (
+        <div className="confirm-backdrop" onMouseDown={() => setFolderDialog(null)}>
+          <div className="confirm-dialog folder-dialog" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="confirm-icon"><Folder /></div>
+            <h3>{folderDialog.mode === "create" ? "Create folder" : "Edit folder"}</h3>
+            <p>Organize related conversations with a name, color, and icon.</p>
+            <input
+              autoFocus
+              value={folderDialog.name}
+              placeholder="Folder name"
+              onChange={(event) => setFolderDialog({ ...folderDialog, name: event.target.value })}
+              onKeyDown={(event) => event.key === "Enter" && saveFolder()}
+            />
+            <div className="folder-choices">
+              <span>Icon</span>
+              <div>{(Object.keys(folderIcons) as ChatFolder["icon"][]).map((icon) => {
+                const Icon = folderIcons[icon];
+                return <button className={folderDialog.icon === icon ? "selected" : ""} key={icon} onClick={() => setFolderDialog({ ...folderDialog, icon })}><Icon /></button>;
+              })}</div>
+              <span>Color</span>
+              <div>{folderColors.map((color) => <button aria-label={color} className={folderDialog.color === color ? "selected color" : "color"} style={{ background: color }} key={color} onClick={() => setFolderDialog({ ...folderDialog, color })} />)}</div>
+            </div>
+            <div>
+              {folderDialog.mode === "rename" && <button className="confirm-delete" onClick={() => { deleteFolder(folderDialog.id!); setFolderDialog(null); }}>Delete folder</button>}
+              <button className="secondary" onClick={() => setFolderDialog(null)}>Cancel</button>
+              <button className="save-button" disabled={!folderDialog.name.trim()} onClick={saveFolder}>Save folder</button>
+            </div>
           </div>
         </div>
       )}

@@ -37,15 +37,18 @@ export async function testModel(provider: Provider, model: string): Promise<numb
   return Math.round(performance.now() - started);
 }
 
-export async function streamCompletion(config: Config, messages: Message[], onToken: (token: string) => void) {
+export async function streamCompletion(config: Config, messages: Message[], onToken: (token: string) => void, signal?: AbortSignal) {
   const provider = getActiveProvider(config);
   if (!provider) throw new Error('Add a provider in Settings first');
   if (!config.activeModel) throw new Error('Select a model first');
-  const content = messages.map(message => ({ role: message.role, content: message.attachments?.length ? [
-    { type: 'text', text: message.content || 'Describe this attachment.' },
-    ...message.attachments.filter(file => file.type.startsWith('image/')).map(file => ({ type: 'image_url', image_url: { url: file.url } })),
-  ] : message.content }));
-  const response = await request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: { ...headers(provider), Accept: 'text/event-stream' }, body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, messages: content }) });
+  const content = messages.map((message, index) => ({
+    role: message.role,
+    content: index === messages.length - 1 && message.attachments?.length ? [
+      { type: 'text', text: message.content || 'Describe this attachment.' },
+      ...message.attachments.filter(file => file.type.startsWith('image/')).map(file => ({ type: 'image_url', image_url: { url: file.url } })),
+    ] : (message.content || (message.attachments?.length ? '[Image shared in an earlier turn]' : '')),
+  }));
+  const response = await request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: { ...headers(provider), Accept: 'text/event-stream' }, body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, messages: content }), signal });
   if (!response.ok) throw new Error(`Provider returned ${response.status}: ${await response.text()}`);
   if (!response.body) throw new Error('The provider did not return a response stream');
   const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = '';
