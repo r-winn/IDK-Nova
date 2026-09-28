@@ -1,6 +1,6 @@
 {
-  "version": "0.9.19",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.19",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.19/IDK.Nova_0.9.19_x64-setup.exe",
-  "notes": ["Code, documents, and emails now open in separate purpose-built Workspace environments", "Document pages support correct RTL and LTR direction, editing, preview, copy, and save", "Email drafts open as realistic compositions with recipient, subject, body, and mail-app actions", "Streaming scroll no longer stutters when returning to the latest response", "A floating latest-response control shows an arrow or live typing dots", "Response actions remain disabled during generation and show the final response time", "Article and long-form document detection is expanded"]
+  "version": "0.9.20",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.20",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.20/IDK.Nova_0.9.20_x64-setup.exe",
+  "notes": ["The first horizontal separator now reliably splits assistant commentary from the actual document, even during incomplete streaming output", "Only the article or draft body enters the document artifact", "Document Workspace adds font family, font size, alignment, justification, word count, edit, preview, copy, and save controls", "Document titles are derived from markdown headings", "RTL and LTR editing and preview remain automatic"]
 }

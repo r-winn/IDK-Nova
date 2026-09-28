@@ -9,6 +9,9 @@ import {
 } from "react";
 import {
   Archive,
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
   ArrowRight,
   ArrowUp,
   Bot,
@@ -143,6 +146,9 @@ type BrowserTab = {
   imageUrl?: string;
   imageZoom?: number;
   subject?: string;
+  documentFont?: "sans" | "serif" | "mono";
+  documentSize?: number;
+  documentAlign?: "start" | "center" | "justify";
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
@@ -180,22 +186,29 @@ const formatDuration = (milliseconds: number) => milliseconds < 60_000
   ? `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)}s`
   : `${Math.floor(milliseconds / 60_000)}m ${Math.round((milliseconds % 60_000) / 1000)}s`;
 const detectDocumentArtifact = (value: string): DocumentArtifact | null => {
-  const ruled = value.match(/^([\s\S]*?)^---\s*$\n([\s\S]*?)^---\s*$([\s\S]*)$/m);
-  const candidate = (ruled?.[2] || value).trim();
+  const separators = [...value.matchAll(/^---\s*$/gm)];
+  const firstSeparator = separators[0];
+  const secondSeparator = separators[1];
+  const before = firstSeparator ? value.slice(0, firstSeparator.index).trim() : "";
+  const bodyStart = firstSeparator ? (firstSeparator.index || 0) + firstSeparator[0].length : 0;
+  const bodyEnd = secondSeparator?.index ?? value.length;
+  const candidate = value.slice(bodyStart, bodyEnd).trim();
+  const after = secondSeparator ? value.slice((secondSeparator.index || 0) + secondSeparator[0].length).trim() : "";
   const subjectMatch = candidate.match(/^(?:\*\*)?(?:موضوع|subject)\s*:\s*(?:\*\*)?(.+?)(?:\*\*)?\s*$/im);
   const looksLikeEmail = Boolean(subjectMatch) || /(^|\n)(سلام|درود|dear|hello)[،,!\s]/i.test(candidate) && /(^|\n)(با تشکر|با احترام|ارادتمند|sincerely|regards|best)[،,!\s]/i.test(candidate);
-  const documentHint = `${ruled?.[1] || ""}\n${candidate.slice(0, 240)}`;
-  const looksLikeDocument = candidate.length >= 180 && (Boolean(ruled) || /مقاله|گزارش|نامه|article|report|letter|proposal|طرح|چک.?لیست/i.test(documentHint));
+  const documentHint = `${before}\n${candidate.slice(0, 240)}`;
+  const looksLikeDocument = candidate.length >= 180 && (separators.length > 0 || /مقاله|گزارش|نامه|article|report|letter|proposal|طرح|چک.?لیست/i.test(documentHint));
   if (!looksLikeEmail && !looksLikeDocument) return null;
   const subject = subjectMatch?.[1]?.replace(/\*\*/g, "").trim() || "";
   const body = subjectMatch ? candidate.replace(subjectMatch[0], "").trim() : candidate;
+  const heading = candidate.match(/^#{1,3}\s+(?:\*\*)?(.+?)(?:\*\*)?\s*$/m)?.[1]?.replace(/\*\*/g, "").trim();
   return {
     kind: looksLikeEmail ? "email" : "document",
-    title: looksLikeEmail ? (subject || "Email draft") : "Document draft",
+    title: looksLikeEmail ? (subject || "Email draft") : (heading || "Document draft"),
     subject,
     body,
-    before: ruled?.[1]?.trim() || "",
-    after: ruled?.[3]?.trim() || "",
+    before,
+    after,
   };
 };
 
@@ -614,6 +627,9 @@ export default function App() {
       subject: document.subject,
       content: document.body,
       artifactView: view,
+      documentFont: "sans",
+      documentSize: 14,
+      documentAlign: "start",
       url: "",
       input: "",
       history: [],
@@ -2602,8 +2618,17 @@ export default function App() {
               {activeBrowserTab.kind === "document" ? <>
                 <button className={activeBrowserTab.artifactView === "edit" ? "active" : ""} onClick={() => updateWorkspaceTab(activeBrowserTab.id, { artifactView: "edit" })}><Pencil />Edit</button>
                 <button className={activeBrowserTab.artifactView === "preview" ? "active" : ""} onClick={() => updateWorkspaceTab(activeBrowserTab.id, { artifactView: "preview" })}><FileText />Document</button>
+                <select aria-label="Document font" value={activeBrowserTab.documentFont || "sans"} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { documentFont: event.target.value as BrowserTab["documentFont"] })}>
+                  <option value="sans">Sans</option><option value="serif">Serif</option><option value="mono">Mono</option>
+                </select>
+                <button aria-label="Decrease font size" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { documentSize: Math.max(10, (activeBrowserTab.documentSize || 14) - 1) })}>A−</button>
+                <button aria-label="Increase font size" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { documentSize: Math.min(24, (activeBrowserTab.documentSize || 14) + 1) })}>A+</button>
+                <button className={activeBrowserTab.documentAlign === "start" ? "active" : ""} aria-label="Align start" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { documentAlign: "start" })}><AlignLeft /></button>
+                <button className={activeBrowserTab.documentAlign === "center" ? "active" : ""} aria-label="Align center" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { documentAlign: "center" })}><AlignCenter /></button>
+                <button className={activeBrowserTab.documentAlign === "justify" ? "active" : ""} aria-label="Justify" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { documentAlign: "justify" })}><AlignJustify /></button>
               </> : <button className="active"><Mail />Compose</button>}
               <span />
+              {activeBrowserTab.kind === "document" && <small>{(activeBrowserTab.content || "").trim().split(/\s+/).filter(Boolean).length.toLocaleString()} words</small>}
               <button onClick={() => copy(activeBrowserTab.content || "")}><Copy />Copy</button>
               <button onClick={downloadTextArtifact}><Download />Save</button>
               {activeBrowserTab.kind === "email" && <button className="email-action" onClick={() => openEmailDraft(activeBrowserTab.subject || "", activeBrowserTab.content || "")}><Mail />Email</button>}
@@ -2652,9 +2677,15 @@ export default function App() {
             ) : activeBrowserTab?.kind === "document" ? (
               <div className="workspace-document">
                 {activeBrowserTab.artifactView === "edit" ? (
-                  <textarea dir="auto" spellCheck value={activeBrowserTab.content || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { content: event.target.value })} />
+                  <textarea
+                    dir="auto"
+                    spellCheck
+                    style={{ fontFamily: activeBrowserTab.documentFont === "serif" ? "Georgia, 'Times New Roman', serif" : activeBrowserTab.documentFont === "mono" ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "ui-sans-serif, system-ui, sans-serif", fontSize: activeBrowserTab.documentSize || 14, textAlign: activeBrowserTab.documentAlign || "start" }}
+                    value={activeBrowserTab.content || ""}
+                    onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { content: event.target.value })}
+                  />
                 ) : (
-                  <article dir="auto"><header><FileText /><span><b>{activeBrowserTab.title}</b><small>Nova document</small></span></header><div>{activeBrowserTab.content}</div></article>
+                  <article dir="auto"><header><FileText /><span><b>{activeBrowserTab.title}</b><small>{(activeBrowserTab.content || "").trim().split(/\s+/).filter(Boolean).length.toLocaleString()} words · Nova document</small></span></header><div style={{ fontFamily: activeBrowserTab.documentFont === "serif" ? "Georgia, 'Times New Roman', serif" : activeBrowserTab.documentFont === "mono" ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "ui-sans-serif, system-ui, sans-serif", fontSize: activeBrowserTab.documentSize || 14, textAlign: activeBrowserTab.documentAlign || "start" }}>{activeBrowserTab.content}</div></article>
                 )}
               </div>
             ) : activeBrowserTab?.kind === "email" ? (
