@@ -1367,32 +1367,30 @@ export default function App() {
         /localhost:11434|127\.0\.0\.1:11434/.test(provider.baseUrl),
       );
       const providerId = existing?.id || `ollama-import-${Date.now()}`;
+      const verifiedProvider: Provider = {
+        ...(existing || { id: providerId, name: "Ollama Local", apiKey: "", models: [] }),
+        baseUrl: "http://127.0.0.1:11434/v1",
+        models: [...new Set([...(existing?.models || []), model])],
+      };
+      const latency = await testModel(verifiedProvider, model);
       const providers = existing
         ? draftConfig.providers.map((provider) =>
             provider.id === existing.id
-              ? {
-                  ...provider,
-                  models: [...new Set([...provider.models, model])],
-                }
+              ? verifiedProvider
               : provider,
           )
-        : [
-            ...draftConfig.providers,
-            {
-              id: providerId,
-              name: "Ollama Local",
-              baseUrl: "http://localhost:11434/v1",
-              apiKey: "",
-              models: [model],
-            },
-          ];
-      setDraftConfig((current) => ({
-        ...current,
+        : [...draftConfig.providers, verifiedProvider];
+      const nextConfig: Config = {
+        ...draftConfig,
         providers,
         activeProviderId: providerId,
         activeModel: model,
-      }));
-      setToast(`${model} imported and ready`);
+      };
+      setDraftConfig(nextConfig);
+      setConfig(nextConfig);
+      saveConfig(nextConfig);
+      setVerifiedModels((current) => ({ ...current, [`${providerId}:${model}`]: latency }));
+      setToast(`${model} imported, verified, and ready · ${latency} ms`);
     } catch (error) {
       setToast(
         error instanceof Error ? error.message : "Local model import failed",

@@ -1,6 +1,6 @@
 use serde::Serialize;
 use futures_util::StreamExt;
-use std::{fs, io::Write, path::{Component, Path, PathBuf}, process::Command, time::UNIX_EPOCH};
+use std::{fs, io::Write, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
 use tauri::Manager;
 use tauri::ipc::Channel;
 
@@ -13,6 +13,24 @@ fn ollama_executable() -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn ensure_ollama_runtime(ollama: &Path) -> Result<(), String> {
+    let runtime_ready = || Command::new(ollama).arg("list").output().map(|output| output.status.success()).unwrap_or(false);
+    if runtime_ready() { return Ok(()); }
+    let mut command = Command::new(ollama);
+    command.arg("serve").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    command.spawn().map_err(|error| format!("Ollama is installed but Nova could not start its local service: {error}"))?;
+    for _ in 0..30 {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        if runtime_ready() { return Ok(()); }
+    }
+    Err("Ollama is installed, but its local service did not start on 127.0.0.1:11434".into())
 }
 
 #[tauri::command]
@@ -43,6 +61,7 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_nam
         let normalized = stored_model.to_string_lossy().replace('\\', "/").replace('"', "\\\"");
         fs::write(&model_file, format!("FROM \"{normalized}\"\n")).map_err(|error| format!("Could not prepare the local model: {error}"))?;
         let ollama = ollama_executable().ok_or_else(|| "OLLAMA_NOT_INSTALLED: Install Ollama before importing a GGUF model".to_string())?;
+        ensure_ollama_runtime(&ollama)?;
         let mut command = Command::new(ollama);
         command.args(["create", &safe_name, "-f"]).arg(&model_file);
         #[cfg(windows)]
