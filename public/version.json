@@ -1,6 +1,6 @@
 {
-  "version": "0.12.2",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.12.2",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.12.2/IDK.Nova_0.12.2_x64-setup.exe",
+  "version": "0.12.3",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.12.3",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.12.3/IDK.Nova_0.12.3_x64-setup.exe",
   "notes": ["Ollama installation now resolves the latest official OllamaSetup.exe through the GitHub Releases API", "GitHub is attempted before ollama.com for networks where the Ollama download domain returns 403", "The official ollama.com installer remains available as an automatic fallback", "Download requests now include explicit GitHub API and application headers", "Authenticode verification is still required before Nova runs the downloaded installer"]
 }
