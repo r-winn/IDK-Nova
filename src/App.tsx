@@ -2083,7 +2083,7 @@ export default function App() {
                     type="button"
                     role="menuitemradio"
                     aria-checked={(chatWorkspace.agentAccess || "ask") === value}
-                    className={(chatWorkspace.agentAccess || "ask") === value ? "selected" : ""}
+                    className={`${(chatWorkspace.agentAccess || "ask") === value ? "selected" : ""} ${value === "auto" ? "risk" : ""}`}
                     key={value}
                     onClick={() => {
                       setWorkspaces((items) => items.map((item) => item.id === chatWorkspace.id ? { ...item, agentAccess: value } : item));

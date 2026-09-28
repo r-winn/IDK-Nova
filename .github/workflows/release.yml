@@ -1,4 +1,4 @@
-name: Build Windows Installer
+name: Build Desktop Installers
 on:
   push:
     tags: ['v*']
@@ -68,3 +68,44 @@ jobs:
           gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name' |
             Where-Object { $_ -like '*.sig' } |
             ForEach-Object { gh release delete-asset $env:GITHUB_REF_NAME $_ --repo $env:GITHUB_REPOSITORY --yes }
+  macos:
+    name: macOS universal DMG
+    needs: windows
+    runs-on: macos-latest
+    env:
+      APPLE_SIGNING_IDENTITY: '-'
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - run: npm ci
+      - name: Build universal macOS app and DMG
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: IDK Nova ${{ github.ref_name }}
+          releaseBody: Download Setup.exe for Windows or the universal DMG for Apple Silicon and Intel Macs. Community builds are not platform code-signed yet, so the operating system may ask you to approve the first launch.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: --target universal-apple-darwin --bundles app,dmg
+      - name: Keep detached updater signatures out of public downloads
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | \
+            while read -r asset; do
+              if [[ "$asset" == *.sig ]]; then
+                gh release delete-asset "$GITHUB_REF_NAME" "$asset" --repo "$GITHUB_REPOSITORY" --yes
+              fi
+            done

@@ -1,6 +1,6 @@
 {
-  "version": "0.13.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.13.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.13.0/IDK.Nova_0.13.0_x64-setup.exe",
-  "notes": ["Ollama download progress now shows downloaded and total megabytes alongside percentage", "Work agent approval moved into the message composer with Ask, Approve for me, and Full access modes", "Nova now always starts with one clean normal chat and prevents duplicate empty chats", "Empty chats no longer appear in navigation or portable Work history", "Main temporary chats are private, clearly styled, and never saved", "Chat switching now uses the same soft blur transition as Workspace"]
+  "version": "0.13.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.13.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.13.1/IDK.Nova_0.13.1_x64-setup.exe",
+  "notes": ["Full access is now orange even before selection so its elevated risk is immediately visible", "A universal macOS DMG now supports both Apple Silicon and Intel Macs", "Nova Work, local folder access, Workspace, and in-app updates are enabled in the macOS build", "Desktop releases now generate one multi-platform updater manifest for Windows and macOS", "The community macOS build uses the Tauri-recommended ad-hoc signature until Apple notarization credentials are configured"]
 }
