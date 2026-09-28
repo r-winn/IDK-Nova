@@ -74,6 +74,7 @@ import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { discoverModels, streamCompletion, testModel } from "./lib/ai";
 import {
   loadConfig,
@@ -287,6 +288,7 @@ export default function App() {
   const [updateState, setUpdateState] = useState<
     "idle" | "checking" | "latest" | "available" | "error"
   >("idle");
+  const [installedVersion, setInstalledVersion] = useState(APP_VERSION);
   const [updateInfo, setUpdateInfo] = useState<UpdateManifest | null>(null);
   const [nativeUpdate, setNativeUpdate] = useState<NativeUpdate | null>(null);
   const [downloadProgress, setDownloadProgress] =
@@ -345,6 +347,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedDark ? "dark" : "light";
   }, [resolvedDark]);
+  useEffect(() => {
+    if (!isDesktopApp()) return;
+    getVersion().then(setInstalledVersion).catch(() => setInstalledVersion(APP_VERSION));
+  }, []);
   useEffect(() => {
     saveChats(chats);
   }, [chats]);
@@ -1260,7 +1266,7 @@ export default function App() {
       const manifest: UpdateManifest = await response.json();
       setUpdateInfo(manifest);
       setUpdateState(
-        isNewerVersion(manifest.version, APP_VERSION) ? "available" : "latest",
+        isNewerVersion(manifest.version, installedVersion) ? "available" : "latest",
       );
     } catch (error) {
       setUpdateError(
@@ -2534,7 +2540,7 @@ export default function App() {
                       />
                     </div>
                     <span className="version-chip">
-                      Installed · {APP_VERSION}
+                      Installed · {installedVersion}
                     </span>
                     <h3>
                       {updateDownloaded
@@ -2657,7 +2663,7 @@ export default function App() {
                     <dl>
                       <div>
                         <dt>Version</dt>
-                        <dd>{APP_VERSION}</dd>
+                        <dd>{installedVersion}</dd>
                       </div>
                       <div>
                         <dt>Configuration</dt>

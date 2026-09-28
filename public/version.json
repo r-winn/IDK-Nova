@@ -1,6 +1,6 @@
 {
-  "version": "0.10.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.10.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.10.0/IDK.Nova_0.10.0_x64-setup.exe",
-  "notes": ["Nova Work introduces real desktop project workspaces backed by folders you explicitly choose", "Work chats are isolated from regular chat history and stay attached to their own project", "Nova builds a fast local file index and injects request-relevant source context into the selected AI provider", "Workspace access is read-only with traversal protection, size limits, secret-file exclusions, and ignored dependency/build folders", "Each workspace shows its local path, file count, chat history, and a one-click index refresh", "The web app explains why folder-powered Work requires the desktop security boundary"]
+  "version": "0.10.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.10.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.10.1/IDK.Nova_0.10.1_x64-setup.exe",
+  "notes": ["The Installed label now reads the version embedded in the running desktop application", "Update comparisons now use the actual installed package version instead of a stale display constant", "The About and Software Update sections always show the same installed version"]
 }
