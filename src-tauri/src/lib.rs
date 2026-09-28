@@ -57,6 +57,10 @@ struct WorkspaceScan { entries: Vec<WorkspaceEntry>, truncated: bool }
 #[serde(rename_all = "camelCase")]
 struct WorkspaceMatch { path: String, line: usize, preview: String }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PortableWorkspace { project_json: String, chats_json: String }
+
 fn ignored_name(name: &str) -> bool {
     matches!(name, ".git" | ".svn" | ".hg" | "node_modules" | "target" | "dist" | "build" | ".next" | ".cache" | "coverage")
         || matches!(name, ".env" | ".env.local" | ".env.production" | "id_rsa" | "id_ed25519")
@@ -157,6 +161,38 @@ async fn search_workspace(root_path: String, query: String) -> Result<Vec<Worksp
     }).await.map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+async fn initialize_workspace(root_path: String, project_json: String) -> Result<PortableWorkspace, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let nova_dir = root.join(".nova-work");
+        if fs::symlink_metadata(&nova_dir).map(|meta| meta.file_type().is_symlink()).unwrap_or(false) { return Err("The .nova-work path cannot be a symbolic link".into()); }
+        fs::create_dir_all(&nova_dir).map_err(|error| format!("Could not create portable workspace data: {error}"))?;
+        let project_path = nova_dir.join("project.json");
+        let chats_path = nova_dir.join("chats.json");
+        if !project_path.exists() { fs::write(&project_path, &project_json).map_err(|error| error.to_string())?; }
+        if !chats_path.exists() { fs::write(&chats_path, "[]\n").map_err(|error| error.to_string())?; }
+        let stored_project = fs::read_to_string(project_path).map_err(|error| error.to_string())?;
+        let stored_chats = fs::read_to_string(chats_path).map_err(|error| error.to_string())?;
+        Ok(PortableWorkspace { project_json: stored_project, chats_json: stored_chats })
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn save_workspace_history(root_path: String, chats_json: String, activity_json: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let nova_dir = root.join(".nova-work");
+        if fs::symlink_metadata(&nova_dir).map(|meta| meta.file_type().is_symlink()).unwrap_or(false) { return Err("The .nova-work path cannot be a symbolic link".into()); }
+        fs::create_dir_all(&nova_dir).map_err(|error| error.to_string())?;
+        let parsed: serde_json::Value = serde_json::from_str(&chats_json).map_err(|_| "Invalid workspace history".to_string())?;
+        if !parsed.is_array() { return Err("Invalid workspace history".into()); }
+        fs::write(nova_dir.join("chats.json"), format!("{}\n", serde_json::to_string_pretty(&parsed).map_err(|error| error.to_string())?)).map_err(|error| error.to_string())?;
+        fs::write(nova_dir.join("activity.json"), activity_json).map_err(|error| error.to_string())?;
+        Ok(())
+    }).await.map_err(|error| error.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -164,7 +200,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, scan_workspace, read_workspace_file, search_workspace])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, scan_workspace, read_workspace_file, search_workspace, initialize_workspace, save_workspace_history])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;

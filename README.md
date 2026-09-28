@@ -100,6 +100,8 @@ Nova Work is available in the desktop application because a normal website canno
 
 Work access is deliberately read-only in this release. Nova ignores dependency/build folders, hidden files, common secret files, symbolic links, binary files, files above the safety limit, and any path outside the selected folder. The entire project is never uploaded automatically: relevant context is sent only to the AI provider selected in Settings when you send a message. Choose a provider you trust before discussing private code.
 
+Nova creates a hidden `.nova-work` directory inside a folder after you explicitly attach it. It contains portable project identity, Work chat history, and a compact activity record. Copying the complete project folder to another computer and attaching it there restores that Work history. This is portable local state—not an undisclosed cloud sync service—and can be excluded from version control if you do not want chat history committed to a repository.
+
 ## Settings guide
 
 | Section | Purpose |

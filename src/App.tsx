@@ -133,11 +133,12 @@ type FolderDialog = { mode: "create" | "rename"; id?: string; name: string; colo
 type WorkspaceEntry = { path: string; name: string; kind: "file" | "directory"; size: number; modified: number };
 type WorkspaceScan = { entries: WorkspaceEntry[]; truncated: boolean };
 type WorkspaceMatch = { path: string; line: number; preview: string };
+type PortableWorkspace = { projectJson: string; chatsJson: string };
 type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
 type BrowserTab = {
   id: string;
-  kind: "home" | "browser" | "artifact" | "document" | "email" | "files" | "temporary" | "image";
+  kind: "home" | "browser" | "artifact" | "document" | "email" | "files" | "projectfiles" | "temporary" | "image";
   title: string;
   url: string;
   input: string;
@@ -156,6 +157,8 @@ type BrowserTab = {
   documentFont?: "sans" | "serif" | "mono";
   documentSize?: number;
   documentAlign?: "start" | "center" | "justify";
+  projectId?: string;
+  entries?: WorkspaceEntry[];
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
@@ -361,6 +364,24 @@ export default function App() {
     localStorage.setItem("idk-nova-workspaces", JSON.stringify(workspaces));
   }, [workspaces]);
   useEffect(() => {
+    if (!isDesktopApp()) return;
+    const timer = window.setTimeout(() => {
+      for (const workspace of workspaces) {
+        const projectChats = chats.filter((item) => item.workspaceId === workspace.id);
+        const activity = projectChats.flatMap((item) => item.messages.map((message, index) => ({
+          chatId: item.id, chatTitle: item.title, index, role: message.role,
+          createdAt: item.id + index, summary: message.content.slice(0, 180),
+        })));
+        invoke("save_workspace_history", {
+          rootPath: workspace.rootPath,
+          chatsJson: JSON.stringify(projectChats),
+          activityJson: JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), activity }, null, 2),
+        }).catch(() => undefined);
+      }
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [chats, workspaces]);
+  useEffect(() => {
     localStorage.setItem("idk-nova-browser-width", JSON.stringify(browserWidth));
   }, [browserWidth]);
   useEffect(() => {
@@ -538,12 +559,20 @@ export default function App() {
       const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: selected });
       const name = selected.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Workspace";
       const existing = workspaces.find((workspace) => workspace.rootPath === selected);
-      const project: WorkProject = existing || { id: `work-${Date.now()}`, name, rootPath: selected, createdAt: Date.now(), fileCount: scan.entries.filter((entry) => entry.kind === "file").length, truncated: scan.truncated };
+      const candidate: WorkProject = existing || { id: `work-${Date.now()}`, name, rootPath: selected, createdAt: Date.now(), fileCount: scan.entries.filter((entry) => entry.kind === "file").length, truncated: scan.truncated };
+      const portable = await invoke<PortableWorkspace>("initialize_workspace", { rootPath: selected, projectJson: JSON.stringify({ version: 1, ...candidate }, null, 2) });
+      let storedProject = candidate;
+      let storedChats: Chat[] = [];
+      try { storedProject = { ...candidate, ...JSON.parse(portable.projectJson), rootPath: selected, fileCount: candidate.fileCount, truncated: scan.truncated }; } catch { /* use the safe local candidate */ }
+      try { storedChats = (JSON.parse(portable.chatsJson) as Chat[]).filter((item) => item && typeof item.id === "number").map((item) => ({ ...item, workspaceId: storedProject.id, messages: Array.isArray(item.messages) ? item.messages.map((message) => ({ ...message, generating: false })) : [] })); } catch { /* empty portable history */ }
+      const project = storedProject;
       setWorkspaces((current) => existing ? current.map((item) => item.id === existing.id ? { ...item, fileCount: project.fileCount, truncated: scan.truncated } : item) : [...current, project]);
+      if (storedChats.length) setChats((current) => [...storedChats.filter((portableChat) => !current.some((item) => item.id === portableChat.id)), ...current]);
       setOpenWorkspaceId(project.id);
       setOpenFolderId(null);
       setWorkspacesOpen(false);
-      if (!chats.some((item) => item.workspaceId === project.id)) {
+      if (storedChats.length) setActive(storedChats[0].id);
+      else if (!chats.some((item) => item.workspaceId === project.id)) {
         const id = Date.now();
         setChats((current) => [{ id, title: "New work chat", time: "Today", messages: [], workspaceId: project.id }, ...current]);
         setActive(id);
@@ -758,9 +787,15 @@ export default function App() {
     setBrowserTabs((tabs) => [...tabs, { id, kind: "browser", title: "New tab", url: "", input: "", history: [], historyIndex: -1 }]);
     setActiveBrowserTabId(id);
   };
-  const addFilesTab = () => {
+  const addFilesTab = async () => {
     const id = `files-${Date.now()}`;
-    setBrowserTabs((tabs) => [...tabs, { id, kind: "files", title: "Files", url: "", input: "", history: [], historyIndex: -1 }]);
+    const project = workspaces.find((item) => item.id === chat.workspaceId);
+    if (project && isDesktopApp()) {
+      try {
+        const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath });
+        setBrowserTabs((tabs) => [...tabs, { id, kind: "projectfiles", title: project.name, projectId: project.id, entries: scan.entries, url: "", input: "", history: [], historyIndex: -1 }]);
+      } catch (error) { setToast(error instanceof Error ? error.message : String(error)); return; }
+    } else setBrowserTabs((tabs) => [...tabs, { id, kind: "files", title: "Files", url: "", input: "", history: [], historyIndex: -1 }]);
     setActiveBrowserTabId(id);
   };
   const addTemporaryChatTab = () => {
@@ -768,7 +803,7 @@ export default function App() {
     setBrowserTabs((tabs) => [...tabs, {
       id,
       kind: "temporary",
-      title: "Side chat",
+      title: "Temporary chat",
       url: "",
       input: "",
       history: [],
@@ -778,6 +813,22 @@ export default function App() {
       busy: false,
     }]);
     setActiveBrowserTabId(id);
+  };
+  const openTemporaryChat = () => {
+    const existing = browserTabs.find((tab) => tab.kind === "temporary");
+    if (existing) setActiveBrowserTabId(existing.id);
+    else addTemporaryChatTab();
+    setBrowserOpen(true);
+  };
+  const openProjectFile = async (tab: BrowserTab, entry: WorkspaceEntry) => {
+    if (entry.kind !== "file" || !tab.projectId) return;
+    const project = workspaces.find((item) => item.id === tab.projectId);
+    if (!project) return;
+    try {
+      const content = await invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath: entry.path });
+      const extension = entry.name.split(".").pop() || "text";
+      openArtifact(entry.name, extension, content);
+    } catch (error) { setToast(error instanceof Error ? error.message : String(error)); }
   };
   const updateWorkspaceTab = (id: string, changes: Partial<BrowserTab>) =>
     setBrowserTabs((tabs) => tabs.map((tab) => tab.id === id ? { ...tab, ...changes } : tab));
@@ -1000,14 +1051,15 @@ export default function App() {
         for (const relativePath of relevantPaths) {
           try {
             const content = await invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath });
-            const excerpt = content.slice(0, Math.max(0, 36_000 - budget));
+            const excerpt = content.slice(0, Math.max(0, 20_000 - budget));
             if (!excerpt) break;
             snippets.push(`--- ${relativePath} ---\n${excerpt}`);
             budget += excerpt.length;
-            if (budget >= 36_000) break;
+            if (budget >= 20_000) break;
           } catch { /* inaccessible or non-text files stay out of model context */ }
         }
-        workspaceContext = `You are working inside the local Nova Work project "${project.name}". Only reason about this project and never claim a file was changed unless the user applied a proposed change. The app grants read-only context for safety.\n\nPROJECT FILE INDEX:\n${scan.entries.slice(0, 700).map((entry) => `${entry.kind === "directory" ? "[dir]" : "[file]"} ${entry.path}`).join("\n")}\n\nRELEVANT FILE CONTENT:\n${snippets.join("\n\n") || "No matching text file was selected for this request."}`;
+        const projectMemory = chats.filter((item) => item.workspaceId === project.id && item.id !== chat.id).slice(0, 6).map((item) => `CHAT: ${item.title}\n${item.messages.slice(-4).map((message) => `${message.role.toUpperCase()}: ${message.content}`).join("\n")}`).join("\n\n").slice(0, 6_000);
+        workspaceContext = `You are working inside the local Nova Work project "${project.name}". Only reason about this project and never claim a file was changed unless the user applied a proposed change. The app grants read-only context for safety.\n\nPROJECT FILE INDEX:\n${scan.entries.slice(0, 400).map((entry) => `${entry.kind === "directory" ? "[dir]" : "[file]"} ${entry.path}`).join("\n")}\n\nRELEVANT FILE CONTENT:\n${snippets.join("\n\n") || "No matching text file was selected for this request."}\n\nPROJECT CHAT MEMORY:\n${projectMemory || "No earlier Work chats in this project."}`;
       }
       await streamCompletion(config, [...chat.messages, user], (token) =>
         setChats((items) =>
@@ -1615,7 +1667,7 @@ export default function App() {
           <Settings />
         </button>
       </aside>
-      <main>
+      <main className={chat.workspaceId ? "work-chat-main" : ""}>
         <header className="topbar">
           <div className="topbar-start">
             {!sidebar && (
@@ -1664,13 +1716,14 @@ export default function App() {
                 </div>
               )}
             </div>
+            {chat.workspaceId && <span className="work-mode-pill"><BriefcaseBusiness /><span>{workspaces.find((item) => item.id === chat.workspaceId)?.name || "Work"}</span></span>}
           </div>
           <div className="chat-actions">
             <span className="tooltip">
-              <button className="icon-button" disabled>
+              <button className="icon-button" aria-label="Temporary chat" onClick={openTemporaryChat}>
                 <Clock3 />
               </button>
-              <span>Temporary chat · Coming soon</span>
+              <span>Start a temporary chat</span>
             </span>
             <button className={`icon-button workspace-button ${browserOpen ? "active" : ""}`} aria-label="Workspace" title="Workspace" onClick={() => {
               if (browserOpen) {
@@ -1692,7 +1745,7 @@ export default function App() {
           </div>
         </header>
         <div
-          className="conversation"
+          className={`conversation ${chat.workspaceId ? "work-conversation" : ""}`}
           ref={conversationRef}
           onWheel={(event) => { if (event.deltaY < 0) stickToBottomRef.current = false; }}
           onScroll={(event) => {
@@ -1707,7 +1760,7 @@ export default function App() {
               <div className="welcome-mark">
                 <BrandMark config={config} />
               </div>
-              <span className="eyebrow">{chat.workspaceId ? "LOCAL PROJECT · WORK MODE" : "PRIVATE AI WORKSPACE"}</span>
+              <span className={`eyebrow ${chat.workspaceId ? "work-chat-badge" : ""}`}>{chat.workspaceId ? "LOCAL PROJECT · WORK MODE" : "PRIVATE AI WORKSPACE"}</span>
               <h1>{chat.workspaceId ? `Work on ${workspaces.find((item) => item.id === chat.workspaceId)?.name || "this project"}` : "How can I help?"}</h1>
               <p>
                 {chat.workspaceId ? "Nova can inspect relevant project files for this chat. Files stay on this device and access is read-only." : "Explore ideas, work with files, and talk to the models you trust."}
@@ -2712,7 +2765,7 @@ export default function App() {
             <div>
               {browserTabs.map((tab) => (
                 <button className={tab.id === activeBrowserTabId ? "active" : ""} key={tab.id} onClick={() => setActiveBrowserTabId(tab.id)} title={tab.title}>
-                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "document" ? <FileText /> : tab.kind === "email" ? <Mail /> : tab.kind === "files" ? <Folder /> : tab.kind === "temporary" ? <MessageSquare /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
+                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "document" ? <FileText /> : tab.kind === "email" ? <Mail /> : ["files", "projectfiles"].includes(tab.kind) ? <Folder /> : tab.kind === "temporary" ? <Clock3 /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
                   <span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
                 </button>
               ))}
@@ -2773,7 +2826,7 @@ export default function App() {
               <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: 1 })}>Reset</button>
               <button onClick={downloadWorkspaceImage}><Download />Download</button>
             </div>
-          ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
+          ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "projectfiles" ? `${activeBrowserTab.entries?.filter((entry) => entry.kind === "file").length || 0} project files · read-only` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
           <div className="browser-surface" ref={browserSurfaceRef}>
             <div
               className={`workspace-view workspace-view-${activeBrowserTab?.kind || "home"}`}
@@ -2844,6 +2897,11 @@ export default function App() {
                 ))}</div> : <div className="workspace-files-empty"><Folder /><h3>No generated files yet</h3><p>Ask your model to create code. Each code block will be collected here automatically.</p></div>}
                 {files.length > 0 && <section className="workspace-attachments"><small>Current attachments</small>{files.map((file) => <article key={file.name}><FileText /><span>{file.name}</span></article>)}</section>}
               </div>
+            ) : activeBrowserTab?.kind === "projectfiles" ? (
+              <div className="workspace-files project-files">
+                <header><div><span className="work-source-badge"><BriefcaseBusiness />Work files</span><h3>{activeBrowserTab.title}</h3><p>Select a supported source or text file to inspect it in Workspace.</p></div><button onClick={async () => { const project = workspaces.find((item) => item.id === activeBrowserTab.projectId); if (!project) return; const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath }); updateWorkspaceTab(activeBrowserTab.id, { entries: scan.entries }); }}><RefreshCw />Refresh</button></header>
+                <div className="project-file-list">{(activeBrowserTab.entries || []).map((entry) => <button className={entry.kind} key={entry.path} onClick={() => openProjectFile(activeBrowserTab, entry)} disabled={entry.kind === "directory"} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <FileText />}<span><b>{entry.name}</b><small>{entry.path}{entry.kind === "file" ? ` · ${Math.max(1, Math.round(entry.size / 1024))} KB` : ""}</small></span>{entry.kind === "file" && <ArrowRight />}</button>)}</div>
+              </div>
             ) : activeBrowserTab?.kind === "temporary" ? (
               <div className="workspace-sidechat">
                 <div className="sidechat-conversation">
@@ -2908,9 +2966,9 @@ export default function App() {
                 <h2>What would you like to open?</h2>
                 <p>Everything lives in one unified, focused workspace.</p>
                 <div className="workspace-launchers">
-                  <button onClick={addTemporaryChatTab}><MessageSquare /><span><b>Side chat</b><small>Temporary and never saved</small></span><ArrowRight /></button>
+                  <button onClick={addTemporaryChatTab}><Clock3 /><span><b>Temporary chat</b><small>Private session, never added to history</small></span><ArrowRight /></button>
                   <button onClick={addBrowserTab}><Globe2 /><span><b>Browser</b><small>Research without leaving Nova</small></span><ArrowRight /></button>
-                  <button onClick={addFilesTab}><Folder /><span><b>Files</b><small>Work with documents and images</small></span><ArrowRight /></button>
+                  <button onClick={addFilesTab}><Folder /><span><b>{chat.workspaceId ? "Work files" : "Files"}</b><small>{chat.workspaceId ? "Inspect files in this project folder" : "Work with documents and images"}</small></span><ArrowRight /></button>
                 </div>
               </div>
             )}
