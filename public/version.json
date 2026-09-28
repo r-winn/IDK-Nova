@@ -1,6 +1,6 @@
 {
-  "version": "0.11.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.11.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.11.1/IDK.Nova_0.11.1_x64-setup.exe",
-  "notes": ["Workspaces can now be removed from the sidebar with an in-app confirmation", "Removing a workspace also removes its Work chats from Nova", "The selected project folder and all user files remain untouched", "The confirmation clearly displays the protected local path", "Workspace confirmation dialogs correctly appear above native browser content"]
+  "version": "0.12.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.12.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.12.0/IDK.Nova_0.12.0_x64-setup.exe",
+  "notes": ["Nova Agent Runtime now supports standard OpenAI-compatible multi-step tool calling", "Work agents can list and read project files, open web searches, and navigate URLs", "Automatic mode can create or update files inside the selected Work folder", "Existing files receive timestamped backups in .nova-work before an agent change", "Agent runs stop after 12 tool turns to prevent loops", "Providers without tool support automatically fall back to normal Work chat", "Workspace Agent access can be set to Read only, Ask before changes, or Automatic in this folder"]
 }

@@ -1409,6 +1409,11 @@ body.resizing-browser iframe { pointer-events: none; }
   word-break: break-all;
 }
 .work-path svg { width: 14px; flex: none; color: var(--muted); }
+.agent-access { min-height: 37px; margin: -3px 7px 10px; padding: 0 8px; border-radius: 9px; background: var(--hover); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.agent-access > span { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.agent-access svg { width: 13px; }
+.agent-access b { color: var(--text); font-size: 9px; }
+.agent-access select { min-width: 0; max-width: 132px; height: 27px; border: 0; border-radius: 7px; outline: 0; background: var(--surface); color: var(--muted); font: inherit; font-size: 8px; }
 .spin { animation: nova-spin .9s linear infinite; }
 @keyframes nova-spin { to { transform: rotate(360deg); } }
 .folder-hero svg { width: 20px; }

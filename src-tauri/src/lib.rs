@@ -91,6 +91,23 @@ fn safe_target(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
     Ok(target)
 }
 
+fn safe_write_target(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(relative_path);
+    if relative.as_os_str().is_empty() || relative.is_absolute() || relative.components().any(|part| matches!(part, Component::ParentDir | Component::RootDir | Component::Prefix(_))) {
+        return Err("Invalid workspace path".into());
+    }
+    if relative.components().any(|part| part.as_os_str().to_string_lossy().starts_with('.')) { return Err("Agent cannot write hidden workspace paths".into()); }
+    let mut cursor = root.to_path_buf();
+    let parts: Vec<_> = relative.components().collect();
+    for part in parts.iter().take(parts.len().saturating_sub(1)) {
+        cursor.push(part.as_os_str());
+        if cursor.exists() && fs::symlink_metadata(&cursor).map(|meta| meta.file_type().is_symlink()).unwrap_or(true) { return Err("Agent cannot write through symbolic links".into()); }
+    }
+    let target = root.join(relative);
+    if target.exists() && fs::symlink_metadata(&target).map(|meta| meta.file_type().is_symlink()).unwrap_or(true) { return Err("Agent cannot overwrite a symbolic link".into()); }
+    Ok(target)
+}
+
 fn walk_workspace(root: &Path, current: &Path, depth: usize, output: &mut Vec<WorkspaceEntry>, truncated: &mut bool) {
     if depth > 10 || output.len() >= 2500 { *truncated = true; return; }
     let Ok(read_dir) = fs::read_dir(current) else { return };
@@ -193,6 +210,25 @@ async fn save_workspace_history(root_path: String, chats_json: String, activity_
     }).await.map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+async fn write_workspace_file(root_path: String, relative_path: String, content: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if content.len() > 2_000_000 { return Err("Agent output exceeds the 2 MB file safety limit".into()); }
+        let root = canonical_root(&root_path)?;
+        let target = safe_write_target(&root, &relative_path)?;
+        if !text_file(&target) { return Err("Agent can only write supported text and source-code files".into()); }
+        if let Some(parent) = target.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+        if target.exists() {
+            let stamp = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map(|value| value.as_millis()).unwrap_or(0);
+            let backup = root.join(".nova-work").join("backups").join(stamp.to_string()).join(&relative_path);
+            if let Some(parent) = backup.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+            fs::copy(&target, backup).map_err(|error| format!("Could not back up the existing file: {error}"))?;
+        }
+        fs::write(&target, content).map_err(|error| format!("Could not write workspace file: {error}"))?;
+        Ok(relative_path)
+    }).await.map_err(|error| error.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -200,7 +236,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, scan_workspace, read_workspace_file, search_workspace, initialize_workspace, save_workspace_history])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, scan_workspace, read_workspace_file, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;

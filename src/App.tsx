@@ -75,7 +75,7 @@ import { Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
-import { discoverModels, streamCompletion, testModel } from "./lib/ai";
+import { AgentTool, AgentToolCall, discoverModels, runAgentCompletion, streamCompletion, testModel } from "./lib/ai";
 import {
   loadConfig,
   loadManagedConfig,
@@ -112,6 +112,13 @@ import { ThemeSelector } from "./components/ThemeSelector";
 
 const starterChats: Chat[] = [
   { id: 1, title: "Welcome to Nova", time: "Today", messages: [] },
+];
+const agentTools: AgentTool[] = [
+  { type: "function", function: { name: "list_files", description: "List files and directories in the current Nova Work project.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "read_file", description: "Read a supported text or source file inside the current Work project.", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"], additionalProperties: false } } },
+  { type: "function", function: { name: "write_file", description: "Create or replace a text/source file inside the current Work project. Existing files are backed up automatically.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"], additionalProperties: false } } },
+  { type: "function", function: { name: "web_search", description: "Open a web search in Nova Workspace Browser.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false } } },
+  { type: "function", function: { name: "open_url", description: "Open an HTTP or HTTPS URL in Nova Workspace Browser.", parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"], additionalProperties: false } } },
 ];
 const settingMeta = {
   general: ["General", "Personalize Nova and choose how it looks."],
@@ -1071,9 +1078,9 @@ export default function App() {
           } catch { /* inaccessible or non-text files stay out of model context */ }
         }
         const projectMemory = chats.filter((item) => item.workspaceId === project.id && item.id !== chat.id).slice(0, 6).map((item) => `CHAT: ${item.title}\n${item.messages.slice(-4).map((message) => `${message.role.toUpperCase()}: ${message.content}`).join("\n")}`).join("\n\n").slice(0, 6_000);
-        workspaceContext = `You are working inside the local Nova Work project "${project.name}". Only reason about this project and never claim a file was changed unless the user applied a proposed change. The app grants read-only context for safety.\n\nPROJECT FILE INDEX:\n${scan.entries.slice(0, 400).map((entry) => `${entry.kind === "directory" ? "[dir]" : "[file]"} ${entry.path}`).join("\n")}\n\nRELEVANT FILE CONTENT:\n${snippets.join("\n\n") || "No matching text file was selected for this request."}\n\nPROJECT CHAT MEMORY:\n${projectMemory || "No earlier Work chats in this project."}`;
+        workspaceContext = `You are working inside the local Nova Work project "${project.name}". Only reason about this project and never claim a file was changed unless a Nova tool confirms it. Workspace agent access is "${project.agentAccess || "ask"}".\n\nPROJECT FILE INDEX:\n${scan.entries.slice(0, 400).map((entry) => `${entry.kind === "directory" ? "[dir]" : "[file]"} ${entry.path}`).join("\n")}\n\nRELEVANT FILE CONTENT:\n${snippets.join("\n\n") || "No matching text file was selected for this request."}\n\nPROJECT CHAT MEMORY:\n${projectMemory || "No earlier Work chats in this project."}`;
       }
-      await streamCompletion(config, [...chat.messages, user], (token) =>
+      const appendToken = (token: string) =>
         setChats((items) =>
           items.map((item) =>
             item.id === active
@@ -1087,8 +1094,37 @@ export default function App() {
                 }
               : item,
           ),
-        ), controller.signal, workspaceContext,
-      );
+        );
+      if (project && isDesktopApp()) {
+        const executeAgentTool = async (call: AgentToolCall) => {
+          let args: Record<string, string> = {};
+          try { args = JSON.parse(call.function.arguments || "{}"); } catch { throw new Error("Tool arguments are not valid JSON"); }
+          if (call.function.name === "list_files") {
+            const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath });
+            return { ok: true, files: scan.entries.slice(0, 1000) };
+          }
+          if (call.function.name === "read_file") return { ok: true, path: args.path, content: await invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath: args.path }) };
+          if (call.function.name === "write_file") {
+            if ((project.agentAccess || "ask") !== "auto") return { ok: false, requiresConfirmation: true, message: "Automatic file changes are disabled for this workspace. Ask the user to enable Automatic access." };
+            const path = await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath: args.path, content: args.content || "" });
+            return { ok: true, path, backupCreated: true };
+          }
+          if (call.function.name === "web_search") { navigateBrowser(args.query || "", true); return { ok: true, message: "Search opened in Nova Workspace Browser" }; }
+          if (call.function.name === "open_url") {
+            const url = new URL(args.url); if (!["http:", "https:"].includes(url.protocol)) throw new Error("Only HTTP and HTTPS URLs are allowed");
+            navigateBrowser(url.toString(), true); return { ok: true, url: url.toString() };
+          }
+          throw new Error(`Unknown tool: ${call.function.name}`);
+        };
+        try {
+          await runAgentCompletion(config, [...chat.messages, user], `${workspaceContext}\n\nYou may use Nova tools. Never perform purchases, authentication, form submission, deletion, or access outside the project.`, agentTools, executeAgentTool, (step) => setToast(`Agent · ${step.replaceAll("_", " ")}`), appendToken, controller.signal);
+        } catch (agentError) {
+          const detail = agentError instanceof Error ? agentError.message : String(agentError);
+          if (!/400|tools|tool_choice|tool call/i.test(detail)) throw agentError;
+          setToast("This provider does not support Agent tools yet · using normal Work chat");
+          await streamCompletion(config, [...chat.messages, user], appendToken, controller.signal, workspaceContext);
+        }
+      } else await streamCompletion(config, [...chat.messages, user], appendToken, controller.signal, workspaceContext);
     } catch (error) {
       if (controller.signal.aborted) {
         setChats((items) => items.map((item) => item.id === active ? {
@@ -1662,6 +1698,7 @@ export default function App() {
                   <div className="folder-view-head"><button className="folder-back" onClick={() => setOpenWorkspaceId(null)}><ArrowRight /><span>Back</span></button><div className="work-head-actions"><button title="Refresh workspace" onClick={async () => { try { setWorkspaceLoading(true); const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: activeWorkspace.rootPath }); setWorkspaces((items) => items.map((item) => item.id === activeWorkspace.id ? { ...item, fileCount: scan.entries.filter((entry) => entry.kind === "file").length, truncated: scan.truncated } : item)); setToast("Workspace index refreshed"); } catch (error) { setToast(String(error)); } finally { setWorkspaceLoading(false); } }}><RefreshCw className={workspaceLoading ? "spin" : ""} /></button><button title="Remove workspace" onClick={() => setWorkspaceDelete(activeWorkspace)}><MoreHorizontal /></button></div></div>
                   <div className="folder-hero work-hero"><span><BriefcaseBusiness /></span><div><b>{activeWorkspace.name}</b><small>{activeWorkspace.fileCount} files · Local access</small></div></div>
                   <div className="work-path" title={activeWorkspace.rootPath}><ShieldCheck />{activeWorkspace.rootPath}</div>
+                  <label className="agent-access"><span><Workflow /><b>Agent access</b></span><select value={activeWorkspace.agentAccess || "ask"} onChange={(event) => setWorkspaces((items) => items.map((item) => item.id === activeWorkspace.id ? { ...item, agentAccess: event.target.value as WorkProject["agentAccess"] } : item))}><option value="read">Read only</option><option value="ask">Ask before changes</option><option value="auto">Automatic in this folder</option></select></label>
                   <button className="folder-new-chat" onClick={freshInWorkspace}><Plus />New work chat</button>
                   <div className="history folder-history">{renderChatRows(workspaceChats)}{!workspaceChats.length && <div className="folder-empty"><BriefcaseBusiness /><b>No work chats yet</b><span>Start a chat with project-aware context.</span></div>}</div>
                 </>;

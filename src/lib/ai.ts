@@ -55,3 +55,45 @@ export async function streamCompletion(config: Config, messages: Message[], onTo
   const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = '';
   while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { const raw = line.replace(/^data:\s*/, '').trim(); if (!raw || raw === '[DONE]') continue; try { onToken(JSON.parse(raw).choices?.[0]?.delta?.content || ''); } catch { /* partial SSE */ } } }
 }
+
+export type AgentTool = { type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } };
+export type AgentToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
+
+export async function runAgentCompletion(
+  config: Config,
+  messages: Message[],
+  systemContext: string,
+  tools: AgentTool[],
+  execute: (call: AgentToolCall) => Promise<unknown>,
+  onStep: (label: string) => void,
+  onToken: (token: string) => void,
+  signal?: AbortSignal,
+) {
+  const provider = getActiveProvider(config);
+  if (!provider || !config.activeModel) throw new Error('Connect an agent-capable model first');
+  const conversation: any[] = [
+    { role: 'system', content: systemContext },
+    ...messages.map((message) => ({ role: message.role, content: `${message.quote ? `Replying to this excerpt:\n"${message.quote}"\n\n` : ''}${message.content}` })),
+  ];
+  for (let turn = 0; turn < 12; turn += 1) {
+    const response = await request(endpoint(provider, '/chat/completions'), {
+      method: 'POST', headers: headers(provider), signal,
+      body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: false, messages: conversation, tools, tool_choice: 'auto' }),
+    });
+    if (!response.ok) throw new Error(`Agent provider returned ${response.status}: ${await response.text()}`);
+    const payload = await response.json();
+    const assistant = payload.choices?.[0]?.message;
+    if (!assistant) throw new Error('Agent provider returned an invalid completion');
+    conversation.push({ role: 'assistant', content: assistant.content ?? null, ...(assistant.tool_calls ? { tool_calls: assistant.tool_calls } : {}) });
+    const calls: AgentToolCall[] = Array.isArray(assistant.tool_calls) ? assistant.tool_calls : [];
+    if (!calls.length) { onToken(assistant.content || 'Task complete.'); return; }
+    for (const call of calls) {
+      onStep(call.function.name);
+      let result: unknown;
+      try { result = await execute(call); }
+      catch (error) { result = { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+      conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+    }
+  }
+  throw new Error('Agent stopped after 12 tool steps to prevent an infinite loop');
+}
