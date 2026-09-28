@@ -1,6 +1,6 @@
 {
-  "version": "0.12.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.12.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.12.1/IDK.Nova_0.12.1_x64-setup.exe",
-  "notes": ["Nova now detects whether Ollama is installed before importing a GGUF model", "Missing Ollama is explained inside Models settings instead of appearing only as an import error", "Windows users can download and install the official signed Ollama runtime without leaving Nova", "Download percentage and installation phases are displayed live", "Nova verifies the Ollama Authenticode signature before installation", "A pending GGUF import resumes automatically after Ollama is ready", "Nova also detects Ollama in its standard Windows installation folder when PATH has not refreshed"]
+  "version": "0.12.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.12.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.12.2/IDK.Nova_0.12.2_x64-setup.exe",
+  "notes": ["Ollama installation now resolves the latest official OllamaSetup.exe through the GitHub Releases API", "GitHub is attempted before ollama.com for networks where the Ollama download domain returns 403", "The official ollama.com installer remains available as an automatic fallback", "Download requests now include explicit GitHub API and application headers", "Authenticode verification is still required before Nova runs the downloaded installer"]
 }

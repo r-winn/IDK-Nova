@@ -77,8 +77,23 @@ async fn install_ollama(on_event: Channel<OllamaInstallEvent>) -> Result<(), Str
     {
         if ollama_executable().is_some() { return Ok(()); }
         on_event.send(OllamaInstallEvent::Status { phase: "downloading".into(), message: "Downloading the official Ollama installer".into() }).map_err(|error| error.to_string())?;
-        let response = reqwest::get("https://ollama.com/download/OllamaSetup.exe").await.map_err(|error| format!("Could not download Ollama: {error}"))?;
-        if !response.status().is_success() { return Err(format!("Ollama download returned {}", response.status())); }
+        let client = reqwest::Client::builder().user_agent("IDK-Nova/0.12 (+https://github.com/r-winn/IDK-Nova)").build().map_err(|error| error.to_string())?;
+        let github_url = client.get("https://api.github.com/repos/ollama/ollama/releases/latest")
+            .header("Accept", "application/vnd.github+json").send().await.ok()
+            .and_then(|response| if response.status().is_success() { Some(response) } else { None });
+        let github_url = if let Some(response) = github_url {
+            response.json::<serde_json::Value>().await.ok().and_then(|payload| payload.get("assets")?.as_array()?.iter().find(|asset| asset.get("name").and_then(|name| name.as_str()) == Some("OllamaSetup.exe"))?.get("browser_download_url")?.as_str().map(str::to_string))
+        } else { None };
+        let mut last_error = String::new();
+        let mut response = None;
+        for url in github_url.into_iter().chain(std::iter::once("https://ollama.com/download/OllamaSetup.exe".to_string())) {
+            match client.get(&url).header("Accept", "application/octet-stream").send().await {
+                Ok(candidate) if candidate.status().is_success() => { response = Some(candidate); break; }
+                Ok(candidate) => last_error = format!("{} returned {}", url, candidate.status()),
+                Err(error) => last_error = format!("{}: {}", url, error),
+            }
+        }
+        let response = response.ok_or_else(|| format!("Could not download Ollama from GitHub or ollama.com. {last_error}"))?;
         let total = response.content_length().unwrap_or(0);
         let installer = std::env::temp_dir().join("Nova-OllamaSetup.exe");
         let mut file = fs::File::create(&installer).map_err(|error| error.to_string())?;
