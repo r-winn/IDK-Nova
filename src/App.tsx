@@ -1,6 +1,7 @@
 import {
   ChangeEvent,
   CSSProperties,
+  Fragment,
   KeyboardEvent,
   useEffect,
   useMemo,
@@ -146,6 +147,7 @@ type BrowserTab = {
   imageUrl?: string;
   imageZoom?: number;
   subject?: string;
+  startedAt?: number;
   documentFont?: "sans" | "serif" | "mono";
   documentSize?: number;
   documentAlign?: "start" | "center" | "justify";
@@ -195,9 +197,11 @@ const detectDocumentArtifact = (value: string): DocumentArtifact | null => {
   const candidate = value.slice(bodyStart, bodyEnd).trim();
   const after = secondSeparator ? value.slice((secondSeparator.index || 0) + secondSeparator[0].length).trim() : "";
   const subjectMatch = candidate.match(/^(?:\*\*)?(?:موضوع|subject)\s*:\s*(?:\*\*)?(.+?)(?:\*\*)?\s*$/im);
-  const looksLikeEmail = Boolean(subjectMatch) || /(^|\n)(سلام|درود|dear|hello)[،,!\s]/i.test(candidate) && /(^|\n)(با تشکر|با احترام|ارادتمند|sincerely|regards|best)[،,!\s]/i.test(candidate);
-  const documentHint = `${before}\n${candidate.slice(0, 240)}`;
-  const looksLikeDocument = candidate.length >= 180 && (separators.length > 0 || /مقاله|گزارش|نامه|article|report|letter|proposal|طرح|چک.?لیست/i.test(documentHint));
+  const emailRequested = /ایمیل|پست الکترونیک|email/i.test(`${before}\n${candidate.slice(0, 180)}`);
+  const looksLikeEmail = Boolean(subjectMatch) || (emailRequested && candidate.length >= 80) || /(^|\n)(سلام|درود|dear|hello)[،,!\s]/i.test(candidate) && /(^|\n)(با تشکر|با احترام|ارادتمند|sincerely|regards|best)[،,!\s]/i.test(candidate);
+  const firstHeadingText = candidate.match(/^#{1,3}\s+(.+)$/m)?.[1] || "";
+  const documentSignal = `${before}\n${firstHeadingText}`;
+  const looksLikeDocument = candidate.length >= 180 && /مقاله|گزارش|نامه|article|report|letter|proposal|طرح پیشنهادی|پیش.?نویس|چک.?لیست محتوا/i.test(documentSignal);
   if (!looksLikeEmail && !looksLikeDocument) return null;
   const subject = subjectMatch?.[1]?.replace(/\*\*/g, "").trim() || "";
   const body = subjectMatch ? candidate.replace(subjectMatch[0], "").trim() : candidate;
@@ -235,6 +239,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [responseElapsedMs, setResponseElapsedMs] = useState(0);
+  const [workspaceClock, setWorkspaceClock] = useState(Date.now());
   const [settingsOpen, setSettingsOpen] = useState(() =>
     new URLSearchParams(location.search).has("settings"),
   );
@@ -285,6 +290,7 @@ export default function App() {
     conversationRef = useRef<HTMLDivElement>(null),
     stickToBottomRef = useRef(true),
     responseStartedRef = useRef(0),
+    configExportRef = useRef(0),
     configFileRef = useRef<HTMLInputElement>(null),
     logoFileRef = useRef<HTMLInputElement>(null),
     browserSurfaceRef = useRef<HTMLDivElement>(null),
@@ -363,7 +369,7 @@ export default function App() {
       if (cancelled || !browserSurfaceRef.current) return;
       const rect = browserSurfaceRef.current.getBoundingClientRect();
       const width = Math.max(1, rect.width);
-      const height = Math.max(1, rect.height - 34);
+      const height = Math.max(1, rect.height);
       let entry = views.get(activeBrowserTabId);
       if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
         await entry.webview.close().catch(() => undefined);
@@ -401,7 +407,7 @@ export default function App() {
       if (!entry) return;
       const rect = surface.getBoundingClientRect();
       entry.webview.setPosition(new LogicalPosition(rect.left, rect.top)).catch(() => undefined);
-      entry.webview.setSize(new LogicalSize(Math.max(1, rect.width), Math.max(1, rect.height - 34))).catch(() => undefined);
+      entry.webview.setSize(new LogicalSize(Math.max(1, rect.width), Math.max(1, rect.height))).catch(() => undefined);
     });
     observer.observe(surface);
     return () => observer.disconnect();
@@ -431,6 +437,11 @@ export default function App() {
     const timer = window.setInterval(updateElapsed, 100);
     return () => window.clearInterval(timer);
   }, [busy]);
+  useEffect(() => {
+    if (!browserTabs.some((tab) => tab.kind === "temporary" && tab.busy)) return;
+    const timer = window.setInterval(() => setWorkspaceClock(Date.now()), 100);
+    return () => window.clearInterval(timer);
+  }, [browserTabs.some((tab) => tab.kind === "temporary" && tab.busy)]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 2400);
@@ -737,10 +748,12 @@ export default function App() {
     }
     const user: Message = { role: "user", content: tab.draft.trim() };
     const conversation = [...(tab.messages || []), user];
+    const startedAt = Date.now();
     updateWorkspaceTab(tab.id, {
       draft: "",
       busy: true,
-      messages: [...conversation, { role: "assistant", content: "" }],
+      startedAt,
+      messages: [...conversation, { role: "assistant", content: "", generating: true }],
     });
     const controller = new AbortController();
     abortRef.current = controller;
@@ -767,7 +780,13 @@ export default function App() {
       }));
     } finally {
       abortRef.current = null;
-      updateWorkspaceTab(tab.id, { busy: false });
+      setBrowserTabs((tabs) => tabs.map((item) => {
+        if (item.id !== tab.id) return item;
+        const messages = [...(item.messages || [])];
+        const last = messages.length - 1;
+        if (last >= 0 && messages[last].role === "assistant") messages[last] = { ...messages[last], generating: false, durationMs: Date.now() - startedAt };
+        return { ...item, messages, busy: false, startedAt: undefined };
+      }));
     }
   };
   const closeBrowserTab = (id: string) => {
@@ -1242,6 +1261,11 @@ export default function App() {
     event.target.value = "";
   };
   const exportConfig = () => {
+    if (Date.now() - configExportRef.current < 1000) {
+      setToast("Configuration download already started");
+      return;
+    }
+    configExportRef.current = Date.now();
     const safe = {
       ...draftConfig,
       providers: draftConfig.providers.map((provider) => ({
@@ -1256,7 +1280,8 @@ export default function App() {
     );
     link.download = "idk-nova.config.json";
     link.click();
-    URL.revokeObjectURL(link.href);
+    window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    setToast("Configuration downloaded to your Downloads folder");
   };
   const uploadLogo = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1274,12 +1299,9 @@ export default function App() {
     event.target.value = "";
   };
   const saveSettings = () => {
-    if (!draftConfig.providers.length) {
-      setToast("Add at least one provider");
-      return;
-    }
-    setConfig(draftConfig);
-    saveConfig(draftConfig);
+    const next = draftConfig.providers.length ? draftConfig : { ...draftConfig, activeProviderId: "", activeModel: "" };
+    setConfig(next);
+    saveConfig(next);
     setSettingsOpen(false);
     setToast("Settings saved");
   };
@@ -1323,12 +1345,21 @@ export default function App() {
       ))}
     </section>
   ));
+  const renderInlineMarkdown = (value: string) => value.split(/(\*\*[^*\n]+\*\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<)]+)/g).map((piece, pieceIndex) => {
+    const bold = piece.match(/^\*\*(.+)\*\*$/);
+    if (bold) return <strong key={pieceIndex}>{bold[1]}</strong>;
+    const markdownLink = piece.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+    const target = markdownLink?.[2] || (/^https?:\/\//i.test(piece) ? piece : "");
+    return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target, true); }}>{markdownLink?.[1] || piece}</a> : piece;
+  });
   const renderProse = (value: string, key: string | number) => (
     <span className="prose-segment" key={key}>
-      {value.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<)]+)/g).map((piece, pieceIndex) => {
-        const markdownLink = piece.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
-        const target = markdownLink?.[2] || (/^https?:\/\//i.test(piece) ? piece : "");
-        return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target, true); }}>{markdownLink?.[1] || piece}</a> : piece;
+      {value.split("\n").map((line, lineIndex, lines) => {
+        const heading = line.match(/^(#{1,6})\s+(.+)$/);
+        return <Fragment key={lineIndex}>
+          {heading ? <strong className={`markdown-heading level-${Math.min(heading[1].length, 3)}`}>{renderInlineMarkdown(heading[2])}</strong> : renderInlineMarkdown(line)}
+          {lineIndex < lines.length - 1 && "\n"}
+        </Fragment>;
       })}
     </span>
   );
@@ -1367,7 +1398,7 @@ export default function App() {
               </div>
             </header>
             {document.subject && <div className="document-subject"><small>Subject</small><strong>{document.subject}</strong></div>}
-            <div className="document-body">{document.body}</div>
+            <div className="document-body">{renderProse(document.body, "document-body")}</div>
           </section>
           {document.after && renderProse(document.after, "after")}
         </div>;
@@ -1561,10 +1592,10 @@ export default function App() {
         <div
           className="conversation"
           ref={conversationRef}
-          onWheel={(event) => { if (event.deltaY < 0) { stickToBottomRef.current = false; setShowJumpToBottom(true); } }}
+          onWheel={(event) => { if (event.deltaY < 0) stickToBottomRef.current = false; }}
           onScroll={(event) => {
             const target = event.currentTarget;
-            const awayFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight >= 96;
+            const awayFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight >= 240;
             stickToBottomRef.current = !awayFromBottom;
             setShowJumpToBottom(awayFromBottom);
           }}
@@ -2685,7 +2716,7 @@ export default function App() {
                     onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { content: event.target.value })}
                   />
                 ) : (
-                  <article dir="auto"><header><FileText /><span><b>{activeBrowserTab.title}</b><small>{(activeBrowserTab.content || "").trim().split(/\s+/).filter(Boolean).length.toLocaleString()} words · Nova document</small></span></header><div style={{ fontFamily: activeBrowserTab.documentFont === "serif" ? "Georgia, 'Times New Roman', serif" : activeBrowserTab.documentFont === "mono" ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "ui-sans-serif, system-ui, sans-serif", fontSize: activeBrowserTab.documentSize || 14, textAlign: activeBrowserTab.documentAlign || "start" }}>{activeBrowserTab.content}</div></article>
+                  <article dir="auto"><header><FileText /><span><b>{activeBrowserTab.title}</b><small>{(activeBrowserTab.content || "").trim().split(/\s+/).filter(Boolean).length.toLocaleString()} words · Nova document</small></span></header><div style={{ fontFamily: activeBrowserTab.documentFont === "serif" ? "Georgia, 'Times New Roman', serif" : activeBrowserTab.documentFont === "mono" ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "ui-sans-serif, system-ui, sans-serif", fontSize: activeBrowserTab.documentSize || 14, textAlign: activeBrowserTab.documentAlign || "start" }}>{renderProse(activeBrowserTab.content || "", "workspace-document")}</div></article>
                 )}
               </div>
             ) : activeBrowserTab?.kind === "email" ? (
@@ -2727,10 +2758,11 @@ export default function App() {
                       <div className="message-body">
                         <div className="content">{message.content ? renderMessageContent(message) : <span className="typing"><i /><i /><i /></span>}</div>
                         {message.role === "assistant" && message.content && <div className="message-actions">
-                          <button onClick={() => copy(message.content)}><Copy />Copy</button>
-                          <button className={message.liked ? "selected" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTab.id ? { ...tab, messages: (tab.messages || []).map((item, itemIndex) => itemIndex === index ? { ...item, liked: !item.liked } : item) } : tab))}>
+                          <button disabled={message.generating} onClick={() => copy(message.content)}><Copy />Copy</button>
+                          <button disabled={message.generating} className={message.liked ? "selected" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTab.id ? { ...tab, messages: (tab.messages || []).map((item, itemIndex) => itemIndex === index ? { ...item, liked: !item.liked } : item) } : tab))}>
                             {message.liked ? <CheckCheck /> : <Check />}<span>Helpful</span>
                           </button>
+                          {(message.generating || message.durationMs !== undefined) && <span className={`response-time ${message.generating ? "live" : ""}`}><Clock3 />Response {formatDuration(message.generating ? Math.max(0, workspaceClock - (activeBrowserTab.startedAt || workspaceClock)) : (message.durationMs || 0))}</span>}
                         </div>}
                       </div>
                     </article>

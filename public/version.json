@@ -1,6 +1,6 @@
 {
-  "version": "0.9.20",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.20",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.20/IDK.Nova_0.9.20_x64-setup.exe",
-  "notes": ["The first horizontal separator now reliably splits assistant commentary from the actual document, even during incomplete streaming output", "Only the article or draft body enters the document artifact", "Document Workspace adds font family, font size, alignment, justification, word count, edit, preview, copy, and save controls", "Document titles are derived from markdown headings", "RTL and LTR editing and preview remain automatic"]
+  "version": "0.9.21",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.21",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.21/IDK.Nova_0.9.21_x64-setup.exe",
+  "notes": ["Document detection is now conservative and requires real article, report, letter, proposal, or draft signals", "Ordinary markdown headings and bold text render correctly without becoming documents", "Settings notifications always appear above the settings window", "Zero-provider configurations can be saved and closed normally", "Email detection is more reliable across streamed responses", "Temporary Chat now shows the same live and final response timer as the main chat", "The latest-response control appears only after meaningful scrolling and sits above the composer", "Windows configuration downloads show immediate feedback and ignore rapid duplicate clicks", "Workspace Browser content now reaches the bottom edge without a reserved gap"]
 }
