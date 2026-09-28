@@ -1502,6 +1502,26 @@ body.resizing-browser iframe { pointer-events: none; }
 .folder-choices button.color.selected { box-shadow: 0 0 0 2px var(--text); }
 .folder-dialog > div:last-child { align-items: center; }
 .folder-dialog > div:last-child .confirm-delete { margin-right: auto; background: transparent; color: var(--danger); }
+.ollama-installer { margin-top: 12px; padding: 14px; border-radius: 13px; background: color-mix(in srgb, #d58b32 9%, var(--hover)); }
+.ollama-installer-head,
+.ollama-ready { display: flex; align-items: flex-start; gap: 9px; }
+.ollama-installer-head > svg,
+.ollama-ready > svg { width: 17px; color: #b87528; }
+.ollama-installer-head > span,
+.ollama-ready > span { display: flex; flex-direction: column; }
+.ollama-installer-head b,
+.ollama-ready b { font-size: 10px; }
+.ollama-installer-head small,
+.ollama-ready small { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.ollama-installer > .primary-button { margin-top: 12px; }
+.ollama-source { display: block; margin-top: 8px; color: var(--faint); font-size: 8px; }
+.ollama-install-progress { margin-top: 12px; }
+.ollama-install-progress > div { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; }
+.ollama-install-progress > i { height: 5px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: var(--line); display: block; }
+.ollama-install-progress > i span { height: 100%; border-radius: inherit; background: var(--text); display: block; transition: width .2s ease; }
+.ollama-install-progress p { margin: 8px 0 0; color: var(--danger); font-size: 9px; }
+.ollama-ready { margin-top: 12px; padding: 11px; border-radius: 11px; background: color-mix(in srgb, #3da878 9%, var(--hover)); }
+.ollama-ready > svg { color: #2f9165; }
 .workspace-delete-dialog > p b { color: var(--text); }
 .workspace-delete-safety { width: 100%; margin: 4px 0 18px; padding: 11px; border-radius: 11px; background: color-mix(in srgb, #3ea477 9%, var(--hover)); color: var(--muted); display: flex; align-items: flex-start; gap: 9px; text-align: left; }
 .workspace-delete-safety > svg { width: 17px; color: #368d69; }

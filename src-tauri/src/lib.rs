@@ -1,6 +1,19 @@
 use serde::Serialize;
-use std::{fs, path::{Component, Path, PathBuf}, process::Command, time::UNIX_EPOCH};
+use futures_util::StreamExt;
+use std::{fs, io::Write, path::{Component, Path, PathBuf}, process::Command, time::UNIX_EPOCH};
 use tauri::Manager;
+use tauri::ipc::Channel;
+
+fn ollama_executable() -> Option<PathBuf> {
+    if Command::new("ollama").arg("--version").output().map(|output| output.status.success()).unwrap_or(false) { return Some(PathBuf::from("ollama")); }
+    #[cfg(windows)] {
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            let candidate = PathBuf::from(local).join("Programs").join("Ollama").join("ollama.exe");
+            if candidate.is_file() { return Some(candidate); }
+        }
+    }
+    None
+}
 
 #[tauri::command]
 async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_name: String) -> Result<String, String> {
@@ -29,7 +42,8 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_nam
         let model_file = models_dir.join(format!("{safe_name}.Modelfile"));
         let normalized = stored_model.to_string_lossy().replace('\\', "/").replace('"', "\\\"");
         fs::write(&model_file, format!("FROM \"{normalized}\"\n")).map_err(|error| format!("Could not prepare the local model: {error}"))?;
-        let mut command = Command::new("ollama");
+        let ollama = ollama_executable().ok_or_else(|| "OLLAMA_NOT_INSTALLED: Install Ollama before importing a GGUF model".to_string())?;
+        let mut command = Command::new(ollama);
         command.args(["create", &safe_name, "-f"]).arg(&model_file);
         #[cfg(windows)]
         {
@@ -43,6 +57,51 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_nam
         }
         Ok(safe_name)
     }).await.map_err(|error| error.to_string())?
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "event", content = "data", rename_all = "camelCase")]
+enum OllamaInstallEvent {
+    Status { phase: String, message: String },
+    Progress { downloaded: u64, total: u64 },
+}
+
+#[tauri::command]
+async fn ollama_status() -> Result<bool, String> { Ok(ollama_executable().is_some()) }
+
+#[tauri::command]
+async fn install_ollama(on_event: Channel<OllamaInstallEvent>) -> Result<(), String> {
+    #[cfg(not(windows))]
+    { let _ = on_event; return Err("The guided Ollama installer is currently available on Windows only".into()); }
+    #[cfg(windows)]
+    {
+        if ollama_executable().is_some() { return Ok(()); }
+        on_event.send(OllamaInstallEvent::Status { phase: "downloading".into(), message: "Downloading the official Ollama installer".into() }).map_err(|error| error.to_string())?;
+        let response = reqwest::get("https://ollama.com/download/OllamaSetup.exe").await.map_err(|error| format!("Could not download Ollama: {error}"))?;
+        if !response.status().is_success() { return Err(format!("Ollama download returned {}", response.status())); }
+        let total = response.content_length().unwrap_or(0);
+        let installer = std::env::temp_dir().join("Nova-OllamaSetup.exe");
+        let mut file = fs::File::create(&installer).map_err(|error| error.to_string())?;
+        let mut downloaded = 0u64;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.map_err(|error| format!("Ollama download interrupted: {error}"))?;
+            file.write_all(&bytes).map_err(|error| error.to_string())?;
+            downloaded += bytes.len() as u64;
+            on_event.send(OllamaInstallEvent::Progress { downloaded, total }).map_err(|error| error.to_string())?;
+        }
+        drop(file);
+        on_event.send(OllamaInstallEvent::Status { phase: "verifying".into(), message: "Verifying Ollama digital signature".into() }).map_err(|error| error.to_string())?;
+        let escaped = installer.to_string_lossy().replace('\'', "''");
+        let verify = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", &format!("(Get-AuthenticodeSignature -LiteralPath '{escaped}').Status")]).output().map_err(|error| error.to_string())?;
+        if String::from_utf8_lossy(&verify.stdout).trim() != "Valid" { let _ = fs::remove_file(&installer); return Err("Ollama installer signature verification failed".into()); }
+        on_event.send(OllamaInstallEvent::Status { phase: "installing".into(), message: "Installing Ollama".into() }).map_err(|error| error.to_string())?;
+        let status = Command::new(&installer).args(["/VERYSILENT", "/NORESTART", "/SUPPRESSMSGBOXES"]).status().map_err(|error| format!("Could not start Ollama installer: {error}"))?;
+        let _ = fs::remove_file(&installer);
+        if !status.success() { return Err("Ollama installation did not complete successfully".into()); }
+        for _ in 0..20 { if ollama_executable().is_some() { on_event.send(OllamaInstallEvent::Status { phase: "ready".into(), message: "Ollama is ready".into() }).ok(); return Ok(()); } std::thread::sleep(std::time::Duration::from_millis(500)); }
+        Err("Ollama installed, but Nova could not find it yet. Restart Nova and try again.".into())
+    }
 }
 
 #[derive(Serialize)]
@@ -236,7 +295,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, scan_workspace, read_workspace_file, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;

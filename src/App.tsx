@@ -73,7 +73,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { AgentTool, AgentToolCall, discoverModels, runAgentCompletion, streamCompletion, testModel } from "./lib/ai";
 import {
@@ -283,6 +283,9 @@ export default function App() {
   const [browserMaximized, setBrowserMaximized] = useState(false);
   const [browserRestoring, setBrowserRestoring] = useState(false);
   const [importingLocalModel, setImportingLocalModel] = useState(false);
+  const [ollamaInstalled, setOllamaInstalled] = useState<boolean | null>(null);
+  const [pendingGgufPath, setPendingGgufPath] = useState("");
+  const [ollamaInstall, setOllamaInstall] = useState<{ phase: string; message: string; downloaded: number; total: number; error: string } | null>(null);
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
   const [draftConfig, setDraftConfig] = useState<Config>(config);
@@ -362,6 +365,10 @@ export default function App() {
     if (!isDesktopApp()) return;
     getVersion().then(setInstalledVersion).catch(() => setInstalledVersion(APP_VERSION));
   }, []);
+  useEffect(() => {
+    if (!isDesktopApp() || !settingsOpen || settingsTab !== "models") return;
+    invoke<boolean>("ollama_status").then(setOllamaInstalled).catch(() => setOllamaInstalled(false));
+  }, [settingsOpen, settingsTab]);
   useEffect(() => {
     saveChats(chats);
   }, [chats]);
@@ -1295,6 +1302,16 @@ export default function App() {
       filters: [{ name: "GGUF model", extensions: ["gguf"] }],
     });
     if (!selected) return;
+    const installed = await invoke<boolean>("ollama_status").catch(() => false);
+    setOllamaInstalled(installed);
+    if (!installed) {
+      setPendingGgufPath(String(selected));
+      setOllamaInstall({ phase: "missing", message: "Ollama is required to run GGUF models", downloaded: 0, total: 0, error: "" });
+      return;
+    }
+    await finishLocalModelImport(String(selected));
+  };
+  const finishLocalModelImport = async (selected: string) => {
     setImportingLocalModel(true);
     try {
       const model = await invoke<string>("import_gguf_model", {
@@ -1337,6 +1354,22 @@ export default function App() {
       );
     } finally {
       setImportingLocalModel(false);
+    }
+  };
+  const installOllama = async () => {
+    setOllamaInstall({ phase: "starting", message: "Preparing official Ollama installer", downloaded: 0, total: 0, error: "" });
+    const channel = new Channel<{ event: "status" | "progress"; data: any }>();
+    channel.onmessage = (event) => setOllamaInstall((current) => {
+      const base = current || { phase: "starting", message: "Preparing Ollama", downloaded: 0, total: 0, error: "" };
+      return event.event === "progress" ? { ...base, phase: "downloading", downloaded: event.data.downloaded, total: event.data.total } : { ...base, phase: event.data.phase, message: event.data.message };
+    });
+    try {
+      await invoke("install_ollama", { onEvent: channel });
+      setOllamaInstalled(true);
+      setOllamaInstall((current) => ({ ...(current || { downloaded: 0, total: 0, error: "" }), phase: "ready", message: "Ollama installed and ready", error: "" }));
+      if (pendingGgufPath) { const path = pendingGgufPath; setPendingGgufPath(""); await finishLocalModelImport(path); }
+    } catch (error) {
+      setOllamaInstall((current) => ({ ...(current || { phase: "error", message: "Installation failed", downloaded: 0, total: 0, error: "" }), phase: "error", error: error instanceof Error ? error.message : String(error) }));
     }
   };
   const checkUpdates = async () => {
@@ -2509,6 +2542,17 @@ export default function App() {
                               </small>
                             </span>
                           </button>
+                          {isDesktopApp() && ollamaInstalled === false && <div className="ollama-installer">
+                            <div className="ollama-installer-head"><Info /><span><b>Ollama is not installed</b><small>Nova needs the official Ollama runtime to run a GGUF model locally.</small></span></div>
+                            {ollamaInstall && ollamaInstall.phase !== "missing" && <div className="ollama-install-progress">
+                              <div><span>{ollamaInstall.message}</span><b>{ollamaInstall.total > 0 ? `${Math.min(100, Math.round(ollamaInstall.downloaded / ollamaInstall.total * 100))}%` : ollamaInstall.phase === "installing" ? "Installing…" : ""}</b></div>
+                              <i><span style={{ width: `${ollamaInstall.total > 0 ? Math.min(100, ollamaInstall.downloaded / ollamaInstall.total * 100) : ollamaInstall.phase === "installing" ? 100 : 5}%` }} /></i>
+                              {ollamaInstall.error && <p>{ollamaInstall.error}</p>}
+                            </div>}
+                            <button className="primary-button" disabled={Boolean(ollamaInstall && !["missing", "error"].includes(ollamaInstall.phase))} onClick={installOllama}><Download />{ollamaInstall && !["missing", "error"].includes(ollamaInstall.phase) ? "Installing Ollama…" : "Download & install Ollama"}</button>
+                            <small className="ollama-source">Official installer from ollama.com · Windows 10 or newer</small>
+                          </div>}
+                          {ollamaInstalled && <div className="ollama-ready"><Check /><span><b>Ollama ready</b><small>GGUF import is available on this device.</small></span></div>}
                         </section>
                       </>
                     ) : (
