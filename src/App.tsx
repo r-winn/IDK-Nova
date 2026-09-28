@@ -128,7 +128,7 @@ type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
 type BrowserTab = {
   id: string;
-  kind: "home" | "browser" | "artifact" | "files" | "temporary" | "image";
+  kind: "home" | "browser" | "artifact" | "document" | "email" | "files" | "temporary" | "image";
   title: string;
   url: string;
   input: string;
@@ -142,6 +142,7 @@ type BrowserTab = {
   busy?: boolean;
   imageUrl?: string;
   imageZoom?: number;
+  subject?: string;
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
@@ -175,12 +176,16 @@ const quotePreview = (value: string, limit = 240) => {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length > limit ? `${compact.slice(0, limit).trimEnd()}…` : compact;
 };
+const formatDuration = (milliseconds: number) => milliseconds < 60_000
+  ? `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)}s`
+  : `${Math.floor(milliseconds / 60_000)}m ${Math.round((milliseconds % 60_000) / 1000)}s`;
 const detectDocumentArtifact = (value: string): DocumentArtifact | null => {
   const ruled = value.match(/^([\s\S]*?)^---\s*$\n([\s\S]*?)^---\s*$([\s\S]*)$/m);
   const candidate = (ruled?.[2] || value).trim();
   const subjectMatch = candidate.match(/^(?:\*\*)?(?:موضوع|subject)\s*:\s*(?:\*\*)?(.+?)(?:\*\*)?\s*$/im);
   const looksLikeEmail = Boolean(subjectMatch) || /(^|\n)(سلام|درود|dear|hello)[،,!\s]/i.test(candidate) && /(^|\n)(با تشکر|با احترام|ارادتمند|sincerely|regards|best)[،,!\s]/i.test(candidate);
-  const looksLikeDocument = Boolean(ruled) && candidate.length >= 180;
+  const documentHint = `${ruled?.[1] || ""}\n${candidate.slice(0, 240)}`;
+  const looksLikeDocument = candidate.length >= 180 && (Boolean(ruled) || /مقاله|گزارش|نامه|article|report|letter|proposal|طرح|چک.?لیست/i.test(documentHint));
   if (!looksLikeEmail && !looksLikeDocument) return null;
   const subject = subjectMatch?.[1]?.replace(/\*\*/g, "").trim() || "";
   const body = subjectMatch ? candidate.replace(subjectMatch[0], "").trim() : candidate;
@@ -208,13 +213,15 @@ export default function App() {
       )
       .map((item) => ({
         ...item,
-        messages: Array.isArray(item.messages) ? item.messages : [],
+        messages: Array.isArray(item.messages) ? item.messages.map((message) => ({ ...message, generating: false })) : [],
       }));
     return valid.length ? valid : starterChats;
   });
   const [text, setText] = useState("");
   const [files, setFiles] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [responseElapsedMs, setResponseElapsedMs] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(() =>
     new URLSearchParams(location.search).has("settings"),
   );
@@ -264,6 +271,7 @@ export default function App() {
     endRef = useRef<HTMLDivElement>(null),
     conversationRef = useRef<HTMLDivElement>(null),
     stickToBottomRef = useRef(true),
+    responseStartedRef = useRef(0),
     configFileRef = useRef<HTMLInputElement>(null),
     logoFileRef = useRef<HTMLInputElement>(null),
     browserSurfaceRef = useRef<HTMLDivElement>(null),
@@ -392,12 +400,24 @@ export default function App() {
     [active],
   );
   useEffect(() => {
-    if (stickToBottomRef.current) endRef.current?.scrollIntoView({ behavior: busy ? "auto" : "smooth", block: "end" });
+    if (!stickToBottomRef.current || !conversationRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      if (conversationRef.current) conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
   }, [chat?.messages, busy]);
   useEffect(() => {
     stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
     requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "auto", block: "end" }));
   }, [active]);
+  useEffect(() => {
+    if (!busy) return;
+    const updateElapsed = () => setResponseElapsedMs(Date.now() - responseStartedRef.current);
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 100);
+    return () => window.clearInterval(timer);
+  }, [busy]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 2400);
@@ -582,6 +602,23 @@ export default function App() {
   const openArtifact = (title: string, language: string, content: string) => {
     const id = `artifact-${Date.now()}`;
     setBrowserTabs((tabs) => [...tabs, { id, kind: "artifact", title, language, content, artifactView: "edit", url: "", input: "", history: [], historyIndex: -1 }]);
+    setActiveBrowserTabId(id);
+    setBrowserOpen(true);
+  };
+  const openDocumentArtifact = (document: DocumentArtifact, view: "edit" | "preview" = "preview") => {
+    const id = `${document.kind}-${Date.now()}`;
+    setBrowserTabs((tabs) => [...tabs, {
+      id,
+      kind: document.kind,
+      title: document.title,
+      subject: document.subject,
+      content: document.body,
+      artifactView: view,
+      url: "",
+      input: "",
+      history: [],
+      historyIndex: -1,
+    }]);
     setActiveBrowserTabId(id);
     setBrowserOpen(true);
   };
@@ -799,6 +836,14 @@ export default function App() {
     link.click();
     URL.revokeObjectURL(link.href);
   };
+  const downloadTextArtifact = () => {
+    if (!activeBrowserTab || !["document", "email"].includes(activeBrowserTab.kind)) return;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([activeBrowserTab.content || ""], { type: "text/plain;charset=utf-8" }));
+    link.download = `${activeBrowserTab.title || "nova-document"}.txt`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
   const toggleVoice = () => {
     const Recognition = (
       window as typeof window & { webkitSpeechRecognition?: new () => any }
@@ -836,6 +881,7 @@ export default function App() {
       quote: replyQuote || undefined,
     };
     stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
     const title = chat.messages.length
       ? chat.title
       : (text.trim() || "Image conversation").slice(0, 36);
@@ -848,7 +894,7 @@ export default function App() {
               messages: [
                 ...item.messages,
                 user,
-                { role: "assistant", content: "" },
+                { role: "assistant", content: "", generating: true },
               ],
             }
           : item,
@@ -857,6 +903,8 @@ export default function App() {
     setText("");
     setFiles([]);
     setReplyQuote("");
+    responseStartedRef.current = Date.now();
+    setResponseElapsedMs(0);
     setBusy(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -903,11 +951,28 @@ export default function App() {
         ),
       );
     } finally {
+      const durationMs = Math.max(0, Date.now() - responseStartedRef.current);
+      setChats((items) => items.map((item) => item.id === active ? {
+        ...item,
+        messages: item.messages.map((message, index) => index === item.messages.length - 1 && message.role === "assistant" ? { ...message, generating: false, durationMs } : message),
+      } : item));
       abortRef.current = null;
       setBusy(false);
     }
   };
   const stopResponse = () => abortRef.current?.abort();
+  const jumpToLatest = () => {
+    const node = conversationRef.current;
+    if (!node) return;
+    stickToBottomRef.current = false;
+    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+    window.setTimeout(() => {
+      if (!conversationRef.current) return;
+      conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
+      stickToBottomRef.current = true;
+      setShowJumpToBottom(false);
+    }, 520);
+  };
   const key = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -1280,8 +1345,8 @@ export default function App() {
               <span>{document.kind === "email" ? <Mail /> : <FileText />}<b>{document.kind === "email" ? "Email draft" : "Document"}</b>{document.subject && <small>{document.subject}</small>}</span>
               <div>
                 <button onClick={() => copy(document.body)}><Copy />Copy</button>
-                <button onClick={() => openArtifact(document.title, "text", document.body)}><Pencil />Edit</button>
-                <button onClick={() => openArtifact(document.title, "text", document.body)}><Maximize2 />Full screen</button>
+                <button onClick={() => openDocumentArtifact(document, "edit")}><Pencil />Edit</button>
+                <button onClick={() => openDocumentArtifact(document, "preview")}><Maximize2 />Full screen</button>
                 {document.kind === "email" && <button className="email-action" onClick={() => openEmailDraft(document.subject, document.body)}><Mail />Email</button>}
               </div>
             </header>
@@ -1480,10 +1545,12 @@ export default function App() {
         <div
           className="conversation"
           ref={conversationRef}
-          onWheel={(event) => { if (event.deltaY < 0) stickToBottomRef.current = false; }}
+          onWheel={(event) => { if (event.deltaY < 0) { stickToBottomRef.current = false; setShowJumpToBottom(true); } }}
           onScroll={(event) => {
             const target = event.currentTarget;
-            stickToBottomRef.current = target.scrollHeight - target.scrollTop - target.clientHeight < 96;
+            const awayFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight >= 96;
+            stickToBottomRef.current = !awayFromBottom;
+            setShowJumpToBottom(awayFromBottom);
           }}
         >
           {chat.messages.length === 0 ? (
@@ -1582,11 +1649,12 @@ export default function App() {
                     </div>
                     {message.role === "assistant" && message.content && (
                       <div className="message-actions">
-                        <button onClick={() => copy(message.content)}>
+                        <button disabled={message.generating} onClick={() => copy(message.content)}>
                           <Copy />
                           Copy
                         </button>
                         <button
+                          disabled={message.generating}
                           onClick={() =>
                             setChats((items) =>
                               items.map((item) =>
@@ -1608,6 +1676,7 @@ export default function App() {
                           {message.liked ? <CheckCheck /> : <Check />}
                           <span>Helpful</span>
                         </button>
+                        {(message.generating || message.durationMs !== undefined) && <span className={`response-time ${message.generating ? "live" : ""}`}><Clock3 />Response {formatDuration(message.generating ? responseElapsedMs : (message.durationMs || 0))}</span>}
                       </div>
                     )}
                   </div>
@@ -1617,6 +1686,9 @@ export default function App() {
             </div>
           )}
         </div>
+        {showJumpToBottom && <button className={`jump-to-bottom ${busy ? "responding" : ""}`} onClick={jumpToLatest} aria-label="Jump to latest response" title="Jump to latest">
+          {busy ? <span className="mini-typing"><i /><i /><i /></span> : <ChevronDown />}
+        </button>}
         <div className="composer-zone">
           {!config.activeModel && (
             <button
@@ -2492,7 +2564,7 @@ export default function App() {
             <div>
               {browserTabs.map((tab) => (
                 <button className={tab.id === activeBrowserTabId ? "active" : ""} key={tab.id} onClick={() => setActiveBrowserTabId(tab.id)} title={tab.title}>
-                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "files" ? <Folder /> : tab.kind === "temporary" ? <MessageSquare /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
+                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "document" ? <FileText /> : tab.kind === "email" ? <Mail /> : tab.kind === "files" ? <Folder /> : tab.kind === "temporary" ? <MessageSquare /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
                   <span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
                 </button>
               ))}
@@ -2524,6 +2596,17 @@ export default function App() {
               <span />
               <button onClick={() => copy(activeBrowserTab.content || "")}><Copy />Copy</button>
               <button onClick={downloadArtifact}><Download />Save</button>
+            </div>
+          ) : activeBrowserTab && ["document", "email"].includes(activeBrowserTab.kind) ? (
+            <div className="workspace-toolbar document-toolbar">
+              {activeBrowserTab.kind === "document" ? <>
+                <button className={activeBrowserTab.artifactView === "edit" ? "active" : ""} onClick={() => updateWorkspaceTab(activeBrowserTab.id, { artifactView: "edit" })}><Pencil />Edit</button>
+                <button className={activeBrowserTab.artifactView === "preview" ? "active" : ""} onClick={() => updateWorkspaceTab(activeBrowserTab.id, { artifactView: "preview" })}><FileText />Document</button>
+              </> : <button className="active"><Mail />Compose</button>}
+              <span />
+              <button onClick={() => copy(activeBrowserTab.content || "")}><Copy />Copy</button>
+              <button onClick={downloadTextArtifact}><Download />Save</button>
+              {activeBrowserTab.kind === "email" && <button className="email-action" onClick={() => openEmailDraft(activeBrowserTab.subject || "", activeBrowserTab.content || "")}><Mail />Email</button>}
             </div>
           ) : activeBrowserTab?.kind === "image" ? (
             <div className="workspace-toolbar image-toolbar">
@@ -2565,6 +2648,24 @@ export default function App() {
                 ) : activeBrowserTab.language?.toLowerCase() === "html" ? (
                   <iframe title="Artifact preview" sandbox="" srcDoc={activeBrowserTab.content || ""} />
                 ) : <div className="document-preview" dir="auto">{activeBrowserTab.content}</div>}
+              </div>
+            ) : activeBrowserTab?.kind === "document" ? (
+              <div className="workspace-document">
+                {activeBrowserTab.artifactView === "edit" ? (
+                  <textarea dir="auto" spellCheck value={activeBrowserTab.content || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { content: event.target.value })} />
+                ) : (
+                  <article dir="auto"><header><FileText /><span><b>{activeBrowserTab.title}</b><small>Nova document</small></span></header><div>{activeBrowserTab.content}</div></article>
+                )}
+              </div>
+            ) : activeBrowserTab?.kind === "email" ? (
+              <div className="workspace-email">
+                <article>
+                  <header><Mail /><span><b>Email draft</b><small>Ready to review and send</small></span></header>
+                  <label><span>To</span><input dir="auto" placeholder="Recipient email" /></label>
+                  <label><span>Subject</span><input dir="auto" value={activeBrowserTab.subject || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { subject: event.target.value })} /></label>
+                  <textarea dir="auto" spellCheck value={activeBrowserTab.content || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { content: event.target.value })} />
+                  <footer><button onClick={() => openEmailDraft(activeBrowserTab.subject || "", activeBrowserTab.content || "")}><Mail />Open in email app</button></footer>
+                </article>
               </div>
             ) : activeBrowserTab?.kind === "image" ? (
               <div className="workspace-image-viewer">

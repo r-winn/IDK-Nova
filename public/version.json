@@ -1,6 +1,6 @@
 {
-  "version": "0.9.18",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.18",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.18/IDK.Nova_0.9.18_x64-setup.exe",
-  "notes": ["Streaming responses no longer force the conversation to the bottom after the user scrolls up", "Auto-scroll resumes automatically when the user returns near the latest message or sends a new prompt", "Email and document drafts are detected and rendered as dedicated artifacts", "Document artifacts support isolated Copy, Edit, Full screen, and Email actions", "Email subjects and bodies are prepared for the system mail application"]
+  "version": "0.9.19",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.19",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.19/IDK.Nova_0.9.19_x64-setup.exe",
+  "notes": ["Code, documents, and emails now open in separate purpose-built Workspace environments", "Document pages support correct RTL and LTR direction, editing, preview, copy, and save", "Email drafts open as realistic compositions with recipient, subject, body, and mail-app actions", "Streaming scroll no longer stutters when returning to the latest response", "A floating latest-response control shows an arrow or live typing dots", "Response actions remain disabled during generation and show the final response time", "Article and long-form document detection is expanded"]
 }

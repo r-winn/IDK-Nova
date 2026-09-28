@@ -416,6 +416,7 @@ svg {
 }
 
 main {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: grid;
@@ -894,6 +895,8 @@ body.resizing-browser iframe { pointer-events: none; }
 .workspace-view-files { --ws-tint-a: #f8efd6; --ws-tint-b: #dcf3e7; --ws-orb-a: #e3b85d; --ws-orb-b: #6ec89d; --ws-orb-c: #7bd1b4; --ws-orb-d: #f0cf7a; }
 .workspace-view-temporary { --ws-tint-a: #eee0fb; --ws-tint-b: #f8e0ed; --ws-orb-a: #9b74e8; --ws-orb-b: #d879bd; --ws-orb-c: #ee8d9d; --ws-orb-d: #a884ee; }
 .workspace-view-artifact { --ws-tint-a: #dce8ff; --ws-tint-b: #e8defb; --ws-orb-a: #648cf0; --ws-orb-b: #7369df; --ws-orb-c: #9a73e8; --ws-orb-d: #64bfd7; }
+.workspace-view-document { --ws-tint-a: #f3ead9; --ws-tint-b: #e4efe8; --ws-orb-a: #d5ae68; --ws-orb-b: #86b59a; --ws-orb-c: #a6c5ad; --ws-orb-d: #e0be82; }
+.workspace-view-email { --ws-tint-a: #ddeafa; --ws-tint-b: #eee2f6; --ws-orb-a: #65a4e8; --ws-orb-b: #8d82df; --ws-orb-c: #b786d7; --ws-orb-d: #75b8dd; }
 .workspace-view-image { --ws-tint-a: #f9e1da; --ws-tint-b: #eadffa; --ws-orb-a: #ef8e72; --ws-orb-b: #d678a9; --ws-orb-c: #9a78e5; --ws-orb-d: #f0aa78; }
 .workspace-view::before,
 .workspace-view::after { content: ""; position: absolute; z-index: 0; width: 56%; aspect-ratio: 1; border-radius: 50%; filter: blur(72px); opacity: .3; pointer-events: none; animation: workspace-drift 14s ease-in-out infinite alternate; }
@@ -941,6 +944,30 @@ body.resizing-browser iframe { pointer-events: none; }
 .workspace-artifact { height: 100%; padding: 12px; background: transparent; }
 .workspace-artifact textarea { width: 100%; height: 100%; resize: none; padding: 20px; border: 1px solid var(--line); border-radius: 12px; outline: 0; background: var(--surface); color: var(--text); font: 12px/1.72 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .workspace-artifact iframe { width: 100%; height: 100%; border: 0; border-radius: 12px; background: #fff; }
+.workspace-document { height: 100%; overflow: auto; padding: clamp(18px, 4vw, 42px); background: transparent; }
+.workspace-document > textarea { width: min(780px, 100%); min-height: 100%; margin: auto; padding: clamp(24px, 5vw, 58px); resize: none; border: 0; border-radius: 4px; outline: 0; background: color-mix(in srgb, var(--surface) 96%, white); color: var(--text); box-shadow: 0 16px 55px rgba(0,0,0,.12); font: 14px/1.95 ui-sans-serif, system-ui, sans-serif; text-align: start; unicode-bidi: plaintext; display: block; }
+.workspace-document > article { width: min(780px, 100%); min-height: 100%; margin: auto; padding: clamp(28px, 6vw, 64px); background: color-mix(in srgb, var(--surface) 96%, white); color: var(--text); box-shadow: 0 16px 55px rgba(0,0,0,.12); }
+.workspace-document > article > header { margin-bottom: 30px; padding-bottom: 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+.workspace-document > article > header svg { width: 20px; color: var(--muted); }
+.workspace-document > article > header span { display: flex; flex-direction: column; }
+.workspace-document > article > header b { font-size: 15px; }
+.workspace-document > article > header small { margin-top: 2px; color: var(--faint); font-size: 9px; }
+.workspace-document > article > div { font-size: 14px; line-height: 1.95; white-space: pre-wrap; text-align: start; unicode-bidi: plaintext; }
+.workspace-email { height: 100%; overflow: auto; padding: clamp(16px, 3vw, 34px); background: transparent; }
+.workspace-email > article { width: min(820px, 100%); min-height: 100%; margin: auto; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: 0 18px 60px rgba(0,0,0,.12); backdrop-filter: blur(18px); display: grid; grid-template-rows: auto auto auto minmax(260px, 1fr) auto; }
+.workspace-email > article > header { min-height: 64px; padding: 0 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 11px; }
+.workspace-email > article > header > svg { width: 22px; color: var(--muted); }
+.workspace-email > article > header span { display: flex; flex-direction: column; }
+.workspace-email > article > header b { font-size: 13px; }
+.workspace-email > article > header small { margin-top: 3px; color: var(--faint); font-size: 9px; }
+.workspace-email label { min-height: 43px; padding: 0 18px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 62px 1fr; align-items: center; }
+.workspace-email label span { color: var(--muted); font-size: 10px; }
+.workspace-email input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 11px; text-align: start; unicode-bidi: plaintext; }
+.workspace-email textarea { width: 100%; min-height: 260px; padding: 22px 24px; resize: none; border: 0; outline: 0; background: transparent; color: var(--text); font: 13px/1.85 ui-sans-serif, system-ui, sans-serif; text-align: start; unicode-bidi: plaintext; }
+.workspace-email footer { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; }
+.workspace-email footer button { height: 34px; padding: 0 13px; border: 0; border-radius: 10px; background: var(--brand); color: var(--brand-contrast); display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 650; }
+.workspace-email footer button svg { width: 14px; }
+.document-toolbar .email-action { color: color-mix(in srgb, var(--brand) 74%, var(--text)); }
 .image-toolbar > span { flex: 1; }
 .workspace-image-viewer { height: 100%; overflow: auto; background: transparent; }
 .workspace-image-viewer > div { width: 100%; min-width: 100%; height: 100%; min-height: 100%; display: flex; align-items: center; justify-content: center; overflow: auto; }
@@ -1048,6 +1075,19 @@ body.resizing-browser iframe { pointer-events: none; }
   background: var(--hover);
   color: var(--text);
 }
+.message-actions button:disabled { opacity: .42; cursor: default; pointer-events: none; }
+.response-time { height: 27px; padding: 0 7px; color: var(--faint); display: flex; align-items: center; gap: 5px; font-size: 9px; cursor: default; }
+.response-time svg { width: 11px; }
+.response-time.live { color: var(--muted); }
+.jump-to-bottom { position: absolute; z-index: 12; left: 50%; bottom: 112px; width: 38px; height: 38px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: color-mix(in srgb, var(--surface) 91%, transparent); color: var(--text); backdrop-filter: blur(18px); box-shadow: 0 8px 28px rgba(0,0,0,.16); display: grid; place-items: center; transform: translateX(-50%); animation: jump-button-in .22s ease-out; }
+.jump-to-bottom:hover { background: var(--hover); transform: translateX(-50%) translateY(-2px); }
+.jump-to-bottom > svg { width: 18px; }
+.jump-to-bottom.responding { border-color: color-mix(in srgb, var(--brand) 30%, var(--line)); }
+.mini-typing { display: flex; align-items: center; gap: 3px; }
+.mini-typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite; }
+.mini-typing i:nth-child(2) { animation-delay: .15s; }
+.mini-typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes jump-button-in { from { opacity: 0; transform: translateX(-50%) translateY(7px) scale(.94); } }
 .message-actions button.selected { background: color-mix(in srgb, #22a06b 11%, transparent); color: #16845a; }
 .message-actions button.selected svg { color: #16845a; stroke-width: 2.25; }
 :root[data-theme="dark"] .message-actions button.selected { color: #57d49b; }
