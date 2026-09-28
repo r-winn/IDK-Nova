@@ -1,6 +1,6 @@
 {
-  "version": "0.13.2",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.13.2",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.13.2/IDK.Nova_0.13.2_x64-setup.exe",
-  "notes": ["GGUF imports now start the installed Ollama service automatically when it is not already running", "Imported local providers now use 127.0.0.1 to avoid Windows localhost and IPv6 connection failures", "Nova performs a real completion test before reporting an imported GGUF model as ready", "Successful local imports are saved immediately and become available in chat without another Save step", "Import failures now remain failures instead of showing a misleading ready message"]
+  "version": "0.13.3",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.13.3",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.13.3/IDK.Nova_0.13.3_x64-setup.exe",
+  "notes": ["Models settings now opens as a clean library of models already added to Nova", "Every model has clear Select, Test, verification latency, and Remove controls", "Add new model now asks whether to connect an API or import a local GGUF file", "The API setup form always opens blank and never reuses values from the previously selected provider", "Fresh installations no longer contain a prefilled Ollama provider", "Empty and mobile layouts have been simplified for faster setup"]
 }

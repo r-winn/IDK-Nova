@@ -123,8 +123,8 @@ const agentTools: AgentTool[] = [
 const settingMeta = {
   general: ["General", "Personalize Nova and choose how it looks."],
   models: [
-    "Models & providers",
-    "Connect only the AI services you trust and use.",
+    "AI models",
+    "Manage the models available to Nova.",
   ],
   data: ["Data & memory", "Control optional storage and long-term context."],
   updates: ["Software update", "Keep Nova secure and up to date."],
@@ -298,6 +298,8 @@ export default function App() {
   );
   const [syncingId, setSyncingId] = useState("");
   const [manualModel, setManualModel] = useState("");
+  const [modelSetupView, setModelSetupView] = useState<"list" | "choose" | "api" | "local">("list");
+  const [newProvider, setNewProvider] = useState<Provider>({ id: "", name: "", baseUrl: "", apiKey: "", models: [] });
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [testingModel, setTestingModel] = useState("");
   const [verifiedModels, setVerifiedModels] = useState<Record<string, number>>(
@@ -327,8 +329,7 @@ export default function App() {
     abortRef = useRef<AbortController | null>(null);
   const chat = chats.find((item) => item.id === active) || chats[0];
   const chatWorkspace = workspaces.find((workspace) => workspace.id === chat?.workspaceId);
-  const activeProvider = getActiveProvider(config),
-    activeDraftProvider = getActiveProvider(draftConfig);
+  const activeProvider = getActiveProvider(config);
   const activeBrowserTab = browserTabs.find((tab) => tab.id === activeBrowserTabId) || browserTabs[0];
   const workspaceArtifacts = useMemo(() => chats.flatMap((sourceChat) => sourceChat.messages.flatMap((message, messageIndex) => {
     if (message.role !== "assistant") return [];
@@ -1233,103 +1234,73 @@ export default function App() {
   };
   const openSettings = () => {
     setDraftConfig(config);
+    setModelSetupView("list");
     setSettingsOpen(true);
     setModelOpen(false);
   };
-  const updateDraftProvider = (changes: Partial<Provider>) =>
-    setDraftConfig((current) => ({
-      ...current,
-      providers: current.providers.map((provider) =>
-        provider.id === current.activeProviderId
-          ? { ...provider, ...changes }
-          : provider,
-      ),
-    }));
-  const addProvider = () => {
-    const id = `provider-${Date.now()}`;
-    const provider: Provider = {
-      id,
-      name: "New provider",
-      baseUrl: "",
-      apiKey: "",
-      models: [],
-    };
-    setDraftConfig((current) => ({
-      ...current,
-      providers: [...current.providers, provider],
-      activeProviderId: id,
-      activeModel: "",
-    }));
+  const beginModelSetup = (view: "choose" | "api" | "local" = "choose") => {
+    setNewProvider({ id: `provider-${Date.now()}`, name: "", baseUrl: "", apiKey: "", models: [] });
+    setManualModel("");
+    setOllamaInstall(null);
+    setPendingGgufPath("");
+    setModelSetupView(view);
   };
-  const removeProvider = (id: string) =>
-    setDraftConfig((current) => {
-      const providers = current.providers.filter(
-        (provider) => provider.id !== id,
-      );
-      const next = providers[0];
-      return {
-        ...current,
-        providers,
-        activeProviderId: next?.id || "",
-        activeModel: next?.models[0] || "",
-      };
-    });
-  const refreshModels = async () => {
-    if (!activeDraftProvider?.baseUrl) return;
-    setSyncingId(activeDraftProvider.id);
+  const addApiModel = async () => {
+    const provider: Provider = {
+      ...newProvider,
+      name: newProvider.name.trim() || "Custom API",
+      baseUrl: newProvider.baseUrl.trim().replace(/\/$/, ""),
+    };
+    if (!provider.baseUrl) { setToast("Enter the provider Base URL"); return; }
+    setSyncingId(provider.id);
     try {
-      const models = await discoverModels(activeDraftProvider);
-      updateDraftProvider({ models });
+      const requestedModel = manualModel.trim();
+      const models = requestedModel ? [requestedModel] : await discoverModels(provider);
+      if (!models.length) throw new Error("The provider returned no models");
+      const model = requestedModel || models[0];
+      const latency = await testModel({ ...provider, models }, model);
+      const readyProvider = { ...provider, models };
       setDraftConfig((current) => ({
         ...current,
-        activeModel: models.includes(current.activeModel)
-          ? current.activeModel
-          : models[0] || "",
+        providers: [...current.providers, readyProvider],
+        activeProviderId: readyProvider.id,
+        activeModel: model,
       }));
-      setToast(
-        models.length
-          ? `${models.length} real model${models.length === 1 ? "" : "s"} found`
-          : "Provider returned no models",
-      );
+      setVerifiedModels((current) => ({ ...current, [`${readyProvider.id}:${model}`]: latency }));
+      setModelSetupView("list");
+      setManualModel("");
+      setToast(`${model} connected and verified · ${latency} ms`);
     } catch (error) {
-      setToast(
-        error instanceof Error ? error.message : "Could not load models",
-      );
+      setToast(error instanceof Error ? error.message : "Could not connect this model");
     } finally {
       setSyncingId("");
     }
   };
-  const addManualModel = async () => {
-    const model = manualModel.trim();
-    if (!model || !activeDraftProvider) return;
-    setTestingModel(model);
-    try {
-      const latency = await testModel(activeDraftProvider, model);
-      updateDraftProvider({
-        models: [...new Set([...activeDraftProvider.models, model])],
-      });
-      setDraftConfig((current) => ({ ...current, activeModel: model }));
-      setVerifiedModels((current) => ({
-        ...current,
-        [`${activeDraftProvider.id}:${model}`]: latency,
-      }));
-      setManualModel("");
-      setToast(`Model accepted · ${latency} ms`);
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : "Model rejected");
-    } finally {
-      setTestingModel("");
-    }
+  const removeModel = (providerId: string, model: string) => {
+    setDraftConfig((current) => {
+      const source = current.providers.find((provider) => provider.id === providerId);
+      if (!source) return current;
+      const remainingModels = source.models.filter((value) => value !== model);
+      const providers = remainingModels.length
+        ? current.providers.map((provider) => provider.id === providerId ? { ...provider, models: remainingModels } : provider)
+        : current.providers.filter((provider) => provider.id !== providerId);
+      const removingActive = current.activeProviderId === providerId && current.activeModel === model;
+      const fallback = providers.find((provider) => provider.models.length);
+      return removingActive
+        ? { ...current, providers, activeProviderId: fallback?.id || "", activeModel: fallback?.models[0] || "" }
+        : { ...current, providers };
+    });
+    setVerifiedModels((current) => {
+      const next = { ...current };
+      delete next[`${providerId}:${model}`];
+      return next;
+    });
   };
-  const verifyModel = async (model: string) => {
-    if (!activeDraftProvider) return;
-    setTestingModel(model);
+  const verifyProviderModel = async (provider: Provider, model: string) => {
+    setTestingModel(`${provider.id}:${model}`);
     try {
-      const latency = await testModel(activeDraftProvider, model);
-      setVerifiedModels((current) => ({
-        ...current,
-        [`${activeDraftProvider.id}:${model}`]: latency,
-      }));
+      const latency = await testModel(provider, model);
+      setVerifiedModels((current) => ({ ...current, [`${provider.id}:${model}`]: latency }));
       setToast(`Model verified in ${latency} ms`);
     } catch (error) {
       setToast(error instanceof Error ? error.message : "Model test failed");
@@ -1390,6 +1361,7 @@ export default function App() {
       setConfig(nextConfig);
       saveConfig(nextConfig);
       setVerifiedModels((current) => ({ ...current, [`${providerId}:${model}`]: latency }));
+      setModelSetupView("list");
       setToast(`${model} imported, verified, and ready · ${latency} ms`);
     } catch (error) {
       setToast(
@@ -2394,267 +2366,61 @@ export default function App() {
                 )}
                 {settingsTab === "models" && (
                   <div className="models-settings">
-                    <div className="provider-tabs">
-                      {draftConfig.providers.map((provider) => (
-                        <button
-                          key={provider.id}
-                          className={
-                            provider.id === draftConfig.activeProviderId
-                              ? "active"
-                              : ""
-                          }
-                          onClick={() =>
-                            setDraftConfig((current) => ({
-                              ...current,
-                              activeProviderId: provider.id,
-                              activeModel: provider.models[0] || "",
-                            }))
-                          }
-                        >
-                          <i />
-                          {provider.name}
-                          <small>{provider.models.length}</small>
-                        </button>
-                      ))}
-                      <button className="add-provider" onClick={addProvider}>
-                        <Plus />
-                        Add provider
-                      </button>
-                    </div>
-                    {activeDraftProvider ? (
-                      <>
-                        <section className="settings-section">
-                          <div className="section-heading">
-                            <div className="section-copy">
-                              <h3>Connection</h3>
-                              <p>
-                                Works with OpenAI-compatible APIs, including
-                                local servers.
-                              </p>
-                            </div>
-                            <button
-                              className="danger-button"
-                              onClick={() =>
-                                removeProvider(activeDraftProvider.id)
-                              }
-                            >
-                              <Trash2 />
-                              Remove
-                            </button>
-                          </div>
-                          <div className="field-grid">
-                            <label>
-                              Provider name
-                              <input
-                                value={activeDraftProvider.name}
-                                onChange={(e) =>
-                                  updateDraftProvider({ name: e.target.value })
-                                }
-                              />
-                            </label>
-                            <label>
-                              Base URL
-                              <input
-                                value={activeDraftProvider.baseUrl}
-                                placeholder="http://localhost:11434/v1"
-                                onChange={(e) =>
-                                  updateDraftProvider({
-                                    baseUrl: e.target.value,
-                                  })
-                                }
-                              />
-                            </label>
-                          </div>
-                          <label>
-                            API key{" "}
-                            <small className="optional">
-                              Optional for local providers
-                            </small>
-                            <input
-                              type="password"
-                              value={activeDraftProvider.apiKey}
-                              placeholder="sk-…"
-                              onChange={(e) =>
-                                updateDraftProvider({ apiKey: e.target.value })
-                              }
-                            />
-                          </label>
-                          <button
-                            className="primary-button"
-                            disabled={
-                              syncingId === activeDraftProvider.id ||
-                              !activeDraftProvider.baseUrl
-                            }
-                            onClick={refreshModels}
-                          >
-                            <RefreshCw
-                              className={syncingId ? "spinning" : ""}
-                            />
-                            {syncingId
-                              ? "Connecting…"
-                              : "Connect & discover models"}
-                          </button>
-                        </section>
-                        <section className="settings-section">
-                          <div className="section-copy">
-                            <h3>Available models</h3>
-                            <p>
-                              Models are listed only after your provider returns
-                              them successfully.
-                            </p>
-                          </div>
-                          <div className="model-list">
-                            {activeDraftProvider.models.map((model) => {
-                              const latency =
-                                verifiedModels[
-                                  `${activeDraftProvider.id}:${model}`
-                                ];
-                              return (
-                                <div
-                                  key={model}
-                                  className={
-                                    draftConfig.activeModel === model
-                                      ? "active"
-                                      : ""
-                                  }
-                                >
-                                  <button
-                                    className="model-name"
-                                    onClick={() =>
-                                      setDraftConfig((current) => ({
-                                        ...current,
-                                        activeModel: model,
-                                      }))
-                                    }
-                                  >
-                                    <i className={latency ? "verified" : ""} />
-                                    <span>
-                                      <b>{model}</b>
-                                      <small>
-                                        {draftConfig.activeModel === model
-                                          ? "Active model"
-                                          : "Available"}
-                                      </small>
-                                    </span>
-                                  </button>
-                                  <div>
-                                    {latency ? (
-                                      <span className="verified-label">
-                                        <ShieldCheck />
-                                        Verified · {latency} ms
-                                      </span>
-                                    ) : (
-                                      <button
-                                        className="test-button"
-                                        disabled={testingModel === model}
-                                        onClick={() => verifyModel(model)}
-                                      >
-                                        {testingModel === model
-                                          ? "Testing…"
-                                          : "Test"}
-                                      </button>
-                                    )}
-                                    <button
-                                      className="icon-button subtle"
-                                      onClick={() =>
-                                        updateDraftProvider({
-                                          models:
-                                            activeDraftProvider.models.filter(
-                                              (value) => value !== model,
-                                            ),
-                                        })
-                                      }
-                                    >
-                                      <X />
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                            {!activeDraftProvider.models.length && (
-                              <div className="empty-models">
-                                <Bot />
-                                <b>No models yet</b>
-                                <span>
-                                  Connect to the provider to discover real
-                                  models.
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="manual-model">
-                            <input
-                              value={manualModel}
-                              placeholder="Exact model ID"
-                              onChange={(e) => setManualModel(e.target.value)}
-                            />
-                            <button
-                              disabled={
-                                !manualModel.trim() ||
-                                testingModel === manualModel.trim()
-                              }
-                              onClick={addManualModel}
-                            >
-                              <Plus />
-                              {testingModel && testingModel === manualModel.trim()
-                                ? "Testing…"
-                                : "Test & add"}
-                            </button>
-                          </div>
-                        </section>
-                        <section className="settings-section local-import">
-                          <div className="section-copy">
-                            <h3>Import a local model file</h3>
-                            <p>
-                              Choose a GGUF file. Nova stores a private copy and
-                              registers it with Ollama, so no endpoint or model
-                              ID is required.
-                            </p>
-                          </div>
-                          <button
-                            className="local-drop"
-                            disabled={importingLocalModel}
-                            onClick={importLocalModel}
-                          >
-                            <HardDriveUpload />
-                            <span>
-                              <b>
-                                {importingLocalModel
-                                  ? "Importing model…"
-                                  : "Choose a GGUF file"}
-                              </b>
-                              <small>
-                                Desktop only · Ollama must be installed
-                              </small>
-                            </span>
-                          </button>
-                          {isDesktopApp() && ollamaInstalled === false && <div className="ollama-installer">
-                            <div className="ollama-installer-head"><Info /><span><b>Ollama is not installed</b><small>Nova needs the official Ollama runtime to run a GGUF model locally.</small></span></div>
-                            {ollamaInstall && ollamaInstall.phase !== "missing" && <div className="ollama-install-progress">
-                              <div><span>{ollamaInstall.message}</span><b>{ollamaInstall.total > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} / ${(ollamaInstall.total / 1048576).toFixed(1)} MB · ${Math.min(100, Math.round(ollamaInstall.downloaded / ollamaInstall.total * 100))}%` : ollamaInstall.downloaded > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} MB` : ollamaInstall.phase === "installing" ? "Installing…" : ""}</b></div>
-                              <i><span style={{ width: `${ollamaInstall.total > 0 ? Math.min(100, ollamaInstall.downloaded / ollamaInstall.total * 100) : ollamaInstall.phase === "installing" ? 100 : 5}%` }} /></i>
-                              {ollamaInstall.error && <p>{ollamaInstall.error}</p>}
-                            </div>}
-                            <button className="primary-button" disabled={Boolean(ollamaInstall && !["missing", "error"].includes(ollamaInstall.phase))} onClick={installOllama}><Download />{ollamaInstall && !["missing", "error"].includes(ollamaInstall.phase) ? "Installing Ollama…" : "Download & install Ollama"}</button>
-                            <small className="ollama-source">Official installer from ollama.com · Windows 10 or newer</small>
-                          </div>}
-                          {ollamaInstalled && <div className="ollama-ready"><Check /><span><b>Ollama ready</b><small>GGUF import is available on this device.</small></span></div>}
-                        </section>
-                      </>
-                    ) : (
-                      <div className="empty-page">
-                        <Bot />
-                        <h3>Add your first provider</h3>
-                        <p>Connect a local or cloud AI service to begin.</p>
-                        <button
-                          className="primary-button"
-                          onClick={addProvider}
-                        >
-                          <Plus />
-                          Add provider
-                        </button>
+                    {modelSetupView === "list" && <>
+                      <div className="models-page-heading">
+                        <div><h2>Your models</h2><p>Choose which AI Nova uses, test its connection, or remove it.</p></div>
+                        <button className="primary-button" onClick={() => beginModelSetup()}><Plus />Add new model</button>
                       </div>
-                    )}
+                      <div className="model-library">
+                        {draftConfig.providers.flatMap((provider) => provider.models.map((model) => {
+                          const key = `${provider.id}:${model}`;
+                          const latency = verifiedModels[key];
+                          const activeModel = draftConfig.activeProviderId === provider.id && draftConfig.activeModel === model;
+                          return <div className={`model-library-row ${activeModel ? "active" : ""}`} key={key}>
+                            <button className="model-library-main" onClick={() => setDraftConfig((current) => ({ ...current, activeProviderId: provider.id, activeModel: model }))}>
+                              <span className="model-status"><Bot /></span>
+                              <span><b>{model}</b><small>{provider.name} · {activeModel ? "Currently selected" : "Ready to use"}</small></span>
+                            </button>
+                            <div className="model-library-actions">
+                              {latency && <span className="verified-label"><ShieldCheck />{latency} ms</span>}
+                              <button className="test-button" disabled={testingModel === key} onClick={() => verifyProviderModel(provider, model)}>{testingModel === key ? "Testing…" : "Test"}</button>
+                              <button className="icon-button subtle danger-icon" aria-label={`Remove ${model}`} onClick={() => removeModel(provider.id, model)}><Trash2 /></button>
+                            </div>
+                          </div>;
+                        }))}
+                        {!draftConfig.providers.some((provider) => provider.models.length) && <div className="models-empty-state"><Bot /><h3>No models added</h3><p>Add an API model or import a GGUF file when you are ready.</p><button className="primary-button" onClick={() => beginModelSetup()}><Plus />Add your first model</button></div>}
+                      </div>
+                    </>}
+                    {modelSetupView === "choose" && <div className="model-setup-view">
+                      <button className="setup-back" onClick={() => setModelSetupView("list")}><ChevronRight />Back to models</button>
+                      <div className="setup-title"><h2>Add a new model</h2><p>How would you like to connect it?</p></div>
+                      <div className="model-source-options">
+                        <button onClick={() => setModelSetupView("api")}><span><Globe2 /></span><b>Connect an API</b><small>OpenAI-compatible cloud or local endpoint</small><ArrowRight /></button>
+                        <button onClick={() => setModelSetupView("local")}><span><HardDriveUpload /></span><b>Import a local file</b><small>Run a GGUF model privately with Ollama</small><ArrowRight /></button>
+                      </div>
+                    </div>}
+                    {modelSetupView === "api" && <div className="model-setup-view api-model-setup">
+                      <button className="setup-back" onClick={() => setModelSetupView("choose")}><ChevronRight />Choose another method</button>
+                      <div className="setup-title"><h2>Connect an API model</h2><p>Enter a fresh connection. Previously added model details are never reused here.</p></div>
+                      <div className="clean-form">
+                        <label>Connection name<input autoFocus value={newProvider.name} placeholder="Company AI" onChange={(event) => setNewProvider((current) => ({ ...current, name: event.target.value }))} /></label>
+                        <label>Base URL<input value={newProvider.baseUrl} placeholder="https://api.example.com/v1" onChange={(event) => setNewProvider((current) => ({ ...current, baseUrl: event.target.value }))} /></label>
+                        <label>API key <small className="optional">Optional for local servers</small><input type="password" value={newProvider.apiKey} placeholder="Paste API key" onChange={(event) => setNewProvider((current) => ({ ...current, apiKey: event.target.value }))} /></label>
+                        <label>Model ID <small className="optional">Leave empty to discover automatically</small><input value={manualModel} placeholder="goldiran-auto" onChange={(event) => setManualModel(event.target.value)} /></label>
+                        <button className="primary-button connect-model-button" disabled={!newProvider.baseUrl.trim() || syncingId === newProvider.id} onClick={addApiModel}><RefreshCw className={syncingId === newProvider.id ? "spinning" : ""} />{syncingId === newProvider.id ? "Testing connection…" : "Test & add model"}</button>
+                      </div>
+                    </div>}
+                    {modelSetupView === "local" && <div className="model-setup-view local-model-setup">
+                      <button className="setup-back" onClick={() => setModelSetupView("choose")}><ChevronRight />Choose another method</button>
+                      <div className="setup-title"><h2>Import a local model</h2><p>Choose a GGUF file. Nova keeps a private copy and configures the local runtime for you.</p></div>
+                      <button className="local-drop" disabled={importingLocalModel} onClick={importLocalModel}><HardDriveUpload /><span><b>{importingLocalModel ? "Importing and verifying…" : "Choose a GGUF file"}</b><small>Desktop app only · the original file is not modified</small></span></button>
+                      {isDesktopApp() && ollamaInstalled === false && <div className="ollama-installer">
+                        <div className="ollama-installer-head"><Info /><span><b>Ollama is required</b><small>Nova can download and install the local runtime for you.</small></span></div>
+                        {ollamaInstall && ollamaInstall.phase !== "missing" && <div className="ollama-install-progress"><div><span>{ollamaInstall.message}</span><b>{ollamaInstall.total > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} / ${(ollamaInstall.total / 1048576).toFixed(1)} MB · ${Math.min(100, Math.round(ollamaInstall.downloaded / ollamaInstall.total * 100))}%` : ollamaInstall.downloaded > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} MB` : ollamaInstall.phase === "installing" ? "Installing…" : ""}</b></div><i><span style={{ width: `${ollamaInstall.total > 0 ? Math.min(100, ollamaInstall.downloaded / ollamaInstall.total * 100) : ollamaInstall.phase === "installing" ? 100 : 5}%` }} /></i>{ollamaInstall.error && <p>{ollamaInstall.error}</p>}</div>}
+                        <button className="primary-button" disabled={Boolean(ollamaInstall && !["missing", "error"].includes(ollamaInstall.phase))} onClick={installOllama}><Download />{ollamaInstall && !["missing", "error"].includes(ollamaInstall.phase) ? "Installing Ollama…" : "Download & install Ollama"}</button>
+                      </div>}
+                      {ollamaInstalled && <div className="ollama-ready"><Check /><span><b>Local runtime ready</b><small>Your GGUF file can be imported now.</small></span></div>}
+                    </div>}
                   </div>
                 )}
                 {settingsTab === "data" && (
