@@ -1377,6 +1377,7 @@ body.resizing-browser iframe { pointer-events: none; }
 }
 .folder-view-head button:hover { background: var(--hover); color: var(--text); }
 .folder-view-head svg { width: 16px; }
+.work-head-actions { display: flex; align-items: center; gap: 2px; }
 .folder-back svg { transform: rotate(180deg); }
 .folder-hero {
   display: flex;
@@ -1496,6 +1497,12 @@ body.resizing-browser iframe { pointer-events: none; }
 .folder-choices button.color.selected { box-shadow: 0 0 0 2px var(--text); }
 .folder-dialog > div:last-child { align-items: center; }
 .folder-dialog > div:last-child .confirm-delete { margin-right: auto; background: transparent; color: var(--danger); }
+.workspace-delete-dialog > p b { color: var(--text); }
+.workspace-delete-safety { width: 100%; margin: 4px 0 18px; padding: 11px; border-radius: 11px; background: color-mix(in srgb, #3ea477 9%, var(--hover)); color: var(--muted); display: flex; align-items: flex-start; gap: 9px; text-align: left; }
+.workspace-delete-safety > svg { width: 17px; color: #368d69; }
+.workspace-delete-safety > span { min-width: 0; display: flex; flex-direction: column; }
+.workspace-delete-safety b { color: var(--text); font-size: 10px; }
+.workspace-delete-safety small { margin-top: 4px; overflow: hidden; color: var(--faint); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .composer-tools .listening {
   color: #dc5364;
   background: rgba(220, 83, 100, 0.09);

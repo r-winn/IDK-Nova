@@ -264,6 +264,7 @@ export default function App() {
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [openWorkspaceId, setOpenWorkspaceId] = useState<string | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspaceDelete, setWorkspaceDelete] = useState<WorkProject | null>(null);
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar>(null);
   const [replyQuote, setReplyQuote] = useState("");
@@ -399,7 +400,7 @@ export default function App() {
     let cancelled = false;
     const syncNativeBrowser = async () => {
       const views = nativeBrowserViewsRef.current;
-      const overlayOpen = Boolean(chatDialog || folderDialog || settingsOpen || selectionToolbar);
+      const overlayOpen = Boolean(chatDialog || folderDialog || workspaceDelete || settingsOpen || selectionToolbar);
       for (const [id, entry] of views) {
         if (!browserOpen || overlayOpen || id !== activeBrowserTabId) await entry.webview.hide().catch(() => undefined);
       }
@@ -434,7 +435,7 @@ export default function App() {
     };
     syncNativeBrowser().catch(() => setToast("This page could not be opened inside Nova"));
     return () => { cancelled = true; };
-  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized, chatDialog, folderDialog, settingsOpen, selectionToolbar]);
+  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized, chatDialog, folderDialog, workspaceDelete, settingsOpen, selectionToolbar]);
   useEffect(() => () => {
     for (const entry of nativeBrowserViewsRef.current.values()) entry.webview.close().catch(() => undefined);
   }, []);
@@ -616,6 +617,17 @@ export default function App() {
     setChats((current) => current.map((item) => item.folderId === id ? { ...item, folderId: undefined } : item));
     if (openFolderId === id) setOpenFolderId(null);
     setToast("Folder removed · conversations kept");
+  };
+  const deleteWorkspace = (project: WorkProject) => {
+    const removedIds = new Set(chats.filter((item) => item.workspaceId === project.id).map((item) => item.id));
+    const remaining = chats.filter((item) => item.workspaceId !== project.id);
+    setWorkspaces((current) => current.filter((item) => item.id !== project.id));
+    setChats(remaining.length ? remaining : starterChats);
+    if (removedIds.has(active)) setActive(remaining[0]?.id || starterChats[0].id);
+    if (openWorkspaceId === project.id) setOpenWorkspaceId(null);
+    setBrowserTabs((tabs) => tabs.filter((tab) => tab.projectId !== project.id));
+    setWorkspaceDelete(null);
+    setToast("Workspace and its chats removed from Nova · project files were not deleted");
   };
   const moveChat = (chatId: number, folderId?: string) => {
     setChats((current) => current.map((item) => item.id === chatId ? { ...item, folderId, workspaceId: folderId ? undefined : item.workspaceId } : item));
@@ -1606,6 +1618,7 @@ export default function App() {
                     }}>
                       <BriefcaseBusiness /><span>{workspace.name}</span><small>{workspace.fileCount}</small>
                     </button>
+                    <button className="folder-edit" title="Workspace options" onClick={() => setWorkspaceDelete(workspace)}><MoreHorizontal /></button>
                   </div>)}
                   {!workspaces.length && <button className="empty-folder-action" onClick={createWorkspace}><FolderPlus /><span>Choose a project folder</span></button>}
                 </div>
@@ -1646,7 +1659,7 @@ export default function App() {
               {activeWorkspace && (() => {
                 const workspaceChats = chats.filter((item) => !item.archived && item.workspaceId === activeWorkspace.id);
                 return <>
-                  <div className="folder-view-head"><button className="folder-back" onClick={() => setOpenWorkspaceId(null)}><ArrowRight /><span>Back</span></button><button title="Refresh workspace" onClick={async () => { try { setWorkspaceLoading(true); const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: activeWorkspace.rootPath }); setWorkspaces((items) => items.map((item) => item.id === activeWorkspace.id ? { ...item, fileCount: scan.entries.filter((entry) => entry.kind === "file").length, truncated: scan.truncated } : item)); setToast("Workspace index refreshed"); } catch (error) { setToast(String(error)); } finally { setWorkspaceLoading(false); } }}><RefreshCw className={workspaceLoading ? "spin" : ""} /></button></div>
+                  <div className="folder-view-head"><button className="folder-back" onClick={() => setOpenWorkspaceId(null)}><ArrowRight /><span>Back</span></button><div className="work-head-actions"><button title="Refresh workspace" onClick={async () => { try { setWorkspaceLoading(true); const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: activeWorkspace.rootPath }); setWorkspaces((items) => items.map((item) => item.id === activeWorkspace.id ? { ...item, fileCount: scan.entries.filter((entry) => entry.kind === "file").length, truncated: scan.truncated } : item)); setToast("Workspace index refreshed"); } catch (error) { setToast(String(error)); } finally { setWorkspaceLoading(false); } }}><RefreshCw className={workspaceLoading ? "spin" : ""} /></button><button title="Remove workspace" onClick={() => setWorkspaceDelete(activeWorkspace)}><MoreHorizontal /></button></div></div>
                   <div className="folder-hero work-hero"><span><BriefcaseBusiness /></span><div><b>{activeWorkspace.name}</b><small>{activeWorkspace.fileCount} files · Local access</small></div></div>
                   <div className="work-path" title={activeWorkspace.rootPath}><ShieldCheck />{activeWorkspace.rootPath}</div>
                   <button className="folder-new-chat" onClick={freshInWorkspace}><Plus />New work chat</button>
@@ -3026,6 +3039,17 @@ export default function App() {
               {folderDialog.mode === "rename" && <button className="confirm-delete" onClick={() => { deleteFolder(folderDialog.id!); setFolderDialog(null); }}>Delete folder</button>}
               <button className="save-button" disabled={!folderDialog.name.trim()} onClick={saveFolder}>Save folder</button>
             </div>
+          </div>
+        </div>
+      )}
+      {workspaceDelete && (
+        <div className="confirm-backdrop" onMouseDown={() => setWorkspaceDelete(null)}>
+          <div className="confirm-dialog workspace-delete-dialog" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="confirm-icon delete"><Trash2 /></div>
+            <h3>Remove workspace?</h3>
+            <p><b>{workspaceDelete.name}</b> and all of its Work chats will be removed from Nova.</p>
+            <div className="workspace-delete-safety"><ShieldCheck /><span><b>Your project stays untouched</b><small>{workspaceDelete.rootPath}</small></span></div>
+            <div><button className="secondary" onClick={() => setWorkspaceDelete(null)}>Cancel</button><button className="confirm-delete" onClick={() => deleteWorkspace(workspaceDelete)}>Remove from Nova</button></div>
           </div>
         </div>
       )}

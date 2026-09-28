@@ -1,6 +1,6 @@
 {
-  "version": "0.11.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.11.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.11.0/IDK.Nova_0.11.0_x64-setup.exe",
-  "notes": ["Temporary Chat is now available from every regular chat and is never added to history", "Work chats have a distinct animated project identity and persistent project badge", "Workspace Files displays the real files from the active Work folder and opens supported files for inspection", "Work requests can use compact project-only memory from earlier chats in the same project", "Each selected project receives a portable .nova-work folder containing project identity, Work chat history, and activity metadata", "Opening the same project folder on another Nova installation restores its portable Work history", "Portable project metadata is protected against symbolic-link path escapes"]
+  "version": "0.11.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.11.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.11.1/IDK.Nova_0.11.1_x64-setup.exe",
+  "notes": ["Workspaces can now be removed from the sidebar with an in-app confirmation", "Removing a workspace also removes its Work chats from Nova", "The selected project folder and all user files remain untouched", "The confirmation clearly displays the protected local path", "Workspace confirmation dialogs correctly appear above native browser content"]
 }
