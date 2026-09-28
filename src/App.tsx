@@ -89,6 +89,7 @@ import {
   Config,
   Message,
   Provider,
+  WorkProject,
   getActiveProvider,
 } from "./types";
 import {
@@ -128,6 +129,9 @@ type ChatDialog = {
   value: string;
 } | null;
 type FolderDialog = { mode: "create" | "rename"; id?: string; name: string; color: string; icon: ChatFolder["icon"] } | null;
+type WorkspaceEntry = { path: string; name: string; kind: "file" | "directory"; size: number; modified: number };
+type WorkspaceScan = { entries: WorkspaceEntry[]; truncated: boolean };
+type WorkspaceMatch = { path: string; line: number; preview: string };
 type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
 type BrowserTab = {
@@ -252,6 +256,10 @@ export default function App() {
   const [foldersOpen, setFoldersOpen] = useState(false);
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const [folderDialog, setFolderDialog] = useState<FolderDialog>(null);
+  const [workspaces, setWorkspaces] = useState<WorkProject[]>(() => loadValue("idk-nova-workspaces", []));
+  const [workspacesOpen, setWorkspacesOpen] = useState(false);
+  const [openWorkspaceId, setOpenWorkspaceId] = useState<string | null>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar>(null);
   const [replyQuote, setReplyQuote] = useState("");
@@ -316,6 +324,7 @@ export default function App() {
         (item) =>
           !item.archived &&
           !item.folderId &&
+          !item.workspaceId &&
           item.title.toLowerCase().includes(query.toLowerCase()),
       ),
     [chats, query],
@@ -342,6 +351,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("idk-nova-folders", JSON.stringify(folders));
   }, [folders]);
+  useEffect(() => {
+    localStorage.setItem("idk-nova-workspaces", JSON.stringify(workspaces));
+  }, [workspaces]);
   useEffect(() => {
     localStorage.setItem("idk-nova-browser-width", JSON.stringify(browserWidth));
   }, [browserWidth]);
@@ -508,6 +520,33 @@ export default function App() {
     setActive(id);
     setText("");
   };
+  const createWorkspace = async () => {
+    if (!isDesktopApp()) {
+      setToast("Local Workspaces are available in the Nova desktop app");
+      return;
+    }
+    try {
+      const selected = await open({ directory: true, multiple: false, title: "Choose a folder for Nova Work" });
+      if (!selected || Array.isArray(selected)) return;
+      setWorkspaceLoading(true);
+      const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: selected });
+      const name = selected.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Workspace";
+      const existing = workspaces.find((workspace) => workspace.rootPath === selected);
+      const project: WorkProject = existing || { id: `work-${Date.now()}`, name, rootPath: selected, createdAt: Date.now(), fileCount: scan.entries.filter((entry) => entry.kind === "file").length, truncated: scan.truncated };
+      setWorkspaces((current) => existing ? current.map((item) => item.id === existing.id ? { ...item, fileCount: project.fileCount, truncated: scan.truncated } : item) : [...current, project]);
+      setOpenWorkspaceId(project.id);
+      setOpenFolderId(null);
+      setWorkspacesOpen(false);
+      if (!chats.some((item) => item.workspaceId === project.id)) {
+        const id = Date.now();
+        setChats((current) => [{ id, title: "New work chat", time: "Today", messages: [], workspaceId: project.id }, ...current]);
+        setActive(id);
+      }
+      setToast(`${name} is ready · ${project.fileCount} files indexed locally`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : String(error));
+    } finally { setWorkspaceLoading(false); }
+  };
   const requestDeleteChat = (id: number) =>
     setChatDialog({
       mode: "delete",
@@ -544,7 +583,7 @@ export default function App() {
     setToast("Folder removed · conversations kept");
   };
   const moveChat = (chatId: number, folderId?: string) => {
-    setChats((current) => current.map((item) => item.id === chatId ? { ...item, folderId } : item));
+    setChats((current) => current.map((item) => item.id === chatId ? { ...item, folderId, workspaceId: folderId ? undefined : item.workspaceId } : item));
     setChatMenu(null);
     setToast(folderId ? "Conversation moved" : "Removed from folder");
   };
@@ -944,6 +983,26 @@ export default function App() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
+      let workspaceContext = "";
+      const project = workspaces.find((item) => item.id === chat.workspaceId);
+      if (project && isDesktopApp()) {
+        const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath });
+        const matches = await invoke<WorkspaceMatch[]>("search_workspace", { rootPath: project.rootPath, query: user.content });
+        const relevantPaths = [...new Set(matches.map((match) => match.path))].slice(0, 6);
+        const snippets: string[] = [];
+        let budget = 0;
+        for (const relativePath of relevantPaths) {
+          try {
+            const content = await invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath });
+            const excerpt = content.slice(0, Math.max(0, 36_000 - budget));
+            if (!excerpt) break;
+            snippets.push(`--- ${relativePath} ---\n${excerpt}`);
+            budget += excerpt.length;
+            if (budget >= 36_000) break;
+          } catch { /* inaccessible or non-text files stay out of model context */ }
+        }
+        workspaceContext = `You are working inside the local Nova Work project "${project.name}". Only reason about this project and never claim a file was changed unless the user applied a proposed change. The app grants read-only context for safety.\n\nPROJECT FILE INDEX:\n${scan.entries.slice(0, 700).map((entry) => `${entry.kind === "directory" ? "[dir]" : "[file]"} ${entry.path}`).join("\n")}\n\nRELEVANT FILE CONTENT:\n${snippets.join("\n\n") || "No matching text file was selected for this request."}`;
+      }
       await streamCompletion(config, [...chat.messages, user], (token) =>
         setChats((items) =>
           items.map((item) =>
@@ -958,7 +1017,7 @@ export default function App() {
                 }
               : item,
           ),
-        ), controller.signal,
+        ), controller.signal, workspaceContext,
       );
     } catch (error) {
       if (controller.signal.aborted) {
@@ -1306,6 +1365,7 @@ export default function App() {
     setToast("Settings saved");
   };
   const activeFolder = folders.find((folder) => folder.id === openFolderId);
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === openWorkspaceId);
   const freshInFolder = () => {
     if (!activeFolder) return fresh();
     const id = Date.now();
@@ -1313,6 +1373,13 @@ export default function App() {
       { id, title: "New conversation", time: "Today", messages: [], folderId: activeFolder.id },
       ...current,
     ]);
+    setActive(id);
+    setText("");
+  };
+  const freshInWorkspace = () => {
+    if (!activeWorkspace) return fresh();
+    const id = Date.now();
+    setChats((current) => [{ id, title: "New work chat", time: "Today", messages: [], workspaceId: activeWorkspace.id }, ...current]);
     setActive(id);
     setText("");
   };
@@ -1424,7 +1491,7 @@ export default function App() {
           </button>
         </div>
         <div className="sidebar-stage">
-          <div className={`sidebar-track ${activeFolder ? "inside-folder" : ""}`}>
+          <div className={`sidebar-track ${activeFolder || activeWorkspace ? "inside-folder" : ""}`}>
             <div className="sidebar-panel sidebar-main">
               <div className="primary-nav">
                 <button onClick={fresh}>
@@ -1446,7 +1513,7 @@ export default function App() {
                       const Icon = folderIcons[folder.icon];
                       return (
                         <div className="folder-row" key={folder.id}>
-                          <button onClick={() => { setOpenFolderId(folder.id); setFoldersOpen(false); }}>
+                          <button onClick={() => { setOpenFolderId(folder.id); setOpenWorkspaceId(null); setFoldersOpen(false); }}>
                             <Icon style={{ color: folder.color }} />
                             <span>{folder.name}</span>
                             <small>{chats.filter((item) => item.folderId === folder.id && !item.archived).length}</small>
@@ -1461,10 +1528,29 @@ export default function App() {
                   <Search />
                   <span>Search</span>
                 </button>
-                <span className="nav-tooltip">
-                  <button disabled><BriefcaseBusiness /><span>Work</span><small>Soon</small></button>
-                  <i>Coming soon</i>
-                </span>
+                <button onClick={() => setWorkspacesOpen(!workspacesOpen)}>
+                  <BriefcaseBusiness /><span>Work</span>
+                  {workspaceLoading ? <RefreshCw className="spin" /> : <ChevronRight className={workspacesOpen ? "open" : ""} />}
+                </button>
+                <div className={`folder-list work-list ${workspacesOpen ? "open" : ""}`} aria-hidden={!workspacesOpen}>
+                  <div className="folder-heading"><span>Local workspaces</span><button title="Add workspace" onClick={createWorkspace}><FolderPlus /></button></div>
+                  {workspaces.map((workspace) => <div className="folder-row" key={workspace.id}>
+                    <button onClick={() => {
+                      setOpenWorkspaceId(workspace.id); setOpenFolderId(null); setWorkspacesOpen(false);
+                      const existingChat = chats.find((item) => !item.archived && item.workspaceId === workspace.id);
+                      if (existingChat) setActive(existingChat.id);
+                      else {
+                        const id = Date.now();
+                        setChats((current) => [{ id, title: "New work chat", time: "Today", messages: [], workspaceId: workspace.id }, ...current]);
+                        setActive(id);
+                      }
+                      setText("");
+                    }}>
+                      <BriefcaseBusiness /><span>{workspace.name}</span><small>{workspace.fileCount}</small>
+                    </button>
+                  </div>)}
+                  {!workspaces.length && <button className="empty-folder-action" onClick={createWorkspace}><FolderPlus /><span>Choose a project folder</span></button>}
+                </div>
                 <span className="nav-tooltip">
                   <button disabled><Workflow /><span>Agents</span><small>Soon</small></button>
                   <i>Coming soon</i>
@@ -1497,6 +1583,16 @@ export default function App() {
                     {renderChatRows(folderChats)}
                     {!folderChats.length && <div className="folder-empty"><MessageSquare /><b>No conversations yet</b><span>Move a chat here or start a new one.</span></div>}
                   </div>
+                </>;
+              })()}
+              {activeWorkspace && (() => {
+                const workspaceChats = chats.filter((item) => !item.archived && item.workspaceId === activeWorkspace.id);
+                return <>
+                  <div className="folder-view-head"><button className="folder-back" onClick={() => setOpenWorkspaceId(null)}><ArrowRight /><span>Back</span></button><button title="Refresh workspace" onClick={async () => { try { setWorkspaceLoading(true); const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: activeWorkspace.rootPath }); setWorkspaces((items) => items.map((item) => item.id === activeWorkspace.id ? { ...item, fileCount: scan.entries.filter((entry) => entry.kind === "file").length, truncated: scan.truncated } : item)); setToast("Workspace index refreshed"); } catch (error) { setToast(String(error)); } finally { setWorkspaceLoading(false); } }}><RefreshCw className={workspaceLoading ? "spin" : ""} /></button></div>
+                  <div className="folder-hero work-hero"><span><BriefcaseBusiness /></span><div><b>{activeWorkspace.name}</b><small>{activeWorkspace.fileCount} files · Local access</small></div></div>
+                  <div className="work-path" title={activeWorkspace.rootPath}><ShieldCheck />{activeWorkspace.rootPath}</div>
+                  <button className="folder-new-chat" onClick={freshInWorkspace}><Plus />New work chat</button>
+                  <div className="history folder-history">{renderChatRows(workspaceChats)}{!workspaceChats.length && <div className="folder-empty"><BriefcaseBusiness /><b>No work chats yet</b><span>Start a chat with project-aware context.</span></div>}</div>
                 </>;
               })()}
             </div>
@@ -1605,11 +1701,10 @@ export default function App() {
               <div className="welcome-mark">
                 <BrandMark config={config} />
               </div>
-              <span className="eyebrow">PRIVATE AI WORKSPACE</span>
-              <h1>How can I help?</h1>
+              <span className="eyebrow">{chat.workspaceId ? "LOCAL PROJECT · WORK MODE" : "PRIVATE AI WORKSPACE"}</span>
+              <h1>{chat.workspaceId ? `Work on ${workspaces.find((item) => item.id === chat.workspaceId)?.name || "this project"}` : "How can I help?"}</h1>
               <p>
-                Explore ideas, work with files, and talk to the models you
-                trust.
+                {chat.workspaceId ? "Nova can inspect relevant project files for this chat. Files stay on this device and access is read-only." : "Explore ideas, work with files, and talk to the models you trust."}
               </p>
               <div className="suggestions">
                 <button

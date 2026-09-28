@@ -72,6 +72,7 @@ Your browser or provider must allow requests from the Nova website. The Windows 
 
 ## What Nova includes
 
+- **Nova Work (desktop):** attach a real project folder, keep project chats separate, index files locally, and give the selected AI request-aware context from relevant text and source files
 - Streaming AI conversations with searchable local history
 - Multiple providers and separate real model lists
 - Desktop GGUF import with private local storage and automatic Ollama registration
@@ -87,6 +88,17 @@ Your browser or provider must allow requests from the Nova website. The Windows 
 - Signed in-app desktop updates with download progress and restart-to-install
 
 Image analysis requires a vision-capable model. A text-only model such as `qwen2.5:0.5b` can chat and help with code but cannot understand an uploaded image.
+
+## Nova Work: local project intelligence
+
+Nova Work is available in the desktop application because a normal website cannot safely retain broad access to arbitrary folders on your computer.
+
+1. Open **Work** in the sidebar and choose **Add workspace**.
+2. Select one project folder using the native system picker.
+3. Start a **New work chat** inside that workspace.
+4. Ask about the project, a feature, or an error. Nova builds a local file index and includes only relevant supported text files in that request.
+
+Work access is deliberately read-only in this release. Nova ignores dependency/build folders, hidden files, common secret files, symbolic links, binary files, files above the safety limit, and any path outside the selected folder. The entire project is never uploaded automatically: relevant context is sent only to the AI provider selected in Settings when you send a message. Choose a provider you trust before discussing private code.
 
 ## Settings guide
 

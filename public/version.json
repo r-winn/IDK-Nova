@@ -1,6 +1,6 @@
 {
-  "version": "0.9.21",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.21",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.21/IDK.Nova_0.9.21_x64-setup.exe",
-  "notes": ["Document detection is now conservative and requires real article, report, letter, proposal, or draft signals", "Ordinary markdown headings and bold text render correctly without becoming documents", "Settings notifications always appear above the settings window", "Zero-provider configurations can be saved and closed normally", "Email detection is more reliable across streamed responses", "Temporary Chat now shows the same live and final response timer as the main chat", "The latest-response control appears only after meaningful scrolling and sits above the composer", "Windows configuration downloads show immediate feedback and ignore rapid duplicate clicks", "Workspace Browser content now reaches the bottom edge without a reserved gap"]
+  "version": "0.10.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.10.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.10.0/IDK.Nova_0.10.0_x64-setup.exe",
+  "notes": ["Nova Work introduces real desktop project workspaces backed by folders you explicitly choose", "Work chats are isolated from regular chat history and stay attached to their own project", "Nova builds a fast local file index and injects request-relevant source context into the selected AI provider", "Workspace access is read-only with traversal protection, size limits, secret-file exclusions, and ignored dependency/build folders", "Each workspace shows its local path, file count, chat history, and a one-click index refresh", "The web app explains why folder-powered Work requires the desktop security boundary"]
 }

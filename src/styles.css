@@ -1225,6 +1225,8 @@ body.resizing-browser iframe { pointer-events: none; }
   transform: translateY(0);
   pointer-events: auto;
 }
+.work-list.open { max-height: 214px; }
+.work-list .folder-row svg { color: var(--muted); }
 .folder-heading {
   height: 26px;
   padding: 0 3px 0 8px;
@@ -1348,6 +1350,25 @@ body.resizing-browser iframe { pointer-events: none; }
   display: grid;
   place-items: center;
 }
+.work-hero > span { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.work-path {
+  min-height: 34px;
+  margin: -2px 7px 10px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: var(--hover);
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 9px;
+  line-height: 1.35;
+  overflow: hidden;
+  word-break: break-all;
+}
+.work-path svg { width: 14px; flex: none; color: var(--muted); }
+.spin { animation: nova-spin .9s linear infinite; }
+@keyframes nova-spin { to { transform: rotate(360deg); } }
 .folder-hero svg { width: 20px; }
 .folder-hero > div { display: flex; flex-direction: column; min-width: 0; }
 .folder-hero b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
