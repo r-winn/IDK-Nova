@@ -35,6 +35,7 @@ import {
   Image as ImageIcon,
   Info,
   Maximize2,
+  Mail,
   Menu,
   MessageSquare,
   Mic,
@@ -143,6 +144,7 @@ type BrowserTab = {
   imageZoom?: number;
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
+type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
 
 const folderIcons = {
   folder: Folder,
@@ -172,6 +174,24 @@ const splitContent = (content: string) => {
 const quotePreview = (value: string, limit = 240) => {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length > limit ? `${compact.slice(0, limit).trimEnd()}…` : compact;
+};
+const detectDocumentArtifact = (value: string): DocumentArtifact | null => {
+  const ruled = value.match(/^([\s\S]*?)^---\s*$\n([\s\S]*?)^---\s*$([\s\S]*)$/m);
+  const candidate = (ruled?.[2] || value).trim();
+  const subjectMatch = candidate.match(/^(?:\*\*)?(?:موضوع|subject)\s*:\s*(?:\*\*)?(.+?)(?:\*\*)?\s*$/im);
+  const looksLikeEmail = Boolean(subjectMatch) || /(^|\n)(سلام|درود|dear|hello)[،,!\s]/i.test(candidate) && /(^|\n)(با تشکر|با احترام|ارادتمند|sincerely|regards|best)[،,!\s]/i.test(candidate);
+  const looksLikeDocument = Boolean(ruled) && candidate.length >= 180;
+  if (!looksLikeEmail && !looksLikeDocument) return null;
+  const subject = subjectMatch?.[1]?.replace(/\*\*/g, "").trim() || "";
+  const body = subjectMatch ? candidate.replace(subjectMatch[0], "").trim() : candidate;
+  return {
+    kind: looksLikeEmail ? "email" : "document",
+    title: looksLikeEmail ? (subject || "Email draft") : "Document draft",
+    subject,
+    body,
+    before: ruled?.[1]?.trim() || "",
+    after: ruled?.[3]?.trim() || "",
+  };
 };
 
 export default function App() {
@@ -242,6 +262,8 @@ export default function App() {
   const [updateError, setUpdateError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null),
     endRef = useRef<HTMLDivElement>(null),
+    conversationRef = useRef<HTMLDivElement>(null),
+    stickToBottomRef = useRef(true),
     configFileRef = useRef<HTMLInputElement>(null),
     logoFileRef = useRef<HTMLInputElement>(null),
     browserSurfaceRef = useRef<HTMLDivElement>(null),
@@ -370,8 +392,12 @@ export default function App() {
     [active],
   );
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (stickToBottomRef.current) endRef.current?.scrollIntoView({ behavior: busy ? "auto" : "smooth", block: "end" });
   }, [chat?.messages, busy]);
+  useEffect(() => {
+    stickToBottomRef.current = true;
+    requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "auto", block: "end" }));
+  }, [active]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 2400);
@@ -564,6 +590,12 @@ export default function App() {
     setBrowserTabs((tabs) => [...tabs, { id, kind: "image", title: name || "Image", imageUrl, imageZoom: 1, url: "", input: "", history: [], historyIndex: -1 }]);
     setActiveBrowserTabId(id);
     setBrowserOpen(true);
+  };
+  const openEmailDraft = async (subject: string, body: string) => {
+    const plainBody = body.replace(/\*\*/g, "").replace(/\\\n/g, "\n");
+    const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`;
+    if (isDesktopApp()) await openUrl(mailto);
+    else window.location.href = mailto;
   };
   const downloadWorkspaceImage = () => {
     if (activeBrowserTab?.kind !== "image" || !activeBrowserTab.imageUrl) return;
@@ -803,6 +835,7 @@ export default function App() {
       attachments: files,
       quote: replyQuote || undefined,
     };
+    stickToBottomRef.current = true;
     const title = chat.messages.length
       ? chat.title
       : (text.trim() || "Image conversation").slice(0, 36);
@@ -1209,6 +1242,15 @@ export default function App() {
       ))}
     </section>
   ));
+  const renderProse = (value: string, key: string | number) => (
+    <span className="prose-segment" key={key}>
+      {value.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<)]+)/g).map((piece, pieceIndex) => {
+        const markdownLink = piece.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+        const target = markdownLink?.[2] || (/^https?:\/\//i.test(piece) ? piece : "");
+        return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target, true); }}>{markdownLink?.[1] || piece}</a> : piece;
+      })}
+    </span>
+  );
   const renderMessageContent = (message: Message) => (
     <div
       className="rich-content"
@@ -1228,15 +1270,27 @@ export default function App() {
           </header>
           <pre><code>{part.content}</code></pre>
         </section>
-      ) : (
-        <span className="prose-segment" key={index}>
-          {part.content.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<)]+)/g).map((piece, pieceIndex) => {
-            const markdownLink = piece.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
-            const target = markdownLink?.[2] || (/^https?:\/\//i.test(piece) ? piece : "");
-            return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target, true); }}>{markdownLink?.[1] || piece}</a> : piece;
-          })}
-        </span>
-      ))}
+      ) : (() => {
+        const document = detectDocumentArtifact(part.content);
+        if (!document) return renderProse(part.content, index);
+        return <div className="document-artifact-wrap" key={index}>
+          {document.before && renderProse(document.before, "before")}
+          <section className="document-artifact" dir="auto">
+            <header>
+              <span>{document.kind === "email" ? <Mail /> : <FileText />}<b>{document.kind === "email" ? "Email draft" : "Document"}</b>{document.subject && <small>{document.subject}</small>}</span>
+              <div>
+                <button onClick={() => copy(document.body)}><Copy />Copy</button>
+                <button onClick={() => openArtifact(document.title, "text", document.body)}><Pencil />Edit</button>
+                <button onClick={() => openArtifact(document.title, "text", document.body)}><Maximize2 />Full screen</button>
+                {document.kind === "email" && <button className="email-action" onClick={() => openEmailDraft(document.subject, document.body)}><Mail />Email</button>}
+              </div>
+            </header>
+            {document.subject && <div className="document-subject"><small>Subject</small><strong>{document.subject}</strong></div>}
+            <div className="document-body">{document.body}</div>
+          </section>
+          {document.after && renderProse(document.after, "after")}
+        </div>;
+      })())}
     </div>
   );
   if (!chat) return null;
@@ -1423,7 +1477,15 @@ export default function App() {
             </button>
           </div>
         </header>
-        <div className="conversation">
+        <div
+          className="conversation"
+          ref={conversationRef}
+          onWheel={(event) => { if (event.deltaY < 0) stickToBottomRef.current = false; }}
+          onScroll={(event) => {
+            const target = event.currentTarget;
+            stickToBottomRef.current = target.scrollHeight - target.scrollTop - target.clientHeight < 96;
+          }}
+        >
           {chat.messages.length === 0 ? (
             <div className="welcome">
               <div className="welcome-mark">

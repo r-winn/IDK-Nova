@@ -1,6 +1,6 @@
 {
-  "version": "0.9.17",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.17",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.17/IDK.Nova_0.9.17_x64-setup.exe",
-  "notes": ["Workspace blur strength is reduced for better performance and clarity", "Transitions now use a longer, softer Material-style easing curve", "Fade intensity is gentler to keep navigation calm and continuous"]
+  "version": "0.9.18",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.9.18",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.9.18/IDK.Nova_0.9.18_x64-setup.exe",
+  "notes": ["Streaming responses no longer force the conversation to the bottom after the user scrolls up", "Auto-scroll resumes automatically when the user returns near the latest message or sends a new prompt", "Email and document drafts are detected and rendered as dedicated artifacts", "Document artifacts support isolated Copy, Edit, Full screen, and Email actions", "Email subjects and bodies are prepared for the system mail application"]
 }
