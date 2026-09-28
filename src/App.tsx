@@ -267,11 +267,15 @@ export default function App() {
   const [foldersOpen, setFoldersOpen] = useState(false);
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const [folderDialog, setFolderDialog] = useState<FolderDialog>(null);
-  const [workspaces, setWorkspaces] = useState<WorkProject[]>(() => loadValue("idk-nova-workspaces", []));
+  const [workspaces, setWorkspaces] = useState<WorkProject[]>(() => loadValue<any[]>("idk-nova-workspaces", []).map((workspace) => ({
+    ...workspace,
+    agentAccess: workspace.agentAccess === "auto" ? "auto" : workspace.agentAccess === "safe" ? "safe" : "ask",
+  })));
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [openWorkspaceId, setOpenWorkspaceId] = useState<string | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceDelete, setWorkspaceDelete] = useState<WorkProject | null>(null);
+  const [agentAccessOpen, setAgentAccessOpen] = useState(false);
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar>(null);
   const [replyQuote, setReplyQuote] = useState("");
@@ -319,8 +323,10 @@ export default function App() {
     logoFileRef = useRef<HTMLInputElement>(null),
     browserSurfaceRef = useRef<HTMLDivElement>(null),
     nativeBrowserViewsRef = useRef<Map<string, NativeBrowserView>>(new Map()),
+    startupChatReadyRef = useRef(false),
     abortRef = useRef<AbortController | null>(null);
   const chat = chats.find((item) => item.id === active) || chats[0];
+  const chatWorkspace = workspaces.find((workspace) => workspace.id === chat?.workspaceId);
   const activeProvider = getActiveProvider(config),
     activeDraftProvider = getActiveProvider(draftConfig);
   const activeBrowserTab = browserTabs.find((tab) => tab.id === activeBrowserTabId) || browserTabs[0];
@@ -341,6 +347,8 @@ export default function App() {
           !item.archived &&
           !item.folderId &&
           !item.workspaceId &&
+          !item.temporary &&
+          item.messages.length > 0 &&
           item.title.toLowerCase().includes(query.toLowerCase()),
       ),
     [chats, query],
@@ -373,6 +381,18 @@ export default function App() {
     saveChats(chats);
   }, [chats]);
   useEffect(() => {
+    setAgentAccessOpen(false);
+  }, [active]);
+  useEffect(() => {
+    if (startupChatReadyRef.current) return;
+    startupChatReadyRef.current = true;
+    const existing = chats.find((item) => !item.archived && !item.folderId && !item.workspaceId && !item.temporary && item.messages.length === 0);
+    if (existing) { setActive(existing.id); return; }
+    const id = Date.now();
+    setChats((current) => [{ id, title: "New conversation", time: "Today", messages: [] }, ...current]);
+    setActive(id);
+  }, []);
+  useEffect(() => {
     localStorage.setItem("idk-nova-folders", JSON.stringify(folders));
   }, [folders]);
   useEffect(() => {
@@ -382,7 +402,7 @@ export default function App() {
     if (!isDesktopApp()) return;
     const timer = window.setTimeout(() => {
       for (const workspace of workspaces) {
-        const projectChats = chats.filter((item) => item.workspaceId === workspace.id);
+        const projectChats = chats.filter((item) => item.workspaceId === workspace.id && item.messages.length > 0 && !item.temporary);
         const activity = projectChats.flatMap((item) => item.messages.map((message, index) => ({
           chatId: item.id, chatTitle: item.title, index, role: message.role,
           createdAt: item.id + index, summary: message.content.slice(0, 180),
@@ -554,6 +574,8 @@ export default function App() {
     }
   };
   const fresh = () => {
+    const existing = chats.find((item) => !item.archived && !item.folderId && !item.workspaceId && !item.temporary && item.messages.length === 0);
+    if (existing) { setActive(existing.id); setText(""); return; }
     const id = Date.now();
     setChats((current) => [
       { id, title: "New conversation", time: "Today", messages: [] },
@@ -561,6 +583,19 @@ export default function App() {
     ]);
     setActive(id);
     setText("");
+  };
+  const startTemporaryChat = () => {
+    setBrowserOpen(false);
+    setBrowserMaximized(false);
+    if (!chat.messages.length && !chat.folderId && !chat.workspaceId) {
+      setChats((items) => items.map((item) => item.id === chat.id ? { ...item, temporary: true, title: "Temporary chat" } : item));
+    } else {
+      const id = Date.now();
+      setChats((items) => [{ id, title: "Temporary chat", time: "Today", messages: [], temporary: true }, ...items]);
+      setActive(id);
+    }
+    setAgentAccessOpen(false);
+    setText(""); setFiles([]); setReplyQuote("");
   };
   const createWorkspace = async () => {
     if (!isDesktopApp()) {
@@ -578,7 +613,17 @@ export default function App() {
       const portable = await invoke<PortableWorkspace>("initialize_workspace", { rootPath: selected, projectJson: JSON.stringify({ version: 1, ...candidate }, null, 2) });
       let storedProject = candidate;
       let storedChats: Chat[] = [];
-      try { storedProject = { ...candidate, ...JSON.parse(portable.projectJson), rootPath: selected, fileCount: candidate.fileCount, truncated: scan.truncated }; } catch { /* use the safe local candidate */ }
+      try {
+        const portableProject = JSON.parse(portable.projectJson);
+        storedProject = {
+          ...candidate,
+          ...portableProject,
+          rootPath: selected,
+          fileCount: candidate.fileCount,
+          truncated: scan.truncated,
+          agentAccess: portableProject.agentAccess === "auto" ? "auto" : portableProject.agentAccess === "safe" ? "safe" : "ask",
+        };
+      } catch { /* use the safe local candidate */ }
       try { storedChats = (JSON.parse(portable.chatsJson) as Chat[]).filter((item) => item && typeof item.id === "number").map((item) => ({ ...item, workspaceId: storedProject.id, messages: Array.isArray(item.messages) ? item.messages.map((message) => ({ ...message, generating: false })) : [] })); } catch { /* empty portable history */ }
       const project = storedProject;
       setWorkspaces((current) => existing ? current.map((item) => item.id === existing.id ? { ...item, fileCount: project.fileCount, truncated: scan.truncated } : item) : [...current, project]);
@@ -1112,7 +1157,7 @@ export default function App() {
           }
           if (call.function.name === "read_file") return { ok: true, path: args.path, content: await invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath: args.path }) };
           if (call.function.name === "write_file") {
-            if ((project.agentAccess || "ask") !== "auto") return { ok: false, requiresConfirmation: true, message: "Automatic file changes are disabled for this workspace. Ask the user to enable Automatic access." };
+            if ((project.agentAccess || "ask") === "ask") return { ok: false, requiresConfirmation: true, message: "File changes require user approval. Ask the user to select Approve for me or Full access." };
             const path = await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath: args.path, content: args.content || "" });
             return { ok: true, path, backupCreated: true };
           }
@@ -1507,6 +1552,8 @@ export default function App() {
   const activeWorkspace = workspaces.find((workspace) => workspace.id === openWorkspaceId);
   const freshInFolder = () => {
     if (!activeFolder) return fresh();
+    const existing = chats.find((item) => !item.archived && item.folderId === activeFolder.id && !item.temporary && item.messages.length === 0);
+    if (existing) { setActive(existing.id); setText(""); return; }
     const id = Date.now();
     setChats((current) => [
       { id, title: "New conversation", time: "Today", messages: [], folderId: activeFolder.id },
@@ -1517,6 +1564,8 @@ export default function App() {
   };
   const freshInWorkspace = () => {
     if (!activeWorkspace) return fresh();
+    const existing = chats.find((item) => !item.archived && item.workspaceId === activeWorkspace.id && !item.temporary && item.messages.length === 0);
+    if (existing) { setActive(existing.id); setText(""); return; }
     const id = Date.now();
     setChats((current) => [{ id, title: "New work chat", time: "Today", messages: [], workspaceId: activeWorkspace.id }, ...current]);
     setActive(id);
@@ -1525,7 +1574,7 @@ export default function App() {
   const renderChatRows = (items: Chat[]) => ["Today", "Yesterday", "Previous 7 days"].map((group) => (
     <section key={group}>
       <h5>{group}</h5>
-      {items.filter((item) => item.time === group).map((item) => (
+      {items.filter((item) => item.time === group && item.messages.length > 0 && !item.temporary).map((item) => (
         <div
           className={`chat-row ${active === item.id ? "active" : ""}`}
           key={item.id}
@@ -1708,7 +1757,7 @@ export default function App() {
             <div className="sidebar-panel folder-view">
               {activeFolder && (() => {
                 const Icon = folderIcons[activeFolder.icon];
-                const folderChats = chats.filter((item) => !item.archived && item.folderId === activeFolder.id);
+                const folderChats = chats.filter((item) => !item.archived && item.folderId === activeFolder.id && item.messages.length > 0 && !item.temporary);
                 return <>
                   <div className="folder-view-head">
                     <button className="folder-back" onClick={() => setOpenFolderId(null)}><ArrowRight /><span>Back</span></button>
@@ -1726,12 +1775,11 @@ export default function App() {
                 </>;
               })()}
               {activeWorkspace && (() => {
-                const workspaceChats = chats.filter((item) => !item.archived && item.workspaceId === activeWorkspace.id);
+                const workspaceChats = chats.filter((item) => !item.archived && item.workspaceId === activeWorkspace.id && item.messages.length > 0 && !item.temporary);
                 return <>
                   <div className="folder-view-head"><button className="folder-back" onClick={() => setOpenWorkspaceId(null)}><ArrowRight /><span>Back</span></button><div className="work-head-actions"><button title="Refresh workspace" onClick={async () => { try { setWorkspaceLoading(true); const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: activeWorkspace.rootPath }); setWorkspaces((items) => items.map((item) => item.id === activeWorkspace.id ? { ...item, fileCount: scan.entries.filter((entry) => entry.kind === "file").length, truncated: scan.truncated } : item)); setToast("Workspace index refreshed"); } catch (error) { setToast(String(error)); } finally { setWorkspaceLoading(false); } }}><RefreshCw className={workspaceLoading ? "spin" : ""} /></button><button title="Remove workspace" onClick={() => setWorkspaceDelete(activeWorkspace)}><MoreHorizontal /></button></div></div>
                   <div className="folder-hero work-hero"><span><BriefcaseBusiness /></span><div><b>{activeWorkspace.name}</b><small>{activeWorkspace.fileCount} files · Local access</small></div></div>
                   <div className="work-path" title={activeWorkspace.rootPath}><ShieldCheck />{activeWorkspace.rootPath}</div>
-                  <label className="agent-access"><span><Workflow /><b>Agent access</b></span><select value={activeWorkspace.agentAccess || "ask"} onChange={(event) => setWorkspaces((items) => items.map((item) => item.id === activeWorkspace.id ? { ...item, agentAccess: event.target.value as WorkProject["agentAccess"] } : item))}><option value="read">Read only</option><option value="ask">Ask before changes</option><option value="auto">Automatic in this folder</option></select></label>
                   <button className="folder-new-chat" onClick={freshInWorkspace}><Plus />New work chat</button>
                   <div className="history folder-history">{renderChatRows(workspaceChats)}{!workspaceChats.length && <div className="folder-empty"><BriefcaseBusiness /><b>No work chats yet</b><span>Start a chat with project-aware context.</span></div>}</div>
                 </>;
@@ -1750,7 +1798,7 @@ export default function App() {
           <Settings />
         </button>
       </aside>
-      <main className={chat.workspaceId ? "work-chat-main" : ""}>
+      <main className={`${chat.workspaceId ? "work-chat-main" : ""} ${chat.temporary ? "temporary-chat-main" : ""}`}>
         <header className="topbar">
           <div className="topbar-start">
             {!sidebar && (
@@ -1803,7 +1851,7 @@ export default function App() {
           </div>
           <div className="chat-actions">
             <span className="tooltip">
-              <button className="icon-button" aria-label="Temporary chat" onClick={openTemporaryChat}>
+              <button className={`icon-button ${chat.temporary ? "active" : ""}`} aria-label="Temporary chat" onClick={startTemporaryChat}>
                 <Clock3 />
               </button>
               <span>Start a temporary chat</span>
@@ -1828,7 +1876,8 @@ export default function App() {
           </div>
         </header>
         <div
-          className={`conversation ${chat.workspaceId ? "work-conversation" : ""}`}
+          key={chat.id}
+          className={`conversation chat-view-transition ${chat.workspaceId ? "work-conversation" : ""}`}
           ref={conversationRef}
           onWheel={(event) => { if (event.deltaY < 0) stickToBottomRef.current = false; }}
           onScroll={(event) => {
@@ -1843,10 +1892,10 @@ export default function App() {
               <div className="welcome-mark">
                 <BrandMark config={config} />
               </div>
-              <span className={`eyebrow ${chat.workspaceId ? "work-chat-badge" : ""}`}>{chat.workspaceId ? "LOCAL PROJECT · WORK MODE" : "PRIVATE AI WORKSPACE"}</span>
-              <h1>{chat.workspaceId ? `Work on ${workspaces.find((item) => item.id === chat.workspaceId)?.name || "this project"}` : "How can I help?"}</h1>
+              <span className={`eyebrow ${chat.workspaceId ? "work-chat-badge" : ""} ${chat.temporary ? "temporary-badge" : ""}`}>{chat.temporary ? "TEMPORARY CHAT" : chat.workspaceId ? "LOCAL PROJECT · WORK MODE" : "PRIVATE AI WORKSPACE"}</span>
+              <h1>{chat.temporary ? "Start a private session" : chat.workspaceId ? `Work on ${workspaces.find((item) => item.id === chat.workspaceId)?.name || "this project"}` : "How can I help?"}</h1>
               <p>
-                {chat.workspaceId ? "Nova can inspect relevant project files for this chat. Files stay on this device and access is read-only." : "Explore ideas, work with files, and talk to the models you trust."}
+                {chat.temporary ? "This conversation disappears when you close or restart Nova and is never added to history." : chat.workspaceId ? "Nova can inspect relevant project files for this chat." : "Explore ideas, work with files, and talk to the models you trust."}
               </p>
               <div className="suggestions">
                 <button
@@ -1974,6 +2023,7 @@ export default function App() {
           {busy ? <span className="mini-typing"><i /><i /><i /></span> : <ChevronDown />}
         </button>}
         <div className="composer-zone">
+          {chat.temporary && <div className="temporary-notice"><Clock3 /><span><b>Temporary chat</b><small>Not saved to history</small></span></div>}
           {!config.activeModel && (
             <button
               className="model-required"
@@ -2021,6 +2071,32 @@ export default function App() {
             </div>
           )}
           <div className={`composer ${!config.activeModel ? "locked" : ""}`}>
+            {chatWorkspace && agentAccessOpen && (
+              <div className="agent-access-popover" role="menu" aria-label="Agent access">
+                <div className="agent-access-title"><span>How should Nova actions be approved?</span><small>Applies only to this Work project</small></div>
+                {([
+                  ["ask", "Ask for approval", "Always ask before editing project files", ShieldCheck],
+                  ["safe", "Approve for me", "Run safe file and browser actions automatically", Workflow],
+                  ["auto", "Full access", "Work autonomously inside this folder", Rocket],
+                ] as const).map(([value, label, description, Icon]) => (
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={(chatWorkspace.agentAccess || "ask") === value}
+                    className={(chatWorkspace.agentAccess || "ask") === value ? "selected" : ""}
+                    key={value}
+                    onClick={() => {
+                      setWorkspaces((items) => items.map((item) => item.id === chatWorkspace.id ? { ...item, agentAccess: value } : item));
+                      setAgentAccessOpen(false);
+                    }}
+                  >
+                    <Icon />
+                    <span><b>{label}</b><small>{description}</small></span>
+                    {(chatWorkspace.agentAccess || "ask") === value && <Check />}
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               disabled={!config.activeModel}
               value={text}
@@ -2035,6 +2111,18 @@ export default function App() {
             />
             <div className="composer-tools">
               <div>
+                {chatWorkspace && (
+                  <button
+                    type="button"
+                    className={`agent-access-trigger ${(chatWorkspace.agentAccess || "ask") === "auto" ? "full" : ""}`}
+                    title="Agent access"
+                    aria-label="Agent access"
+                    aria-expanded={agentAccessOpen}
+                    onClick={() => setAgentAccessOpen((open) => !open)}
+                  >
+                    <ShieldCheck />
+                  </button>
+                )}
                 <button
                   disabled={!config.activeModel}
                   title="Attach file"
@@ -2545,7 +2633,7 @@ export default function App() {
                           {isDesktopApp() && ollamaInstalled === false && <div className="ollama-installer">
                             <div className="ollama-installer-head"><Info /><span><b>Ollama is not installed</b><small>Nova needs the official Ollama runtime to run a GGUF model locally.</small></span></div>
                             {ollamaInstall && ollamaInstall.phase !== "missing" && <div className="ollama-install-progress">
-                              <div><span>{ollamaInstall.message}</span><b>{ollamaInstall.total > 0 ? `${Math.min(100, Math.round(ollamaInstall.downloaded / ollamaInstall.total * 100))}%` : ollamaInstall.phase === "installing" ? "Installing…" : ""}</b></div>
+                              <div><span>{ollamaInstall.message}</span><b>{ollamaInstall.total > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} / ${(ollamaInstall.total / 1048576).toFixed(1)} MB · ${Math.min(100, Math.round(ollamaInstall.downloaded / ollamaInstall.total * 100))}%` : ollamaInstall.downloaded > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} MB` : ollamaInstall.phase === "installing" ? "Installing…" : ""}</b></div>
                               <i><span style={{ width: `${ollamaInstall.total > 0 ? Math.min(100, ollamaInstall.downloaded / ollamaInstall.total * 100) : ollamaInstall.phase === "installing" ? 100 : 5}%` }} /></i>
                               {ollamaInstall.error && <p>{ollamaInstall.error}</p>}
                             </div>}

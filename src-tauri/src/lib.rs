@@ -77,7 +77,7 @@ async fn install_ollama(on_event: Channel<OllamaInstallEvent>) -> Result<(), Str
     {
         if ollama_executable().is_some() { return Ok(()); }
         on_event.send(OllamaInstallEvent::Status { phase: "downloading".into(), message: "Downloading the official Ollama installer".into() }).map_err(|error| error.to_string())?;
-        let client = reqwest::Client::builder().user_agent("IDK-Nova/0.12 (+https://github.com/r-winn/IDK-Nova)").build().map_err(|error| error.to_string())?;
+        let client = reqwest::Client::builder().user_agent("IDK-Nova/0.13 (+https://github.com/r-winn/IDK-Nova)").build().map_err(|error| error.to_string())?;
         let github_url = client.get("https://api.github.com/repos/ollama/ollama/releases/latest")
             .header("Accept", "application/vnd.github+json").send().await.ok()
             .and_then(|response| if response.status().is_success() { Some(response) } else { None });

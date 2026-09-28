@@ -1,6 +1,6 @@
 {
-  "version": "0.12.3",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.12.3",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.12.3/IDK.Nova_0.12.3_x64-setup.exe",
-  "notes": ["Ollama installation now resolves the latest official OllamaSetup.exe through the GitHub Releases API", "GitHub is attempted before ollama.com for networks where the Ollama download domain returns 403", "The official ollama.com installer remains available as an automatic fallback", "Download requests now include explicit GitHub API and application headers", "Authenticode verification is still required before Nova runs the downloaded installer"]
+  "version": "0.13.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.13.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.13.0/IDK.Nova_0.13.0_x64-setup.exe",
+  "notes": ["Ollama download progress now shows downloaded and total megabytes alongside percentage", "Work agent approval moved into the message composer with Ask, Approve for me, and Full access modes", "Nova now always starts with one clean normal chat and prevents duplicate empty chats", "Empty chats no longer appear in navigation or portable Work history", "Main temporary chats are private, clearly styled, and never saved", "Chat switching now uses the same soft blur transition as Workspace"]
 }
