@@ -1,6 +1,6 @@
 {
-  "version": "0.15.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.1/IDK.Nova_0.15.1_x64-setup.exe",
-  "notes": ["New-chat starter actions are smaller, softer, and visually consistent with the rest of Nova", "Starter actions remain readable and stack cleanly on narrow chat layouts", "User messages are aligned to the right in a subtle message surface while Nova responses remain on the left", "Workspace content keeps its natural dimensions during open and close animations", "The right Workspace panel now reveals and conceals fixed content instead of compressing its controls and text"]
+  "version": "0.15.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.2/IDK.Nova_0.15.2_x64-setup.exe",
+  "notes": ["Starter prompts are now borderless, quieter, and more refined", "User message bubbles have clearer contrast in light and dark themes", "Copy actions follow user messages to the right side", "Temporary mode can only be selected before the first message and cannot change mid-conversation", "Workspace Browser tabs and address bar have a more polished native-browser hierarchy", "Native browser pages are clipped precisely to the visible Workspace panel while opening, closing, resizing, and restoring"]
 }

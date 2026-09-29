@@ -362,6 +362,7 @@ export default function App() {
     configExportRef = useRef(0),
     configFileRef = useRef<HTMLInputElement>(null),
     logoFileRef = useRef<HTMLInputElement>(null),
+    browserPanelRef = useRef<HTMLElement>(null),
     browserSurfaceRef = useRef<HTMLDivElement>(null),
     nativeBrowserViewsRef = useRef<Map<string, NativeBrowserView>>(new Map()),
     startupChatReadyRef = useRef(false),
@@ -488,10 +489,13 @@ export default function App() {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
       if (cancelled || !browserSurfaceRef.current) return;
       const rect = browserSurfaceRef.current.getBoundingClientRect();
-      const left = Math.max(0, rect.left);
-      const top = Math.max(0, rect.top);
-      const width = Math.max(1, Math.min(window.innerWidth, rect.right) - left);
-      const height = Math.max(1, Math.min(window.innerHeight, rect.bottom) - top);
+      const panelRect = browserPanelRef.current?.getBoundingClientRect();
+      const left = Math.max(0, rect.left, panelRect?.left || 0);
+      const top = Math.max(0, rect.top, panelRect?.top || 0);
+      const right = Math.min(window.innerWidth, rect.right, panelRect?.right || window.innerWidth);
+      const bottom = Math.min(window.innerHeight, rect.bottom, panelRect?.bottom || window.innerHeight);
+      const width = Math.max(1, right - left);
+      const height = Math.max(1, bottom - top);
       const zoom = browserZoomForWidth(width);
       let entry = views.get(activeBrowserTabId);
       if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
@@ -536,10 +540,11 @@ export default function App() {
       const entry = nativeBrowserViewsRef.current.get(activeBrowserTabId);
       if (!entry) return;
       const rect = surface.getBoundingClientRect();
-      const left = Math.max(0, rect.left);
-      const top = Math.max(0, rect.top);
-      const right = Math.min(window.innerWidth, rect.right);
-      const bottom = Math.min(window.innerHeight, rect.bottom);
+      const panelRect = browserPanelRef.current?.getBoundingClientRect();
+      const left = Math.max(0, rect.left, panelRect?.left || 0);
+      const top = Math.max(0, rect.top, panelRect?.top || 0);
+      const right = Math.min(window.innerWidth, rect.right, panelRect?.right || window.innerWidth);
+      const bottom = Math.min(window.innerHeight, rect.bottom, panelRect?.bottom || window.innerHeight);
       const width = Math.max(1, right - left);
       entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
       entry.webview.setSize(new LogicalSize(width, Math.max(1, bottom - top))).catch(() => undefined);
@@ -668,15 +673,10 @@ export default function App() {
   };
   const startTemporaryChat = () => {
     if (chat.workspaceId) { setToast("Work chats remain attached to their workspace"); return; }
+    if (chat.messages.length > 0) { setToast(chat.temporary ? "A temporary conversation stays temporary until it is closed" : "Temporary mode can only be chosen before the first message"); return; }
     setBrowserOpen(false);
     setBrowserMaximized(false);
-    if (chat.temporary) {
-      const restoredTitle = chat.messages.find((message) => message.role === "user")?.content.slice(0, 36) || "New conversation";
-      setChats((items) => items.map((item) => item.id === chat.id ? { ...item, temporary: false, title: restoredTitle } : item));
-      setToast("Temporary chat turned off · this conversation will be saved");
-      return;
-    }
-    setChats((items) => items.map((item) => item.id === chat.id ? { ...item, temporary: true, title: "Temporary chat" } : item));
+    setChats((items) => items.map((item) => item.id === chat.id ? { ...item, temporary: !item.temporary, title: item.temporary ? "New conversation" : "Temporary chat" } : item));
     setAgentAccessOpen(false);
     setText(""); setFiles([]); setReplyQuote("");
   };
@@ -1994,10 +1994,10 @@ export default function App() {
           </div>
           <div className="chat-actions">
             <span className="tooltip">
-              <button disabled={Boolean(chat.workspaceId)} className={`icon-button ${chat.temporary ? "active" : ""}`} aria-label="Temporary chat" onClick={startTemporaryChat}>
+              <button disabled={Boolean(chat.workspaceId) || chat.messages.length > 0} className={`icon-button ${chat.temporary ? "active" : ""}`} aria-label="Temporary chat" onClick={startTemporaryChat}>
                 {chat.temporary ? <Check /> : <Clock3 />}
               </button>
-              <span>{chat.workspaceId ? "Work chats stay in their project" : chat.temporary ? "Turn off temporary chat" : "Start a temporary chat"}</span>
+              <span>{chat.workspaceId ? "Work chats stay in their project" : chat.messages.length > 0 ? (chat.temporary ? "Temporary mode is locked for this conversation" : "Available only before the first message") : chat.temporary ? "Turn off temporary chat" : "Start a temporary chat"}</span>
             </span>
             <button className={`icon-button workspace-button ${browserOpen ? "active" : ""}`} aria-label="Workspace" title="Workspace" onClick={() => {
               if (browserOpen) {
@@ -2077,6 +2077,7 @@ export default function App() {
                         <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{chat.workspaceId && agentStatus && <span>{agentStatus}</span>}</div>
                       )}
                     </div>
+                    {message.role === "user" && message.content && <div className="message-actions user-message-actions"><button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                     {message.role === "assistant" && message.content && (
                       <div className="message-actions">
                         <button disabled={message.generating} onClick={() => copy(message.content)}>
@@ -2831,6 +2832,7 @@ export default function App() {
         </div>
       )}
       <aside
+        ref={browserPanelRef}
         className={`nova-browser ${browserOpen ? "" : "closed"} ${browserMaximized ? "maximized" : ""} ${browserRestoring ? "restoring" : ""}`}
         style={{ "--browser-width": `${browserWidth}px` } as CSSProperties}
         aria-label="Nova browser"
@@ -2992,6 +2994,7 @@ export default function App() {
                       {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
                         <div className="content">{message.content ? renderMessageContent(message) : <span className="typing"><i /><i /><i /></span>}</div>
+                        {message.role === "user" && message.content && <div className="message-actions user-message-actions"><button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                         {message.role === "assistant" && message.content && <div className="message-actions">
                           <button disabled={message.generating} onClick={() => copy(message.content)}><Copy />Copy</button>
                           <button disabled={message.generating} className={message.liked ? "selected" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTab.id ? { ...tab, messages: (tab.messages || []).map((item, itemIndex) => itemIndex === index ? { ...item, liked: !item.liked } : item) } : tab))}>
