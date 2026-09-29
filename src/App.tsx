@@ -189,7 +189,8 @@ type BrowserTab = {
   projectId?: string;
   entries?: WorkspaceEntry[];
 };
-type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
+type NativeBrowserView = { webview: Webview; url: string; frameKey: number; zoom: number };
+const browserZoomForWidth = (width: number) => Math.max(.7, Math.min(1, width / 1180));
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
 
 const folderIcons = {
@@ -479,6 +480,7 @@ export default function App() {
       const top = Math.max(0, rect.top);
       const width = Math.max(1, Math.min(window.innerWidth, rect.right) - left);
       const height = Math.max(1, Math.min(window.innerHeight, rect.bottom) - top);
+      const zoom = browserZoomForWidth(width);
       let entry = views.get(activeBrowserTabId);
       if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
         await entry.webview.close().catch(() => undefined);
@@ -494,11 +496,16 @@ export default function App() {
           width,
           height,
         });
-        entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey };
+        entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey, zoom };
         views.set(activeBrowserTabId, entry);
+        await webview.setZoom(zoom).catch(() => { if (entry) entry.zoom = Number.NaN; });
       } else {
         await entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
         await entry.webview.setSize(new LogicalSize(width, height)).catch(() => undefined);
+        if (!Number.isFinite(entry.zoom) || Math.abs(entry.zoom - zoom) > .01) {
+          entry.zoom = zoom;
+          await entry.webview.setZoom(zoom).catch(() => { if (entry) entry.zoom = Number.NaN; });
+        }
         await entry.webview.show().catch(() => undefined);
       }
     };
@@ -521,8 +528,14 @@ export default function App() {
       const top = Math.max(0, rect.top);
       const right = Math.min(window.innerWidth, rect.right);
       const bottom = Math.min(window.innerHeight, rect.bottom);
+      const width = Math.max(1, right - left);
       entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
-      entry.webview.setSize(new LogicalSize(Math.max(1, right - left), Math.max(1, bottom - top))).catch(() => undefined);
+      entry.webview.setSize(new LogicalSize(width, Math.max(1, bottom - top))).catch(() => undefined);
+      const zoom = browserZoomForWidth(width);
+      if (!Number.isFinite(entry.zoom) || Math.abs(entry.zoom - zoom) > .01) {
+        entry.zoom = zoom;
+        entry.webview.setZoom(zoom).catch(() => { entry.zoom = Number.NaN; });
+      }
     };
     const followLayoutAnimation = () => {
       syncBounds();
@@ -1989,7 +2002,6 @@ export default function App() {
         >
           {chat.messages.length === 0 ? (
             <div className="welcome">
-              {!chat.workspaceId && <div className="welcome-mark"><BrandMark config={config} /></div>}
               <span className={`eyebrow ${chat.workspaceId ? "work-chat-badge" : ""} ${chat.temporary ? "temporary-badge" : ""}`}>{chat.temporary ? "TEMPORARY CHAT" : chat.workspaceId ? "LOCAL PROJECT · WORK MODE" : "PRIVATE AI WORKSPACE"}</span>
               <h1>{chat.temporary ? "Start a private session" : chat.workspaceId ? `Work on ${workspaces.find((item) => item.id === chat.workspaceId)?.name || "this project"}` : "How can I help?"}</h1>
               <p>
@@ -2008,14 +2020,8 @@ export default function App() {
           ) : (
             <div className="message-list">
               {chat.messages.map((message, index) => (
-                <article key={index} className={message.role}>
-                  <div className="speaker">
-                    {message.role === "assistant" ? (
-                      <BrandMark config={config} />
-                    ) : (
-                      <CircleUserRound />
-                    )}
-                  </div>
+                <article key={index} className={`${message.role} ${message.role === "assistant" ? "no-speaker" : ""}`}>
+                  {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                   <div className="message-body">
                     {message.quote && (
                       <div className="message-quote" dir="auto" title={message.quote}><Reply />{quotePreview(message.quote, 320)}</div>
@@ -2952,8 +2958,8 @@ export default function App() {
                       <p>This conversation disappears when you close this tab or refresh Nova.</p>
                     </div>
                   ) : <div className="message-list workspace-message-list">{activeBrowserTab.messages.map((message, index) => (
-                    <article className={message.role} key={index}>
-                      <div className="speaker">{message.role === "assistant" ? <BrandMark config={config} /> : <CircleUserRound />}</div>
+                    <article className={`${message.role} ${message.role === "assistant" ? "no-speaker" : ""}`} key={index}>
+                      {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
                         <div className="content">{message.content ? renderMessageContent(message) : <span className="typing"><i /><i /><i /></span>}</div>
                         {message.role === "assistant" && message.content && <div className="message-actions">

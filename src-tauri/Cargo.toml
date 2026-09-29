@@ -1,6 +1,6 @@
 [package]
 name = "idk-nova"
-version = "0.14.2"
+version = "0.14.3"
 description = "A private, local-first AI chat application"
 authors = ["IDK contributors"]
 edition = "2021"
