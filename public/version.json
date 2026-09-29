@@ -1,6 +1,6 @@
 {
-  "version": "0.13.3",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.13.3",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.13.3/IDK.Nova_0.13.3_x64-setup.exe",
-  "notes": ["Models settings now opens as a clean library of models already added to Nova", "Every model has clear Select, Test, verification latency, and Remove controls", "Add new model now asks whether to connect an API or import a local GGUF file", "The API setup form always opens blank and never reuses values from the previously selected provider", "Fresh installations no longer contain a prefilled Ollama provider", "Empty and mobile layouts have been simplified for faster setup"]
+  "version": "0.14.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.14.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.14.0/IDK.Nova_0.14.0_x64-setup.exe",
+  "notes": ["Temporary chat is now a visible toggle that can be turned on and off on the current normal conversation", "Work chats can no longer be moved into ordinary folders or detached from their workspace", "Agent access now pauses inline for real Yes or No approval and resumes or cancels the requested tool action", "Ask, Approve for me, and Full access now enforce distinct browser and file-action policies", "Work responses show live, human-readable progress for file and browser steps", "Ollama can now be downloaded, checksum-verified, and installed from GitHub on macOS as well as Windows", "Persian and mixed-language input uses consistent bidirectional text handling across platforms", "Only user-authored and response content is selectable; application chrome is protected from accidental selection", "Settings navigation and the Agent access menu now use matching open and close motion", "Workspace Browser sizing now adapts to its actual split width without overflowing the right edge"]
 }

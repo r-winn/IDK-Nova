@@ -12,6 +12,16 @@ fn ollama_executable() -> Option<PathBuf> {
             if candidate.is_file() { return Some(candidate); }
         }
     }
+    #[cfg(target_os = "macos")] {
+        let mut apps = vec![PathBuf::from("/Applications/Ollama.app")];
+        if let Ok(home) = std::env::var("HOME") { apps.push(PathBuf::from(home).join("Applications").join("Ollama.app")); }
+        for app in apps {
+            for relative in ["Contents/Resources/ollama", "Contents/MacOS/Ollama"] {
+                let candidate = app.join(relative);
+                if candidate.is_file() { return Some(candidate); }
+            }
+        }
+    }
     None
 }
 
@@ -90,8 +100,59 @@ async fn ollama_status() -> Result<bool, String> { Ok(ollama_executable().is_som
 
 #[tauri::command]
 async fn install_ollama(on_event: Channel<OllamaInstallEvent>) -> Result<(), String> {
-    #[cfg(not(windows))]
-    { let _ = on_event; return Err("The guided Ollama installer is currently available on Windows only".into()); }
+    #[cfg(target_os = "macos")]
+    {
+        if ollama_executable().is_some() { return Ok(()); }
+        on_event.send(OllamaInstallEvent::Status { phase: "downloading".into(), message: "Downloading Ollama for macOS from GitHub".into() }).map_err(|error| error.to_string())?;
+        let client = reqwest::Client::builder().user_agent("IDK-Nova/0.14 (+https://github.com/r-winn/IDK-Nova)").build().map_err(|error| error.to_string())?;
+        let payload = client.get("https://api.github.com/repos/ollama/ollama/releases/latest").header("Accept", "application/vnd.github+json").send().await.map_err(|error| format!("Could not reach GitHub: {error}"))?;
+        if !payload.status().is_success() { return Err(format!("GitHub returned {} while checking Ollama", payload.status())); }
+        let payload = payload.json::<serde_json::Value>().await.map_err(|error| error.to_string())?;
+        let asset = payload.get("assets").and_then(|value| value.as_array()).and_then(|assets| assets.iter().find(|asset| asset.get("name").and_then(|value| value.as_str()) == Some("Ollama-darwin.zip"))).ok_or("The macOS Ollama package was not found in the latest GitHub release")?;
+        let url = asset.get("browser_download_url").and_then(|value| value.as_str()).ok_or("The macOS Ollama download URL is missing")?;
+        let expected = asset.get("digest").and_then(|value| value.as_str()).and_then(|value| value.strip_prefix("sha256:")).map(str::to_string);
+        let response = client.get(url).header("Accept", "application/octet-stream").send().await.map_err(|error| format!("Could not download Ollama: {error}"))?;
+        if !response.status().is_success() { return Err(format!("Ollama download returned {}", response.status())); }
+        let total = response.content_length().unwrap_or(0);
+        let archive = std::env::temp_dir().join("Nova-Ollama-macOS.zip");
+        let unpacked = std::env::temp_dir().join("Nova-Ollama-macOS");
+        let _ = fs::remove_dir_all(&unpacked);
+        let mut file = fs::File::create(&archive).map_err(|error| error.to_string())?;
+        let mut downloaded = 0u64;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.map_err(|error| format!("Ollama download interrupted: {error}"))?;
+            file.write_all(&bytes).map_err(|error| error.to_string())?;
+            downloaded += bytes.len() as u64;
+            on_event.send(OllamaInstallEvent::Progress { downloaded, total }).map_err(|error| error.to_string())?;
+        }
+        drop(file);
+        on_event.send(OllamaInstallEvent::Status { phase: "verifying".into(), message: "Verifying the GitHub release checksum".into() }).map_err(|error| error.to_string())?;
+        if let Some(expected) = expected {
+            let output = Command::new("shasum").args(["-a", "256"]).arg(&archive).output().map_err(|error| error.to_string())?;
+            let actual = String::from_utf8_lossy(&output.stdout).split_whitespace().next().unwrap_or("").to_string();
+            if !output.status.success() || actual != expected { let _ = fs::remove_file(&archive); return Err("Ollama package checksum verification failed".into()); }
+        }
+        on_event.send(OllamaInstallEvent::Status { phase: "installing".into(), message: "Installing Ollama in your Applications folder".into() }).map_err(|error| error.to_string())?;
+        fs::create_dir_all(&unpacked).map_err(|error| error.to_string())?;
+        let unpack = Command::new("ditto").args(["-x", "-k"]).arg(&archive).arg(&unpacked).status().map_err(|error| format!("Could not unpack Ollama: {error}"))?;
+        if !unpack.success() { return Err("The Ollama macOS package could not be unpacked".into()); }
+        let source_app = unpacked.join("Ollama.app");
+        if !source_app.is_dir() { return Err("Ollama.app was not found in the downloaded package".into()); }
+        let home = std::env::var("HOME").map_err(|_| "Your macOS home folder is unavailable")?;
+        let applications = PathBuf::from(home).join("Applications");
+        fs::create_dir_all(&applications).map_err(|error| error.to_string())?;
+        let destination = applications.join("Ollama.app");
+        let _ = fs::remove_dir_all(&destination);
+        let copied = Command::new("ditto").arg(&source_app).arg(&destination).status().map_err(|error| format!("Could not install Ollama: {error}"))?;
+        let _ = fs::remove_file(&archive); let _ = fs::remove_dir_all(&unpacked);
+        if !copied.success() { return Err("Ollama could not be copied to ~/Applications".into()); }
+        let _ = Command::new("open").arg("-a").arg(&destination).status();
+        for _ in 0..30 { if ollama_executable().is_some() { on_event.send(OllamaInstallEvent::Status { phase: "ready".into(), message: "Ollama is ready on macOS".into() }).ok(); return Ok(()); } std::thread::sleep(std::time::Duration::from_millis(500)); }
+        return Err("Ollama was installed in ~/Applications, but Nova could not start it yet. Open Ollama once and retry.".into());
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    { let _ = on_event; return Err("Guided Ollama installation is available on Windows and macOS".into()); }
     #[cfg(windows)]
     {
         if ollama_executable().is_some() { return Ok(()); }

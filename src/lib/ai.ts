@@ -91,7 +91,10 @@ export async function runAgentCompletion(
       onStep(call.function.name);
       let result: unknown;
       try { result = await execute(call); }
-      catch (error) { result = { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+      catch (error) {
+        if (error instanceof Error && error.message.includes('__NOVA_PERMISSION_DENIED__')) throw error;
+        result = { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
       conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
   }

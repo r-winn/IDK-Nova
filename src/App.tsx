@@ -130,6 +130,14 @@ const settingMeta = {
   updates: ["Software update", "Keep Nova secure and up to date."],
   about: ["About Nova", "Version, licensing and deployment details."],
 } as const;
+const agentStepLabel = (step: string) => ({
+  thinking: "Planning the next step…",
+  list_files: "Reviewing project files…",
+  read_file: "Reading a project file…",
+  write_file: "Creating or updating a project file…",
+  web_search: "Preparing a web search…",
+  open_url: "Preparing to open a website…",
+} as Record<string, string>)[step] || `Working on ${step.replaceAll("_", " ")}…`;
 type SettingsTab = keyof typeof settingMeta;
 type ChatDialog = {
   mode: "rename" | "delete";
@@ -143,6 +151,7 @@ type WorkspaceMatch = { path: string; line: number; preview: string };
 type PortableWorkspace = { projectJson: string; chatsJson: string };
 type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
+type AgentApproval = { title: string; detail: string; risk: "browser" | "file" } | null;
 type BrowserTab = {
   id: string;
   kind: "home" | "browser" | "artifact" | "document" | "email" | "files" | "projectfiles" | "temporary" | "image";
@@ -276,6 +285,9 @@ export default function App() {
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceDelete, setWorkspaceDelete] = useState<WorkProject | null>(null);
   const [agentAccessOpen, setAgentAccessOpen] = useState(false);
+  const [agentAccessClosing, setAgentAccessClosing] = useState(false);
+  const [agentApproval, setAgentApproval] = useState<AgentApproval>(null);
+  const [agentStatus, setAgentStatus] = useState("");
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar>(null);
   const [replyQuote, setReplyQuote] = useState("");
@@ -327,6 +339,7 @@ export default function App() {
     nativeBrowserViewsRef = useRef<Map<string, NativeBrowserView>>(new Map()),
     startupChatReadyRef = useRef(false),
     abortRef = useRef<AbortController | null>(null);
+  const approvalResolverRef = useRef<((approved: boolean) => void) | null>(null);
   const chat = chats.find((item) => item.id === active) || chats[0];
   const chatWorkspace = workspaces.find((workspace) => workspace.id === chat?.workspaceId);
   const activeProvider = getActiveProvider(config);
@@ -383,6 +396,10 @@ export default function App() {
   }, [chats]);
   useEffect(() => {
     setAgentAccessOpen(false);
+    setAgentAccessClosing(false);
+    approvalResolverRef.current?.(false);
+    approvalResolverRef.current = null;
+    setAgentApproval(null);
   }, [active]);
   useEffect(() => {
     if (startupChatReadyRef.current) return;
@@ -424,8 +441,8 @@ export default function App() {
     const adaptBrowser = () => {
       if (!browserOpen || browserMaximized) return;
       const available = window.innerWidth - (sidebar ? 272 : 0);
-      if (available < 860) setBrowserMaximized(true);
-      else setBrowserWidth((width) => Math.min(width, available - 430));
+      if (available < 760) setBrowserMaximized(true);
+      else setBrowserWidth((width) => Math.max(320, Math.min(width, available - 380)));
     };
     window.addEventListener("resize", adaptBrowser);
     return () => window.removeEventListener("resize", adaptBrowser);
@@ -586,15 +603,16 @@ export default function App() {
     setText("");
   };
   const startTemporaryChat = () => {
+    if (chat.workspaceId) { setToast("Work chats remain attached to their workspace"); return; }
     setBrowserOpen(false);
     setBrowserMaximized(false);
-    if (!chat.messages.length && !chat.folderId && !chat.workspaceId) {
-      setChats((items) => items.map((item) => item.id === chat.id ? { ...item, temporary: true, title: "Temporary chat" } : item));
-    } else {
-      const id = Date.now();
-      setChats((items) => [{ id, title: "Temporary chat", time: "Today", messages: [], temporary: true }, ...items]);
-      setActive(id);
+    if (chat.temporary) {
+      const restoredTitle = chat.messages.find((message) => message.role === "user")?.content.slice(0, 36) || "New conversation";
+      setChats((items) => items.map((item) => item.id === chat.id ? { ...item, temporary: false, title: restoredTitle } : item));
+      setToast("Temporary chat turned off · this conversation will be saved");
+      return;
     }
+    setChats((items) => items.map((item) => item.id === chat.id ? { ...item, temporary: true, title: "Temporary chat" } : item));
     setAgentAccessOpen(false);
     setText(""); setFiles([]); setReplyQuote("");
   };
@@ -690,9 +708,30 @@ export default function App() {
     setToast("Workspace and its chats removed from Nova · project files were not deleted");
   };
   const moveChat = (chatId: number, folderId?: string) => {
-    setChats((current) => current.map((item) => item.id === chatId ? { ...item, folderId, workspaceId: folderId ? undefined : item.workspaceId } : item));
+    const target = chats.find((item) => item.id === chatId);
+    if (target?.workspaceId) {
+      setChatMenu(null);
+      setToast("Work chats stay inside their original workspace");
+      return;
+    }
+    setChats((current) => current.map((item) => item.id === chatId ? { ...item, folderId } : item));
     setChatMenu(null);
     setToast(folderId ? "Conversation moved" : "Removed from folder");
+  };
+  const closeAgentAccess = () => {
+    if (!agentAccessOpen || agentAccessClosing) return;
+    setAgentAccessClosing(true);
+    window.setTimeout(() => { setAgentAccessOpen(false); setAgentAccessClosing(false); }, 170);
+  };
+  const requestAgentApproval = (approval: NonNullable<AgentApproval>) => new Promise<boolean>((resolve) => {
+    approvalResolverRef.current = resolve;
+    setAgentApproval(approval);
+  });
+  const resolveAgentApproval = (approved: boolean) => {
+    const resolve = approvalResolverRef.current;
+    approvalResolverRef.current = null;
+    setAgentApproval(null);
+    resolve?.(approved);
   };
   const confirmChatDialog = () => {
     if (!chatDialog) return;
@@ -839,8 +878,8 @@ export default function App() {
     }
     setBrowserFrameKey((key) => key + 1);
     const available = window.innerWidth - (sidebar ? 272 : 0);
-    if (available < 860) setBrowserMaximized(true);
-    else setBrowserWidth((width) => Math.min(width, available - 430));
+    if (available < 760) setBrowserMaximized(true);
+    else setBrowserWidth((width) => Math.max(320, Math.min(width, available - 380)));
     setBrowserOpen(true);
   };
   const openSystemBrowser = async () => {
@@ -998,8 +1037,8 @@ export default function App() {
   const startBrowserResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const originX = event.clientX;
-    const reservedForChat = (sidebar ? 272 : 0) + 430;
-    const largestSplit = Math.max(420, window.innerWidth - reservedForChat);
+    const reservedForChat = (sidebar ? 272 : 0) + 380;
+    const largestSplit = Math.max(320, window.innerWidth - reservedForChat);
     const originWidth = browserMaximized ? largestSplit + 36 : browserWidth;
     let maximizedDuringDrag = browserMaximized;
     if (browserMaximized) {
@@ -1019,7 +1058,7 @@ export default function App() {
         setWorkspaceMaximized(false);
         maximizedDuringDrag = false;
       }
-      setBrowserWidth(Math.max(420, Math.min(requested, largestSplit)));
+      setBrowserWidth(Math.max(320, Math.min(requested, largestSplit)));
     };
     const stop = () => {
       window.removeEventListener("pointermove", resize);
@@ -1109,6 +1148,7 @@ export default function App() {
     responseStartedRef.current = Date.now();
     setResponseElapsedMs(0);
     setBusy(true);
+    setAgentStatus(chat.workspaceId ? "Reviewing your request and project…" : "");
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -1152,13 +1192,35 @@ export default function App() {
         const executeAgentTool = async (call: AgentToolCall) => {
           let args: Record<string, string> = {};
           try { args = JSON.parse(call.function.arguments || "{}"); } catch { throw new Error("Tool arguments are not valid JSON"); }
+          const access = project.agentAccess || "ask";
+          const isBrowserAction = ["web_search", "open_url"].includes(call.function.name);
+          const isFileChange = call.function.name === "write_file";
+          const needsApproval = access === "ask" ? (isBrowserAction || isFileChange) : access === "safe" ? isFileChange : false;
+          if (needsApproval) {
+            const target = call.function.name === "write_file" ? (args.path || "a project file") : call.function.name === "web_search" ? (args.query || "the web") : (args.url || "a website");
+            setAgentStatus("Waiting for your approval…");
+            const approved = await requestAgentApproval({
+              title: isFileChange ? "Nova wants to change a project file" : "Nova wants to use the browser",
+              detail: isFileChange ? `Create or update: ${target}` : call.function.name === "web_search" ? `Search for: ${target}` : `Open: ${target}`,
+              risk: isFileChange ? "file" : "browser",
+            });
+            if (!approved) throw new Error("__NOVA_PERMISSION_DENIED__");
+          }
+          setAgentStatus(call.function.name === "write_file" && args.path
+            ? `Creating or updating ${args.path}…`
+            : call.function.name === "read_file" && args.path
+              ? `Reading ${args.path}…`
+              : call.function.name === "web_search" && args.query
+                ? `Searching for “${args.query.slice(0, 70)}”…`
+                : call.function.name === "open_url" && args.url
+                  ? `Opening ${args.url.slice(0, 80)}…`
+                  : agentStepLabel(call.function.name));
           if (call.function.name === "list_files") {
             const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath });
             return { ok: true, files: scan.entries.slice(0, 1000) };
           }
           if (call.function.name === "read_file") return { ok: true, path: args.path, content: await invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath: args.path }) };
           if (call.function.name === "write_file") {
-            if ((project.agentAccess || "ask") === "ask") return { ok: false, requiresConfirmation: true, message: "File changes require user approval. Ask the user to select Approve for me or Full access." };
             const path = await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath: args.path, content: args.content || "" });
             return { ok: true, path, backupCreated: true };
           }
@@ -1170,9 +1232,13 @@ export default function App() {
           throw new Error(`Unknown tool: ${call.function.name}`);
         };
         try {
-          await runAgentCompletion(config, [...chat.messages, user], `${workspaceContext}\n\nYou may use Nova tools. Never perform purchases, authentication, form submission, deletion, or access outside the project.`, agentTools, executeAgentTool, (step) => setToast(`Agent · ${step.replaceAll("_", " ")}`), appendToken, controller.signal);
+          await runAgentCompletion(config, [...chat.messages, user], `${workspaceContext}\n\nYou may use Nova tools. Never perform purchases, authentication, form submission, deletion, or access outside the project.`, agentTools, executeAgentTool, (step) => setAgentStatus(agentStepLabel(step)), appendToken, controller.signal);
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
+          if (detail.includes("__NOVA_PERMISSION_DENIED__")) {
+            setChats((items) => items.map((item) => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, content: "Permission was not granted. The requested action was cancelled." } : message) } : item));
+            return;
+          }
           if (!/400|tools|tool_choice|tool call/i.test(detail)) throw agentError;
           setToast("This provider does not support Agent tools yet · using normal Work chat");
           await streamCompletion(config, [...chat.messages, user], appendToken, controller.signal, workspaceContext);
@@ -1210,10 +1276,18 @@ export default function App() {
         messages: item.messages.map((message, index) => index === item.messages.length - 1 && message.role === "assistant" ? { ...message, generating: false, durationMs } : message),
       } : item));
       abortRef.current = null;
+      approvalResolverRef.current = null;
+      setAgentApproval(null);
+      setAgentStatus("");
       setBusy(false);
     }
   };
-  const stopResponse = () => abortRef.current?.abort();
+  const stopResponse = () => {
+    approvalResolverRef.current?.(false);
+    approvalResolverRef.current = null;
+    setAgentApproval(null);
+    abortRef.current?.abort();
+  };
   const jumpToLatest = () => {
     const node = conversationRef.current;
     if (!node) return;
@@ -1757,7 +1831,7 @@ export default function App() {
             </div>
           </div>
         </div>
-        <button className="profile-button" onClick={openSettings}>
+        <div className="profile-button">
           <span className="avatar">
             <CircleUserRound />
           </span>
@@ -1765,8 +1839,8 @@ export default function App() {
             <b>{config.branding.workspaceName}</b>
             <small>Private · Local-first</small>
           </span>
-          <Settings />
-        </button>
+          <button className="profile-settings" aria-label="Open settings" title="Settings" onClick={openSettings}><Settings /></button>
+        </div>
       </aside>
       <main className={`${chat.workspaceId ? "work-chat-main" : ""} ${chat.temporary ? "temporary-chat-main" : ""}`}>
         <header className="topbar">
@@ -1821,10 +1895,10 @@ export default function App() {
           </div>
           <div className="chat-actions">
             <span className="tooltip">
-              <button className={`icon-button ${chat.temporary ? "active" : ""}`} aria-label="Temporary chat" onClick={startTemporaryChat}>
-                <Clock3 />
+              <button disabled={Boolean(chat.workspaceId)} className={`icon-button ${chat.temporary ? "active" : ""}`} aria-label="Temporary chat" onClick={startTemporaryChat}>
+                {chat.temporary ? <Check /> : <Clock3 />}
               </button>
-              <span>Start a temporary chat</span>
+              <span>{chat.workspaceId ? "Work chats stay in their project" : chat.temporary ? "Turn off temporary chat" : "Start a temporary chat"}</span>
             </span>
             <button className={`icon-button workspace-button ${browserOpen ? "active" : ""}`} aria-label="Workspace" title="Workspace" onClick={() => {
               if (browserOpen) {
@@ -1832,8 +1906,8 @@ export default function App() {
                 setBrowserMaximized(false);
               } else {
                 const available = window.innerWidth - (sidebar ? 272 : 0);
-                if (available < 860) setBrowserMaximized(true);
-                else setBrowserWidth((width) => Math.min(width, available - 430));
+                if (available < 760) setBrowserMaximized(true);
+                else setBrowserWidth((width) => Math.max(320, Math.min(width, available - 380)));
                 setBrowserOpen(true);
               }
             }}>
@@ -1943,11 +2017,7 @@ export default function App() {
                     ) : null}
                     <div className="content">
                       {message.content ? renderMessageContent(message) : (
-                        <span className="typing">
-                          <i />
-                          <i />
-                          <i />
-                        </span>
+                        <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{chat.workspaceId && agentStatus && <span>{agentStatus}</span>}</div>
                       )}
                     </div>
                     {message.role === "assistant" && message.content && (
@@ -2041,13 +2111,14 @@ export default function App() {
             </div>
           )}
           <div className={`composer ${!config.activeModel ? "locked" : ""}`}>
+            {chatWorkspace && agentAccessOpen && <button className="agent-access-dismiss" aria-label="Close agent access menu" onClick={closeAgentAccess} />}
             {chatWorkspace && agentAccessOpen && (
-              <div className="agent-access-popover" role="menu" aria-label="Agent access">
+              <div className={`agent-access-popover ${agentAccessClosing ? "closing" : ""}`} role="menu" aria-label="Agent access">
                 <div className="agent-access-title"><span>How should Nova actions be approved?</span><small>Applies only to this Work project</small></div>
                 {([
-                  ["ask", "Ask for approval", "Always ask before editing project files", ShieldCheck],
-                  ["safe", "Approve for me", "Run safe file and browser actions automatically", Workflow],
-                  ["auto", "Full access", "Work autonomously inside this folder", Rocket],
+                  ["ask", "Ask for approval", "Ask before file changes and browser access", ShieldCheck],
+                  ["safe", "Approve for me", "Ask only before potentially unsafe changes", Workflow],
+                  ["auto", "Full access", "No prompts inside this project folder", Rocket],
                 ] as const).map(([value, label, description, Icon]) => (
                   <button
                     type="button"
@@ -2057,7 +2128,7 @@ export default function App() {
                     key={value}
                     onClick={() => {
                       setWorkspaces((items) => items.map((item) => item.id === chatWorkspace.id ? { ...item, agentAccess: value } : item));
-                      setAgentAccessOpen(false);
+                      closeAgentAccess();
                     }}
                   >
                     <Icon />
@@ -2067,18 +2138,19 @@ export default function App() {
                 ))}
               </div>
             )}
-            <textarea
+            {agentApproval ? <div className="agent-approval-inline">
+              <span className={`approval-icon ${agentApproval.risk}`}><ShieldCheck /></span>
+              <span><b>{agentApproval.title}</b><small>{agentApproval.detail}</small></span>
+              <div><button onClick={() => resolveAgentApproval(false)}>No</button><button className="approve" onClick={() => resolveAgentApproval(true)}>Yes</button></div>
+            </div> : <textarea
+              dir="auto"
               disabled={!config.activeModel}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={key}
-              placeholder={
-                config.activeModel
-                  ? `Message ${config.branding.appName}…`
-                  : "Choose a model before sending a message"
-              }
+              placeholder={config.activeModel ? `Message ${config.branding.appName}…` : "Choose a model before sending a message"}
               rows={1}
-            />
+            />}
             <div className="composer-tools">
               <div>
                 {chatWorkspace && (
@@ -2088,7 +2160,7 @@ export default function App() {
                     title="Agent access"
                     aria-label="Agent access"
                     aria-expanded={agentAccessOpen}
-                    onClick={() => setAgentAccessOpen((open) => !open)}
+                    onClick={() => agentAccessOpen ? closeAgentAccess() : (setAgentAccessClosing(false), setAgentAccessOpen(true))}
                   >
                     <ShieldCheck />
                   </button>
@@ -2212,7 +2284,7 @@ export default function App() {
                   <X />
                 </button>
               </header>
-              <div className="settings-scroll">
+              <div className="settings-scroll settings-tab-transition" key={settingsTab}>
                 {settingsTab === "general" && (
                   <>
                     <section className="settings-section compact-section">
@@ -2415,7 +2487,7 @@ export default function App() {
                       <div className="setup-title"><h2>Import a local model</h2><p>Choose a GGUF file. Nova keeps a private copy and configures the local runtime for you.</p></div>
                       <button className="local-drop" disabled={importingLocalModel} onClick={importLocalModel}><HardDriveUpload /><span><b>{importingLocalModel ? "Importing and verifying…" : "Choose a GGUF file"}</b><small>Desktop app only · the original file is not modified</small></span></button>
                       {isDesktopApp() && ollamaInstalled === false && <div className="ollama-installer">
-                        <div className="ollama-installer-head"><Info /><span><b>Ollama is required</b><small>Nova can download and install the local runtime for you.</small></span></div>
+                        <div className="ollama-installer-head"><Info /><span><b>Ollama is required</b><small>Nova downloads the correct runtime for {navigator.platform.toLowerCase().includes("mac") ? "macOS" : "Windows"}.</small></span></div>
                         {ollamaInstall && ollamaInstall.phase !== "missing" && <div className="ollama-install-progress"><div><span>{ollamaInstall.message}</span><b>{ollamaInstall.total > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} / ${(ollamaInstall.total / 1048576).toFixed(1)} MB · ${Math.min(100, Math.round(ollamaInstall.downloaded / ollamaInstall.total * 100))}%` : ollamaInstall.downloaded > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} MB` : ollamaInstall.phase === "installing" ? "Installing…" : ""}</b></div><i><span style={{ width: `${ollamaInstall.total > 0 ? Math.min(100, ollamaInstall.downloaded / ollamaInstall.total * 100) : ollamaInstall.phase === "installing" ? 100 : 5}%` }} /></i>{ollamaInstall.error && <p>{ollamaInstall.error}</p>}</div>}
                         <button className="primary-button" disabled={Boolean(ollamaInstall && !["missing", "error"].includes(ollamaInstall.phase))} onClick={installOllama}><Download />{ollamaInstall && !["missing", "error"].includes(ollamaInstall.phase) ? "Installing Ollama…" : "Download & install Ollama"}</button>
                       </div>}
@@ -2880,6 +2952,7 @@ export default function App() {
                   <div className="temporary-notice"><Clock3 /><span><b>Temporary chat</b><small>Not saved to history</small></span></div>
                   <div className={`composer ${!config.activeModel ? "locked" : ""}`}>
                     <textarea
+                      dir="auto"
                       disabled={!config.activeModel}
                       value={activeBrowserTab.draft || ""}
                       rows={1}
@@ -2930,16 +3003,16 @@ export default function App() {
           >
             <button onClick={() => { requestRenameChat(chatMenu.chatId); setChatMenu(null); }}><Pencil />Rename</button>
             <button onClick={() => { archiveChat(chatMenu.chatId); setChatMenu(null); }}><Archive />Archive</button>
-            <div className="context-separator" />
-            <small>Move to folder</small>
-            {folders.map((folder) => {
-              const Icon = folderIcons[folder.icon];
-              return <button key={folder.id} onClick={() => moveChat(chatMenu.chatId, folder.id)}><Icon style={{ color: folder.color }} />{folder.name}</button>;
-            })}
-            {chats.find((item) => item.id === chatMenu.chatId)?.folderId && (
-              <button onClick={() => moveChat(chatMenu.chatId)}><X />Remove from folder</button>
-            )}
-            {!folders.length && <em>Create a folder first</em>}
+            {!chats.find((item) => item.id === chatMenu.chatId)?.workspaceId && <>
+              <div className="context-separator" />
+              <small>Move to folder</small>
+              {folders.map((folder) => {
+                const Icon = folderIcons[folder.icon];
+                return <button key={folder.id} onClick={() => moveChat(chatMenu.chatId, folder.id)}><Icon style={{ color: folder.color }} />{folder.name}</button>;
+              })}
+              {chats.find((item) => item.id === chatMenu.chatId)?.folderId && <button onClick={() => moveChat(chatMenu.chatId)}><X />Remove from folder</button>}
+              {!folders.length && <em>Create a folder first</em>}
+            </>}
             <div className="context-separator" />
             <button className="danger" onClick={() => { requestDeleteChat(chatMenu.chatId); setChatMenu(null); }}><Trash2 />Delete</button>
           </div>

@@ -44,7 +44,7 @@ The macOS build includes Nova Work, local folder access, the native Workspace br
 
 Nova is the interface; the model runs through a provider. The easiest private option is [Ollama](https://ollama.com/).
 
-Install Ollama, open PowerShell or Terminal, and download a lightweight model:
+You can install Ollama yourself, or import a `.gguf` file in Nova and use **Download & install Ollama**. Nova downloads the official GitHub release for the current operating system, verifies it, and shows byte-level progress on Windows and macOS. To download a lightweight model manually:
 
 ```powershell
 ollama pull qwen2.5:0.5b
@@ -56,16 +56,16 @@ Ollama normally starts its local server automatically. Keep it running while usi
 
 1. Open **IDK Nova**.
 2. Open **Settings → Models**.
-3. Select the existing local provider or choose **New**.
+3. Choose **Add new model → Connect an API**.
 4. Enter `http://localhost:11434/v1` as the **Base URL**.
 5. Leave **API key** empty for local Ollama.
-6. Choose **Connect & discover models**.
-7. Select `qwen2.5:0.5b`, press **Test**, and wait for **Verified**.
+6. Leave the Model ID empty to discover models, or enter `qwen2.5:0.5b`.
+7. Choose **Test & add model** and wait for verification.
 8. Choose **Save changes** and start a new chat.
 
 Nova only lists models returned by the real provider endpoint or model IDs you explicitly add. Manually entered models must answer a test completion before Nova accepts them.
 
-Alternatively, the desktop app can import a local `.gguf` file from **Settings → Models → Import a local model file**. Nova keeps a private copy in its application-data folder and registers it with Ollama automatically, so no endpoint or model ID is required. Ollama must be installed because it provides the local inference runtime.
+Alternatively, the desktop app can import a local `.gguf` file from **Settings → Models → Add new model → Import a local file**. Nova keeps a private copy in its application-data folder and registers it with Ollama automatically, so no endpoint or model ID is required.
 
 ## Use the web version
 
@@ -75,7 +75,7 @@ Local browser connections use:
 
 | Provider | Base URL |
 | --- | --- |
-| Ollama | `http://localhost:11434/v1` |
+| Ollama | `http://127.0.0.1:11434/v1` |
 | LM Studio | `http://localhost:1234/v1` |
 | OpenAI-compatible server | The `/v1` URL supplied by your administrator |
 
@@ -84,6 +84,7 @@ Your browser or provider must allow requests from the Nova website. The Windows 
 ## What Nova includes
 
 - **Nova Work (desktop):** attach a real project folder, keep project chats separate, index files locally, and give the selected AI request-aware context from relevant text and source files
+- Three enforced Work approval levels with inline Yes/No prompts and live agent progress
 - Streaming AI conversations with searchable local history
 - Multiple providers and separate real model lists
 - Desktop GGUF import with private local storage and automatic Ollama registration
@@ -109,7 +110,7 @@ Nova Work is available in the desktop application because a normal website canno
 3. Start a **New work chat** inside that workspace.
 4. Ask about the project, a feature, or an error. Nova builds a local file index and includes only relevant supported text files in that request.
 
-Work access is deliberately read-only in this release. Nova ignores dependency/build folders, hidden files, common secret files, symbolic links, binary files, files above the safety limit, and any path outside the selected folder. The entire project is never uploaded automatically: relevant context is sent only to the AI provider selected in Settings when you send a message. Choose a provider you trust before discussing private code.
+Nova can read supported project files, search the web in Workspace Browser, and create or update files only inside the attached project. **Ask for approval** prompts before browser access and file changes, **Approve for me** runs safe reads/browser research automatically but confirms project changes, and **Full access** works autonomously inside the attached folder. Nova still blocks purchases, authentication, form submission, deletion, secret files, dependency/build folders, symbolic links, binary files, oversized files, and every path outside the selected project. Choose a provider you trust before discussing private code.
 
 Nova creates a hidden `.nova-work` directory inside a folder after you explicitly attach it. It contains portable project identity, Work chat history, and a compact activity record. Copying the complete project folder to another computer and attaching it there restores that Work history. This is portable local state—not an undisclosed cloud sync service—and can be excluded from version control if you do not want chat history committed to a repository.
 
@@ -166,7 +167,7 @@ Do not commit real API keys or database passwords. Supply secrets separately on 
 ### Nova cannot discover any models
 
 - Confirm Ollama or LM Studio is running.
-- Open `http://localhost:11434/v1/models` for Ollama and check that it returns JSON.
+- Open `http://127.0.0.1:11434/v1/models` for Ollama and check that it returns JSON.
 - Confirm the Base URL ends in `/v1`.
 - Run `ollama list` and verify that at least one model is installed.
 
