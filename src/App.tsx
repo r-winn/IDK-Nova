@@ -77,6 +77,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import PdfViewer from "./components/PdfViewer";
 import { AgentTool, AgentToolCall, discoverModels, runAgentCompletion, streamCompletion, testModel } from "./lib/ai";
 import {
   loadConfig,
@@ -203,19 +204,14 @@ type BrowserTab = {
   documentSize?: number;
   documentAlign?: "start" | "center" | "justify";
   projectId?: string;
+  projectPath?: string;
   entries?: WorkspaceEntry[];
+  pdfPages?: number;
+  createPath?: string;
+  creatingFile?: boolean;
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number; zoom: number };
-const browserZoomForWidth = (width: number, url = "") => {
-  let isGoogleResults = false;
-  try {
-    const parsed = new URL(url);
-    isGoogleResults = /(^|\.)google\./i.test(parsed.hostname) && parsed.pathname === "/search";
-  } catch { /* an empty browser tab uses the regular scale */ }
-  return isGoogleResults
-    ? Math.max(.42, Math.min(.82, width / 1180))
-    : Math.max(.72, Math.min(1, width / 920));
-};
+const browserZoomForWidth = (width: number) => Math.max(.72, Math.min(1, width / 920));
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
 
 const folderIcons = {
@@ -505,14 +501,13 @@ export default function App() {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
       if (cancelled || !browserSurfaceRef.current) return;
       const rect = browserSurfaceRef.current.getBoundingClientRect();
-      const panelRect = browserPanelRef.current?.getBoundingClientRect();
-      const left = Math.max(0, rect.left, panelRect?.left || 0);
-      const top = Math.max(0, rect.top, panelRect?.top || 0);
-      const right = Math.min(window.innerWidth, rect.right, panelRect?.right || window.innerWidth);
-      const bottom = Math.min(window.innerHeight, rect.bottom, panelRect?.bottom || window.innerHeight);
+      const left = Math.max(0, rect.left);
+      const top = Math.max(0, rect.top);
+      const right = Math.min(window.innerWidth, rect.right);
+      const bottom = Math.min(window.innerHeight, rect.bottom);
       const width = Math.max(1, right - left);
       const height = Math.max(1, bottom - top);
-      const zoom = browserZoomForWidth(width, activeBrowserTab.url);
+      const zoom = browserZoomForWidth(width);
       let entry = views.get(activeBrowserTabId);
       if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
         await entry.webview.close().catch(() => undefined);
@@ -556,15 +551,14 @@ export default function App() {
       const entry = nativeBrowserViewsRef.current.get(activeBrowserTabId);
       if (!entry) return;
       const rect = surface.getBoundingClientRect();
-      const panelRect = browserPanelRef.current?.getBoundingClientRect();
-      const left = Math.max(0, rect.left, panelRect?.left || 0);
-      const top = Math.max(0, rect.top, panelRect?.top || 0);
-      const right = Math.min(window.innerWidth, rect.right, panelRect?.right || window.innerWidth);
-      const bottom = Math.min(window.innerHeight, rect.bottom, panelRect?.bottom || window.innerHeight);
+      const left = Math.max(0, rect.left);
+      const top = Math.max(0, rect.top);
+      const right = Math.min(window.innerWidth, rect.right);
+      const bottom = Math.min(window.innerHeight, rect.bottom);
       const width = Math.max(1, right - left);
       entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
       entry.webview.setSize(new LogicalSize(width, Math.max(1, bottom - top))).catch(() => undefined);
-      const zoom = browserZoomForWidth(width, activeBrowserTab?.url || "");
+      const zoom = browserZoomForWidth(width);
       if (!Number.isFinite(entry.zoom) || Math.abs(entry.zoom - zoom) > .01) {
         entry.zoom = zoom;
         entry.webview.setZoom(zoom).catch(() => { entry.zoom = Number.NaN; });
@@ -1050,13 +1044,52 @@ export default function App() {
     const project = workspaces.find((item) => item.id === tab.projectId);
     if (!project) return;
     try {
+      const extension = entry.name.split(".").pop()?.toLowerCase() || "text";
+      if (["pdf", "png", "jpg", "jpeg", "gif", "webp", "svg"].includes(extension)) {
+        const fileUrl = await invoke<string>("read_workspace_asset", { rootPath: project.rootPath, relativePath: entry.path });
+        const id = `asset-${Date.now()}`;
+        const isPdf = extension === "pdf";
+        setBrowserTabs((tabs) => [...tabs, { id, kind: isPdf ? "pdf" : "image", title: entry.name, fileUrl, imageUrl: isPdf ? undefined : fileUrl, imageZoom: 1, projectId: project.id, projectPath: entry.path, url: "", input: "", history: [], historyIndex: -1 }]);
+        setActiveBrowserTabId(id);
+        setBrowserOpen(true);
+        return;
+      }
       const content = await invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath: entry.path });
-      const extension = entry.name.split(".").pop() || "text";
-      openArtifact(entry.name, extension, content);
+      const id = `artifact-${Date.now()}`;
+      setBrowserTabs((tabs) => [...tabs, { id, kind: "artifact", title: entry.name, language: extension, content, artifactView: "edit", projectId: project.id, projectPath: entry.path, url: "", input: "", history: [], historyIndex: -1 }]);
+      setActiveBrowserTabId(id);
+      setBrowserOpen(true);
     } catch (error) { setToast(error instanceof Error ? error.message : String(error)); }
   };
   const updateWorkspaceTab = (id: string, changes: Partial<BrowserTab>) =>
     setBrowserTabs((tabs) => tabs.map((tab) => tab.id === id ? { ...tab, ...changes } : tab));
+  const refreshProjectFiles = async (tab: BrowserTab) => {
+    const project = workspaces.find((item) => item.id === tab.projectId);
+    if (!project) return;
+    const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath });
+    updateWorkspaceTab(tab.id, { entries: scan.entries });
+  };
+  const createProjectFile = async (tab: BrowserTab) => {
+    const project = workspaces.find((item) => item.id === tab.projectId);
+    if (!project) return;
+    const relativePath = tab.createPath?.trim();
+    if (!relativePath) return;
+    try {
+      await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath, content: "" });
+      await refreshProjectFiles(tab);
+      await openProjectFile(tab, { path: relativePath, name: relativePath.split("/").pop() || relativePath, kind: "file", size: 0, modified: Date.now() });
+      setToast(`Created ${relativePath}`);
+    } catch (error) { setToast(error instanceof Error ? error.message : String(error)); }
+  };
+  const saveProjectArtifact = async () => {
+    if (!activeBrowserTab?.projectId || !activeBrowserTab.projectPath) { downloadArtifact(); return; }
+    const project = workspaces.find((item) => item.id === activeBrowserTab.projectId);
+    if (!project) return;
+    try {
+      await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath: activeBrowserTab.projectPath, content: activeBrowserTab.content || "" });
+      setToast(`Saved ${activeBrowserTab.projectPath}`);
+    } catch (error) { setToast(error instanceof Error ? error.message : String(error)); }
+  };
   const sendTemporaryChat = async () => {
     const tab = browserTabs.find((item) => item.id === activeBrowserTabId);
     if (!tab || tab.kind !== "temporary" || tab.busy || !tab.draft?.trim()) return;
@@ -2982,7 +3015,7 @@ export default function App() {
               <button className={activeBrowserTab.artifactView === "preview" ? "active" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, artifactView: "preview" } : tab))}><Globe2 />Preview</button>
               <span />
               <button onClick={() => copy(activeBrowserTab.content || "")}><Copy />Copy</button>
-              <button onClick={downloadArtifact}><Download />Save</button>
+              <button onClick={saveProjectArtifact}>{activeBrowserTab.projectPath ? <><Check />Save to Work</> : <><Download />Save</>}</button>
             </div>
           ) : activeBrowserTab && ["document", "email"].includes(activeBrowserTab.kind) ? (
             <div className="workspace-toolbar document-toolbar">
@@ -3014,10 +3047,11 @@ export default function App() {
             </div>
           ) : activeBrowserTab && ["file", "pdf"].includes(activeBrowserTab.kind) ? (
             <div className="workspace-toolbar attachment-toolbar">
-              <span>{activeBrowserTab.kind === "pdf" ? "PDF document" : activeBrowserTab.mime || "Attached file"}</span>
+              <span>{activeBrowserTab.kind === "pdf" ? `${activeBrowserTab.pdfPages ? `${activeBrowserTab.pdfPages} pages · ` : ""}PDF document` : activeBrowserTab.mime || "Attached file"}</span>
+              {activeBrowserTab.kind === "pdf" && <><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: Math.max(.5, (activeBrowserTab.imageZoom || 1) - .15) })}><ZoomOut />Zoom out</button><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: Math.min(2.5, (activeBrowserTab.imageZoom || 1) + .15) })}><ZoomIn />Zoom in</button></>}
               <button onClick={downloadWorkspaceFile}><Download />Download</button>
             </div>
-          ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "projectfiles" ? `${activeBrowserTab.entries?.filter((entry) => entry.kind === "file").length || 0} project files · read-only` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
+          ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "projectfiles" ? `${activeBrowserTab.entries?.filter((entry) => entry.kind === "file").length || 0} project files · editable` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
           <div className="browser-surface" ref={browserSurfaceRef}>
             <div
               className={`workspace-view workspace-view-${activeBrowserTab?.kind || "home"}`}
@@ -3079,9 +3113,7 @@ export default function App() {
                 <div><img src={activeBrowserTab.imageUrl} alt={activeBrowserTab.title} style={{ transform: `scale(${activeBrowserTab.imageZoom || 1})` }} /></div>
               </div>
             ) : activeBrowserTab?.kind === "pdf" ? (
-              <div className="workspace-pdf-viewer">
-                <iframe title={activeBrowserTab.title} src={activeBrowserTab.fileUrl} />
-              </div>
+              <PdfViewer dataUrl={activeBrowserTab.fileUrl || ""} title={activeBrowserTab.title} zoom={activeBrowserTab.imageZoom || 1} onPages={(pdfPages) => updateWorkspaceTab(activeBrowserTab.id, { pdfPages })} />
             ) : activeBrowserTab?.kind === "file" ? (
               <div className="workspace-file-viewer">
                 {activeBrowserTab.content ? <pre dir="auto">{activeBrowserTab.content}</pre> : <div><FileText /><h3>{activeBrowserTab.title}</h3><p>A native preview is not available for this file type.</p><button onClick={downloadWorkspaceFile}><Download />Download file</button></div>}
@@ -3098,7 +3130,8 @@ export default function App() {
               </div>
             ) : activeBrowserTab?.kind === "projectfiles" ? (
               <div className="workspace-files project-files">
-                <header><div><span className="work-source-badge"><BriefcaseBusiness />Work files</span><h3>{activeBrowserTab.title}</h3><p>Select a supported source or text file to inspect it in Workspace.</p></div><button onClick={async () => { const project = workspaces.find((item) => item.id === activeBrowserTab.projectId); if (!project) return; const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath }); updateWorkspaceTab(activeBrowserTab.id, { entries: scan.entries }); }}><RefreshCw />Refresh</button></header>
+                <header><div><span className="work-source-badge"><BriefcaseBusiness />Work files</span><h3>{activeBrowserTab.title}</h3><p>Open, edit, and create supported files directly inside this Work folder.</p></div><div className="project-file-actions"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: !activeBrowserTab.creatingFile, createPath: activeBrowserTab.createPath || "untitled.md" })}><Plus />New file</button><button onClick={() => refreshProjectFiles(activeBrowserTab)}><RefreshCw />Refresh</button></div></header>
+                {activeBrowserTab.creatingFile && <form className="project-file-create" onSubmit={(event) => { event.preventDefault(); createProjectFile(activeBrowserTab); }}><FileText /><input autoFocus value={activeBrowserTab.createPath || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { createPath: event.target.value })} placeholder="notes.md or src/new-file.ts" /><button type="button" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: false })}>Cancel</button><button type="submit">Create</button></form>}
                 <div className="project-file-list">{(activeBrowserTab.entries || []).map((entry) => <button className={entry.kind} key={entry.path} onClick={() => openProjectFile(activeBrowserTab, entry)} disabled={entry.kind === "directory"} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <FileText />}<span><b>{entry.name}</b><small>{entry.path}{entry.kind === "file" ? ` · ${Math.max(1, Math.round(entry.size / 1024))} KB` : ""}</small></span>{entry.kind === "file" && <ArrowRight />}</button>)}</div>
               </div>
             ) : activeBrowserTab?.kind === "temporary" ? (

@@ -1,6 +1,6 @@
 {
-  "version": "0.15.5",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.5",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.5/IDK.Nova_0.15.5_x64-setup.exe",
+  "version": "0.15.6",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.6",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.6/IDK.Nova_0.15.6_x64-setup.exe",
   "notes": ["Edit is available only for the latest user message", "Chat attachments open directly in Nova Workspace", "PDF files use a full-height in-app viewer", "Text, Markdown, JSON and CSV attachments have a dedicated readable preview", "Unknown file types still open in Workspace with a safe download action", "The GitHub README has been rebuilt as a clean product page without the oversized logo"]
 }

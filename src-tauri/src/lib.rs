@@ -440,6 +440,25 @@ async fn read_workspace_file(root_path: String, relative_path: String) -> Result
 }
 
 #[tauri::command]
+async fn read_workspace_asset(root_path: String, relative_path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let target = safe_target(&root, &relative_path)?;
+        if !target.is_file() { return Err("Workspace asset was not found".into()); }
+        let size = target.metadata().map_err(|error| error.to_string())?.len();
+        if size > 25_000_000 { return Err("This preview is larger than the 25 MB safety limit".into()); }
+        let extension = target.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
+        let mime = match extension.as_str() {
+            "pdf" => "application/pdf", "png" => "image/png", "jpg" | "jpeg" => "image/jpeg",
+            "gif" => "image/gif", "webp" => "image/webp", "svg" => "image/svg+xml",
+            _ => return Err("This file type does not have a native preview".into()),
+        };
+        let bytes = fs::read(target).map_err(|error| error.to_string())?;
+        Ok(format!("data:{mime};base64,{}", BASE64.encode(bytes)))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn search_workspace(root_path: String, query: String) -> Result<Vec<WorkspaceMatch>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = canonical_root(&root_path)?;
@@ -522,7 +541,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, observe_screen, click_screen, type_text, press_key, scroll_screen, open_application])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, observe_screen, click_screen, type_text, press_key, scroll_screen, open_application])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
