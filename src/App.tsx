@@ -280,6 +280,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(() =>
     new URLSearchParams(location.search).has("settings"),
   );
+  const [settingsClosing, setSettingsClosing] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -457,6 +458,7 @@ export default function App() {
       if (available < 760) setBrowserMaximized(true);
       else setBrowserWidth((width) => Math.max(320, Math.min(width, available - 380)));
     };
+    adaptBrowser();
     window.addEventListener("resize", adaptBrowser);
     return () => window.removeEventListener("resize", adaptBrowser);
   }, [browserOpen, browserMaximized, sidebar]);
@@ -473,8 +475,10 @@ export default function App() {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
       if (cancelled || !browserSurfaceRef.current) return;
       const rect = browserSurfaceRef.current.getBoundingClientRect();
-      const width = Math.max(1, rect.width);
-      const height = Math.max(1, rect.height);
+      const left = Math.max(0, rect.left);
+      const top = Math.max(0, rect.top);
+      const width = Math.max(1, Math.min(window.innerWidth, rect.right) - left);
+      const height = Math.max(1, Math.min(window.innerHeight, rect.bottom) - top);
       let entry = views.get(activeBrowserTabId);
       if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
         await entry.webview.close().catch(() => undefined);
@@ -485,15 +489,15 @@ export default function App() {
         const label = `nova-browser-${activeBrowserTabId}-${browserFrameKey}`.replace(/[^a-zA-Z0-9-/:_]/g, "-");
         const webview = new Webview(getCurrentWindow(), label, {
           url: activeBrowserTab.url,
-          x: rect.left,
-          y: rect.top,
+          x: left,
+          y: top,
           width,
           height,
         });
         entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey };
         views.set(activeBrowserTabId, entry);
       } else {
-        await entry.webview.setPosition(new LogicalPosition(rect.left, rect.top)).catch(() => undefined);
+        await entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
         await entry.webview.setSize(new LogicalSize(width, height)).catch(() => undefined);
         await entry.webview.show().catch(() => undefined);
       }
@@ -507,16 +511,38 @@ export default function App() {
   useEffect(() => {
     if (!isDesktopApp() || !browserOpen || !browserSurfaceRef.current) return;
     const surface = browserSurfaceRef.current;
-    const observer = new ResizeObserver(() => {
+    let animationFrame = 0;
+    let animationUntil = performance.now() + 460;
+    const syncBounds = () => {
       const entry = nativeBrowserViewsRef.current.get(activeBrowserTabId);
       if (!entry) return;
       const rect = surface.getBoundingClientRect();
-      entry.webview.setPosition(new LogicalPosition(rect.left, rect.top)).catch(() => undefined);
-      entry.webview.setSize(new LogicalSize(Math.max(1, rect.width), Math.max(1, rect.height))).catch(() => undefined);
+      const left = Math.max(0, rect.left);
+      const top = Math.max(0, rect.top);
+      const right = Math.min(window.innerWidth, rect.right);
+      const bottom = Math.min(window.innerHeight, rect.bottom);
+      entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
+      entry.webview.setSize(new LogicalSize(Math.max(1, right - left), Math.max(1, bottom - top))).catch(() => undefined);
+    };
+    const followLayoutAnimation = () => {
+      syncBounds();
+      if (performance.now() < animationUntil) animationFrame = requestAnimationFrame(followLayoutAnimation);
+      else animationFrame = 0;
+    };
+    const observer = new ResizeObserver(() => {
+      syncBounds();
+      animationUntil = performance.now() + 360;
+      if (!animationFrame) animationFrame = requestAnimationFrame(followLayoutAnimation);
     });
     observer.observe(surface);
-    return () => observer.disconnect();
-  }, [browserOpen, activeBrowserTabId]);
+    followLayoutAnimation();
+    window.addEventListener("resize", syncBounds);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncBounds);
+      cancelAnimationFrame(animationFrame);
+    };
+  }, [browserOpen, activeBrowserTabId, browserMaximized, sidebar]);
   useEffect(
     () => {
       localStorage.setItem("idk-nova-active", JSON.stringify(active));
@@ -1322,8 +1348,17 @@ export default function App() {
   const openSettings = () => {
     setDraftConfig(config);
     setModelSetupView("list");
+    setSettingsClosing(false);
     setSettingsOpen(true);
     setModelOpen(false);
+  };
+  const closeSettings = () => {
+    if (settingsClosing) return;
+    setSettingsClosing(true);
+    window.setTimeout(() => {
+      setSettingsOpen(false);
+      setSettingsClosing(false);
+    }, 220);
   };
   const beginModelSetup = (view: "choose" | "api" | "local" = "choose") => {
     setNewProvider({ id: `provider-${Date.now()}`, name: "", baseUrl: "", apiKey: "", models: [] });
@@ -1610,7 +1645,7 @@ export default function App() {
     const next = draftConfig.providers.length ? draftConfig : { ...draftConfig, activeProviderId: "", activeModel: "" };
     setConfig(next);
     saveConfig(next);
-    setSettingsOpen(false);
+    closeSettings();
     setToast("Settings saved");
   };
   const activeFolder = folders.find((folder) => folder.id === openFolderId);
@@ -1863,7 +1898,7 @@ export default function App() {
           <button className="profile-settings" aria-label="Open settings" title="Settings" onClick={openSettings}><Settings /></button>
         </div>
       </aside>
-      <main className={`${chat.workspaceId ? "work-chat-main" : ""} ${chat.temporary ? "temporary-chat-main" : ""}`}>
+      <main key={`${chat.id}-${chat.temporary ? "temporary" : "normal"}`} className={`chat-mode-transition ${chat.workspaceId ? "work-chat-main" : ""} ${chat.temporary ? "temporary-chat-main" : ""}`}>
         <header className="topbar">
           <div className="topbar-start">
             {!sidebar && (
@@ -2096,7 +2131,7 @@ export default function App() {
               ))}
             </div>
           )}
-          <div className={`composer ${!config.activeModel ? "locked" : ""}`}>
+          <div className={`composer ${!config.activeModel ? "locked" : ""} ${agentAccessOpen ? "access-menu-open" : ""}`}>
             {chatWorkspace && agentAccessOpen && <button className="agent-access-dismiss" aria-label="Close agent access menu" onClick={closeAgentAccess} />}
             {chatWorkspace && agentAccessOpen && (
               <div className={`agent-access-popover ${agentAccessClosing ? "closing" : ""}`} role="menu" aria-label="Agent access">
@@ -2203,11 +2238,11 @@ export default function App() {
 
       {settingsOpen && (
         <div
-          className="settings-backdrop"
-          onMouseDown={() => setSettingsOpen(false)}
+          className={`settings-backdrop ${settingsClosing ? "closing" : ""}`}
+          onMouseDown={closeSettings}
         >
           <div
-            className="settings-window"
+            className={`settings-window ${settingsClosing ? "closing" : ""}`}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <aside className="settings-sidebar">
@@ -2265,7 +2300,7 @@ export default function App() {
                 </div>
                 <button
                   className="icon-button"
-                  onClick={() => setSettingsOpen(false)}
+                  onClick={closeSettings}
                 >
                   <X />
                 </button>
@@ -2740,7 +2775,7 @@ export default function App() {
                 <div>
                   <button
                     className="secondary"
-                    onClick={() => setSettingsOpen(false)}
+                    onClick={closeSettings}
                   >
                     Cancel
                   </button>

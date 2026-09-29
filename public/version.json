@@ -1,6 +1,6 @@
 {
-  "version": "0.14.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.14.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.14.1/IDK.Nova_0.14.1_x64-setup.exe",
-  "notes": ["Model latency now comes only from a fresh, successful completion test", "A failed connection test immediately removes the stale green ping and shows an Offline state", "Normal, Temporary, and Work chats now have purpose-built empty states", "Temporary chats keep the private-session explanation without generic starter prompts", "Work chats use project-oriented actions and a logo-free workspace welcome", "GitHub installation and troubleshooting guidance has been refreshed for Windows and macOS"]
+  "version": "0.14.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.14.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.14.2/IDK.Nova_0.14.2_x64-setup.exe",
+  "notes": ["Switching into and out of Temporary Chat now uses the same soft transition as other chat changes", "Settings now has a complete matching close animation", "Opening Work access options no longer adds a focus rectangle around the composer", "Workspace Browser width is clamped immediately whenever it opens or the sidebar changes", "The native desktop browser follows the exact visible surface throughout resize and fullscreen animations", "Browser content is clipped to the Workspace surface and no longer overlaps Nova navigation"]
 }
