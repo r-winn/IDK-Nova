@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "IDK Nova",
-  "version": "0.15.4",
+  "version": "0.15.5",
   "identifier": "com.idk.nova",
   "build": { "beforeDevCommand": "npm run dev", "devUrl": "http://localhost:1430", "beforeBuildCommand": "npm run build", "frontendDist": "../dist" },
   "app": {
     "windows": [{ "title": "IDK Nova", "width": 1240, "height": 820, "minWidth": 760, "minHeight": 560, "center": true, "resizable": true }],
-    "security": { "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* http://ai.goldiran.ir https:; frame-src http: https:; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'" }
+    "security": { "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* http://ai.goldiran.ir https:; frame-src http: https: blob: data:; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'" }
   },
   "bundle": {
     "active": true,

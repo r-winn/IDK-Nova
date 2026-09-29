@@ -1,6 +1,6 @@
 {
-  "version": "0.15.4",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.4",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.4/IDK.Nova_0.15.4_x64-setup.exe",
-  "notes": ["Editing now happens in the main composer with the complete original message", "Editing includes a clear status strip plus Cancel and Send controls", "Saving an edit regenerates the conversation from the edited message", "Persian user messages align naturally to the right while English remains left-to-right", "User prompts always remain plain chat bubbles and can no longer be mistaken for email or document artifacts"]
+  "version": "0.15.5",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.5",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.5/IDK.Nova_0.15.5_x64-setup.exe",
+  "notes": ["Edit is available only for the latest user message", "Chat attachments open directly in Nova Workspace", "PDF files use a full-height in-app viewer", "Text, Markdown, JSON and CSV attachments have a dedicated readable preview", "Unknown file types still open in Workspace with a safe download action", "The GitHub README has been rebuilt as a clean product page without the oversized logo"]
 }

@@ -1,26 +1,40 @@
 <div align="center">
-  <img src="public/brand/app-icon-master.png" width="86" alt="IDK Nova logo">
+  <img src="public/brand/app-icon-master.png" width="72" height="72" alt="IDK Nova logo">
   <h1>IDK Nova</h1>
-  <p><strong>Your private, configurable AI workspace for Windows, macOS, and the web.</strong></p>
-  <p>Connect local Ollama or LM Studio models, company AI servers, and OpenAI-compatible cloud providers from one clean desktop experience.</p>
+  <p><strong>A private, configurable AI workspace for Windows, macOS, and the web.</strong></p>
+  <p>Chat with local or cloud models, work with real project folders, inspect files, and keep every provider under your control.</p>
 
   [![Latest release](https://img.shields.io/github/v/release/r-winn/IDK-Nova?style=flat-square&label=latest)](https://github.com/r-winn/IDK-Nova/releases/latest)
-  [![Windows](https://img.shields.io/badge/Windows-Download_EXE-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.4_x64-setup.exe)
-  [![macOS](https://img.shields.io/badge/macOS-Universal_DMG-171717?style=flat-square&logo=apple)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.4_universal.dmg)
+  [![Windows](https://img.shields.io/badge/Windows-Download_EXE-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.5_x64-setup.exe)
+  [![macOS](https://img.shields.io/badge/macOS-Universal_DMG-171717?style=flat-square&logo=apple)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.5_universal.dmg)
   [![Web app](https://img.shields.io/badge/Web-Open%20Nova-171717?style=flat-square)](https://r-winn.github.io/IDK-Nova/)
   [![License](https://img.shields.io/github/license/r-winn/IDK-Nova?style=flat-square)](LICENSE)
 </div>
 
-> IDK Nova is an early open-source release. Verify important AI responses and only send sensitive information to providers you trust.
+<p align="center">
+  <a href="#get-nova"><strong>Download</strong></a> ·
+  <a href="https://r-winn.github.io/IDK-Nova/"><strong>Try on the web</strong></a> ·
+  <a href="#nova-work-local-project-intelligence"><strong>Nova Work</strong></a> ·
+  <a href="#run-from-source"><strong>Build from source</strong></a>
+</p>
 
-<p align="center"><img src="public/brand/nova-readme.jpg" width="880" alt="IDK Nova product preview"></p>
+> [!IMPORTANT]
+> IDK Nova connects directly to the providers you configure. Verify important AI output, review Work actions before approval, and send sensitive information only to providers you trust.
+
+## One workspace, your models
+
+| Chat | Work | Files | Control |
+| --- | --- | --- | --- |
+| Streaming conversations, temporary sessions, attachments, documents, email drafts, code and math | Project-aware chats with local folder context and portable `.nova-work` history | Image viewer, PDF viewer, text preview and generated-code workspace | Local Ollama/GGUF, LM Studio, company APIs, cloud providers and three agent approval levels |
+
+Nova is local-first and provider-neutral. It does not ship with a hidden model or proxy your conversations through an IDK Nova server.
 
 ## Get Nova
 
 | Platform | Recommended download | Alternative |
 | --- | --- | --- |
-| Windows 10/11 (64-bit) | **[Download Setup.exe](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.4_x64-setup.exe)** | [MSI for managed deployment](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.4_x64_en-US.msi) |
-| macOS (Apple Silicon + Intel) | **[Download Universal DMG](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.4_universal.dmg)** | — |
+| Windows 10/11 (64-bit) | **[Download Setup.exe](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.5_x64-setup.exe)** | [MSI for managed deployment](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.5_x64_en-US.msi) |
+| macOS (Apple Silicon + Intel) | **[Download Universal DMG](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.5_universal.dmg)** | — |
 | Browser | **[Open the web app](https://r-winn.github.io/IDK-Nova/)** | Desktop is required for Nova Work and local GGUF import |
 
 All official binaries are attached to the **[latest GitHub Release](https://github.com/r-winn/IDK-Nova/releases/latest)**. Do not download Nova installers from unofficial mirrors.

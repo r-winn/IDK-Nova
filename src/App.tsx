@@ -181,7 +181,7 @@ type AgentApproval = { title: string; detail: string; risk: "browser" | "file" |
 type ModelHealth = { state: "online" | "offline"; latency?: number; checkedAt: number; error?: string };
 type BrowserTab = {
   id: string;
-  kind: "home" | "browser" | "artifact" | "document" | "email" | "files" | "projectfiles" | "temporary" | "image";
+  kind: "home" | "browser" | "artifact" | "document" | "email" | "files" | "projectfiles" | "temporary" | "image" | "file" | "pdf";
   title: string;
   url: string;
   input: string;
@@ -195,6 +195,8 @@ type BrowserTab = {
   busy?: boolean;
   imageUrl?: string;
   imageZoom?: number;
+  fileUrl?: string;
+  mime?: string;
   subject?: string;
   startedAt?: number;
   documentFont?: "sans" | "serif" | "mono";
@@ -918,6 +920,33 @@ export default function App() {
     setActiveBrowserTabId(id);
     setBrowserOpen(true);
   };
+  const attachmentText = (url: string) => {
+    try {
+      const payload = url.split(",", 2)[1] || "";
+      const binary = atob(payload);
+      return new TextDecoder().decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
+    } catch { return ""; }
+  };
+  const openWorkspaceAttachment = (attachment: Attachment) => {
+    if (attachment.type.startsWith("image/")) { openWorkspaceImage(attachment.name, attachment.url); return; }
+    const isPdf = attachment.type === "application/pdf" || attachment.name.toLowerCase().endsWith(".pdf");
+    const isText = attachment.type.startsWith("text/") || /\.(md|markdown|txt|json|csv|xml|log|ya?ml)$/i.test(attachment.name);
+    const id = `file-${Date.now()}`;
+    setBrowserTabs((tabs) => [...tabs, {
+      id,
+      kind: isPdf ? "pdf" : "file",
+      title: attachment.name || "Attachment",
+      fileUrl: attachment.url,
+      mime: attachment.type || "application/octet-stream",
+      content: isText ? attachmentText(attachment.url) : "",
+      url: "",
+      input: "",
+      history: [],
+      historyIndex: -1,
+    }]);
+    setActiveBrowserTabId(id);
+    setBrowserOpen(true);
+  };
   const openEmailDraft = async (subject: string, body: string) => {
     const plainBody = body.replace(/\*\*/g, "").replace(/\\\n/g, "\n");
     const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`;
@@ -929,6 +958,13 @@ export default function App() {
     const link = document.createElement("a");
     link.href = activeBrowserTab.imageUrl;
     link.download = activeBrowserTab.title || "nova-image";
+    link.click();
+  };
+  const downloadWorkspaceFile = () => {
+    if (!activeBrowserTab?.fileUrl) return;
+    const link = document.createElement("a");
+    link.href = activeBrowserTab.fileUrl;
+    link.download = activeBrowserTab.title || "nova-attachment";
     link.click();
   };
   const normalizeBrowserTarget = (value: string) => {
@@ -1864,6 +1900,7 @@ export default function App() {
     </div>
   );
   if (!chat) return null;
+  const lastUserMessageIndex = chat.messages.reduce((latest, message, index) => message.role === "user" ? index : latest, -1);
 
   return (
     <div className="app-shell">
@@ -2123,10 +2160,11 @@ export default function App() {
                               <img src={attachment.url} alt={attachment.name} />
                             </button>
                           ) : (
-                            <div className="file" key={itemIndex}>
+                            <button className="file" key={itemIndex} onClick={() => openWorkspaceAttachment(attachment)} title="Open in Workspace">
                               <FileText />
-                              <span>{attachment.name}</span>
-                            </div>
+                              <span><b>{attachment.name}</b><small>{attachment.type === "application/pdf" ? "PDF document" : "Open in Workspace"}</small></span>
+                              <ArrowRight />
+                            </button>
                           ),
                         )}
                       </div>
@@ -2138,7 +2176,7 @@ export default function App() {
                     </div>
                     {message.role === "user" && message.content && <div className="message-actions user-message-actions">
                       <button onClick={() => copy(message.content)}><Copy />Copy</button>
-                      <button disabled={busy} onClick={() => beginMessageEdit(index, message)}><Pencil />Edit</button>
+                      {index === lastUserMessageIndex && <button disabled={busy} onClick={() => beginMessageEdit(index, message)}><Pencil />Edit</button>}
                     </div>}
                     {message.role === "assistant" && message.content && (
                       <div className="message-actions">
@@ -2913,7 +2951,7 @@ export default function App() {
             <div>
               {browserTabs.map((tab) => (
                 <button className={tab.id === activeBrowserTabId ? "active" : ""} key={tab.id} onClick={() => setActiveBrowserTabId(tab.id)} title={tab.title}>
-                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : tab.kind === "document" ? <FileText /> : tab.kind === "email" ? <Mail /> : ["files", "projectfiles"].includes(tab.kind) ? <Folder /> : tab.kind === "temporary" ? <Clock3 /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
+                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : ["document", "file", "pdf"].includes(tab.kind) ? <FileText /> : tab.kind === "email" ? <Mail /> : ["files", "projectfiles"].includes(tab.kind) ? <Folder /> : tab.kind === "temporary" ? <Clock3 /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
                   <span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
                 </button>
               ))}
@@ -2973,6 +3011,11 @@ export default function App() {
               <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: Math.min(4, (activeBrowserTab.imageZoom || 1) + .25) })}><ZoomIn />Zoom in</button>
               <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: 1 })}>Reset</button>
               <button onClick={downloadWorkspaceImage}><Download />Download</button>
+            </div>
+          ) : activeBrowserTab && ["file", "pdf"].includes(activeBrowserTab.kind) ? (
+            <div className="workspace-toolbar attachment-toolbar">
+              <span>{activeBrowserTab.kind === "pdf" ? "PDF document" : activeBrowserTab.mime || "Attached file"}</span>
+              <button onClick={downloadWorkspaceFile}><Download />Download</button>
             </div>
           ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "projectfiles" ? `${activeBrowserTab.entries?.filter((entry) => entry.kind === "file").length || 0} project files · read-only` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
           <div className="browser-surface" ref={browserSurfaceRef}>
@@ -3034,6 +3077,14 @@ export default function App() {
             ) : activeBrowserTab?.kind === "image" ? (
               <div className="workspace-image-viewer">
                 <div><img src={activeBrowserTab.imageUrl} alt={activeBrowserTab.title} style={{ transform: `scale(${activeBrowserTab.imageZoom || 1})` }} /></div>
+              </div>
+            ) : activeBrowserTab?.kind === "pdf" ? (
+              <div className="workspace-pdf-viewer">
+                <iframe title={activeBrowserTab.title} src={activeBrowserTab.fileUrl} />
+              </div>
+            ) : activeBrowserTab?.kind === "file" ? (
+              <div className="workspace-file-viewer">
+                {activeBrowserTab.content ? <pre dir="auto">{activeBrowserTab.content}</pre> : <div><FileText /><h3>{activeBrowserTab.title}</h3><p>A native preview is not available for this file type.</p><button onClick={downloadWorkspaceFile}><Download />Download file</button></div>}
               </div>
             ) : activeBrowserTab?.kind === "files" ? (
               <div className="workspace-files">
