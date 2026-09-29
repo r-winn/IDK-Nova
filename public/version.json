@@ -1,6 +1,6 @@
 {
-  "version": "0.15.3",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.3",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.3/IDK.Nova_0.15.3_x64-setup.exe",
-  "notes": ["User message bubbles return to a softer Nova surface and keep Copy and Edit controls outside the bubble", "Editing a user message regenerates the conversation from that point", "Inline LaTeX math is rendered as readable equations", "Persian assistant responses retain correct glyph order while staying aligned with Nova replies", "Google search results scale correctly inside the macOS Workspace Browser", "Workspace now animates smoothly when closing directly from full screen"]
+  "version": "0.15.4",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.4",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.4/IDK.Nova_0.15.4_x64-setup.exe",
+  "notes": ["Editing now happens in the main composer with the complete original message", "Editing includes a clear status strip plus Cancel and Send controls", "Saving an edit regenerates the conversation from the edited message", "Persian user messages align naturally to the right while English remains left-to-right", "User prompts always remain plain chat bubbles and can no longer be mistaken for email or document artifacts"]
 }

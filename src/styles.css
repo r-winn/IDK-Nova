@@ -778,20 +778,16 @@ main {
 .content {
   white-space: pre-wrap;
   padding-top: 4px;
-  direction: ltr;
-  text-align: left;
+  text-align: start;
   overflow-wrap: anywhere;
 }
 .rich-content { display: contents; }
 .prose-segment { white-space: pre-wrap; direction: ltr; text-align: left; unicode-bidi: isolate; }
+.message-list article.user .content { text-align: start; unicode-bidi: plaintext; }
+.message-list article.user .prose-segment { direction: inherit; text-align: start; unicode-bidi: plaintext; }
 .math-expression { display: inline-flex; max-width: 100%; margin: 0 3px; vertical-align: middle; direction: ltr; overflow-x: auto; overflow-y: hidden; }
 .math-expression.display { display: flex; margin: 12px 0; justify-content: center; }
 .math-expression .katex { font-size: 1.02em; }
-.message-edit { min-width: min(520px, 62vw); }
-.message-edit textarea { width: 100%; min-height: 86px; padding: 0; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--text); font: inherit; line-height: 1.65; }
-.message-edit > div { margin-top: 8px; display: flex; justify-content: flex-end; gap: 6px; }
-.message-edit button { height: 29px; padding: 0 11px; border: 0; border-radius: 9px; background: var(--hover); color: var(--text); font-size: 10px; }
-.message-edit button.save { background: var(--text); color: var(--bg); }
 .markdown-heading { display: inline-block; width: 100%; margin: 14px 0 5px; color: var(--text); line-height: 1.35; }
 .markdown-heading.level-1 { font-size: 1.4em; }
 .markdown-heading.level-2 { font-size: 1.24em; }
@@ -873,6 +869,8 @@ main {
 .reply-preview button { width: 27px; height: 27px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); display: grid; place-items: center; }
 .reply-preview button:hover { background: var(--hover); color: var(--text); }
 .reply-preview button svg { width: 13px; }
+.edit-preview { border-left-color: color-mix(in srgb, var(--brand) 58%, var(--line-strong)); background: color-mix(in srgb, var(--brand) 5%, var(--surface)); }
+.edit-preview > svg { color: color-mix(in srgb, var(--brand) 72%, var(--text)); }
 
 .selection-toolbar {
   position: fixed;
@@ -1306,6 +1304,7 @@ body.resizing-browser iframe { pointer-events: none; }
   background: var(--hover);
   color: var(--text);
 }
+.composer-tools .edit-cancel { width: auto; padding: 0 11px; font-size: 10px; }
 .composer-tools svg {
   width: 18px;
 }

@@ -337,7 +337,7 @@ export default function App() {
   const [browserMaximized, setBrowserMaximized] = useState(false);
   const [browserRestoring, setBrowserRestoring] = useState(false);
   const [browserClosing, setBrowserClosing] = useState(false);
-  const [editingMessage, setEditingMessage] = useState<{ index: number; value: string } | null>(null);
+  const [editingMessage, setEditingMessage] = useState<{ index: number } | null>(null);
   const [importingLocalModel, setImportingLocalModel] = useState(false);
   const [ollamaInstalled, setOllamaInstalled] = useState<boolean | null>(null);
   const [pendingGgufPath, setPendingGgufPath] = useState("");
@@ -1409,20 +1409,34 @@ export default function App() {
       setShowJumpToBottom(false);
     }, 520);
   };
-  const key = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      send();
-    }
-  };
   const submitMessageEdit = () => {
     if (!editingMessage || busy || !chat) return;
-    const content = editingMessage.value.trim();
+    const content = text.trim();
     if (!content) return;
     const original = chat.messages[editingMessage.index];
     const history = chat.messages.slice(0, editingMessage.index);
     setEditingMessage(null);
     void send({ content, history, attachments: original?.attachments || [] });
+  };
+  const beginMessageEdit = (index: number, message: Message) => {
+    if (busy) return;
+    setEditingMessage({ index });
+    setText(message.content);
+    setFiles(message.attachments || []);
+    setReplyQuote("");
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer > textarea")?.focus());
+  };
+  const cancelMessageEdit = () => {
+    setEditingMessage(null);
+    setText("");
+    setFiles([]);
+  };
+  const key = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (editingMessage) submitMessageEdit();
+      else void send();
+    }
   };
   const openSettings = () => {
     setDraftConfig(config);
@@ -2117,28 +2131,14 @@ export default function App() {
                         )}
                       </div>
                     ) : null}
-                    <div className="content">
-                      {message.role === "user" && editingMessage?.index === index ? (
-                        <div className="message-edit">
-                          <textarea
-                            autoFocus
-                            dir="auto"
-                            value={editingMessage.value}
-                            onChange={(event) => setEditingMessage({ index, value: event.target.value })}
-                            onKeyDown={(event) => {
-                              if (event.key === "Escape") setEditingMessage(null);
-                              if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submitMessageEdit(); }
-                            }}
-                          />
-                          <div><button onClick={() => setEditingMessage(null)}>Cancel</button><button className="save" onClick={submitMessageEdit}>Send</button></div>
-                        </div>
-                      ) : message.content ? renderMessageContent(message) : (
+                    <div className="content" dir={message.role === "user" ? "auto" : "ltr"}>
+                      {message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : (
                         <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{chat.workspaceId && agentStatus && <span>{agentStatus}</span>}</div>
                       )}
                     </div>
-                    {message.role === "user" && message.content && editingMessage?.index !== index && <div className="message-actions user-message-actions">
+                    {message.role === "user" && message.content && <div className="message-actions user-message-actions">
                       <button onClick={() => copy(message.content)}><Copy />Copy</button>
-                      <button disabled={busy} onClick={() => setEditingMessage({ index, value: message.content })}><Pencil />Edit</button>
+                      <button disabled={busy} onClick={() => beginMessageEdit(index, message)}><Pencil />Edit</button>
                     </div>}
                     {message.role === "assistant" && message.content && (
                       <div className="message-actions">
@@ -2200,7 +2200,14 @@ export default function App() {
               <ArrowRight />
             </button>
           )}
-          {replyQuote && (
+          {editingMessage && (
+            <div className="reply-preview edit-preview">
+              <Pencil />
+              <div><b>Editing message</b><span>Sending saves this change and regenerates the conversation from here.</span></div>
+              <button aria-label="Cancel editing" onClick={cancelMessageEdit}><X /></button>
+            </div>
+          )}
+          {!editingMessage && replyQuote && (
             <div className="reply-preview" dir="auto">
               <Reply />
               <div><b>Replying to selection</b><span title={replyQuote}>{quotePreview(replyQuote)}</span></div>
@@ -2273,7 +2280,7 @@ export default function App() {
             />}
             <div className="composer-tools">
               <div>
-                {chatWorkspace && (
+                {!editingMessage && chatWorkspace && (
                   <button
                     type="button"
                     className={`agent-access-trigger ${(chatWorkspace.agentAccess || "ask") === "auto" ? "full" : ""}`}
@@ -2285,35 +2292,36 @@ export default function App() {
                     <ShieldCheck />
                   </button>
                 )}
-                <button
+                {!editingMessage && <button
                   disabled={!config.activeModel}
                   title="Attach file"
                   onClick={() => fileRef.current?.click()}
                 >
                   <Paperclip />
-                </button>
-                <button
+                </button>}
+                {!editingMessage && <button
                   disabled={!config.activeModel}
                   title="Attach image"
                   onClick={() => fileRef.current?.click()}
                 >
                   <ImageIcon />
-                </button>
+                </button>}
               </div>
               <div>
-                <button
+                {editingMessage && <button className="edit-cancel" onClick={cancelMessageEdit}>Cancel</button>}
+                {!editingMessage && <button
                   disabled={!config.activeModel}
                   className={listening ? "listening" : ""}
                   title="Voice input"
                   onClick={toggleVoice}
                 >
                   <Mic />
-                </button>
+                </button>}
                 <button
                   className={`send ${busy ? "stop" : ""}`}
                   disabled={!busy && (!config.activeModel || (!text.trim() && !files.length))}
-                  onClick={busy ? stopResponse : () => void send()}
-                  title={busy ? "Stop response" : "Send message"}
+                  onClick={busy ? stopResponse : editingMessage ? submitMessageEdit : () => void send()}
+                  title={busy ? "Stop response" : editingMessage ? "Save edit and resend" : "Send message"}
                 >
                   {busy ? <Square /> : <ArrowUp />}
                 </button>
@@ -3055,7 +3063,7 @@ export default function App() {
                     <article className={`${message.role} ${message.role === "assistant" ? "no-speaker" : ""}`} key={index}>
                       {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
-                        <div className="content">{message.content ? renderMessageContent(message) : <span className="typing"><i /><i /><i /></span>}</div>
+                        <div className="content" dir={message.role === "user" ? "auto" : "ltr"}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : <span className="typing"><i /><i /><i /></span>}</div>
                         {message.role === "user" && message.content && <div className="message-actions user-message-actions"><button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                         {message.role === "assistant" && message.content && <div className="message-actions">
                           <button disabled={message.generating} onClick={() => copy(message.content)}><Copy />Copy</button>
