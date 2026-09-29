@@ -1,6 +1,6 @@
 {
-  "version": "0.15.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.0/IDK.Nova_0.15.0_x64-setup.exe",
-  "notes": ["Nova Work can now observe the primary display and use vision to understand the visible desktop", "Work can open installed applications, click normalized screen coordinates, type text, press shortcuts, and scroll", "Desktop actions follow Ask for approval, Approve for me, and Full access permissions", "Every computer action reports live progress and can be interrupted with Stop", "macOS users receive clear Accessibility and Screen Recording permission guidance", "Sensitive, destructive, authentication, payment, and irreversible actions remain blocked"]
+  "version": "0.15.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.1/IDK.Nova_0.15.1_x64-setup.exe",
+  "notes": ["New-chat starter actions are smaller, softer, and visually consistent with the rest of Nova", "Starter actions remain readable and stack cleanly on narrow chat layouts", "User messages are aligned to the right in a subtle message surface while Nova responses remain on the left", "Workspace content keeps its natural dimensions during open and close animations", "The right Workspace panel now reveals and conceals fixed content instead of compressing its controls and text"]
 }

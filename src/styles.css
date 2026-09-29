@@ -665,42 +665,44 @@ main {
   margin: 0 0 9px;
 }
 .welcome > p {
-  margin: 0 0 34px;
+  margin: 0 0 26px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 .suggestions {
-  width: min(620px, 100%);
+  width: min(560px, 100%);
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 7px;
 }
 .suggestions button {
-  min-height: 72px;
+  min-height: 56px;
   border: 1px solid var(--line);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 66%, transparent);
   color: var(--text);
-  padding: 13px;
+  padding: 9px 10px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 9px;
   text-align: left;
-  transition: 0.18s;
+  box-shadow: 0 1px 0 color-mix(in srgb, white 14%, transparent) inset;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
 .suggestions button:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   border-color: var(--line-strong);
-  box-shadow: var(--soft-shadow);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 7px 22px rgba(0,0,0,.06);
 }
 .suggestions button > svg:first-child {
-  width: 18px;
+  width: 16px;
   color: var(--muted);
 }
 .suggestions button > svg:last-child {
-  width: 14px;
+  width: 12px;
   margin-left: auto;
-  opacity: 0.35;
+  opacity: 0.28;
 }
 .suggestions button > span {
   min-width: 0;
@@ -708,20 +710,21 @@ main {
   flex-direction: column;
 }
 .suggestions b {
-  font-size: 12px;
+  font-size: 10.5px;
+  font-weight: 650;
 }
 .suggestions small {
-  font-size: 10px;
+  font-size: 8.5px;
   color: var(--muted);
-  margin-top: 4px;
-  line-height: 1.45;
+  margin-top: 2px;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 @container chat (max-width: 680px) {
   .welcome { width: min(520px, calc(100% - 34px)); height: auto; min-height: 100%; padding: 54px 0 35px; justify-content: flex-start; }
   .welcome > p { margin-bottom: 24px; }
   .suggestions { grid-template-columns: minmax(0, 1fr); }
-  .suggestions button { min-height: 72px; height: auto; }
+  .suggestions button { min-height: 54px; height: auto; }
 }
 .message-list {
   max-width: 790px;
@@ -736,6 +739,20 @@ main {
   line-height: 1.68;
 }
 .message-list article.no-speaker { grid-template-columns: minmax(0, 1fr); }
+.message-list article.user {
+  width: fit-content;
+  max-width: min(72%, 620px);
+  margin-left: auto;
+  grid-template-columns: minmax(0, 1fr);
+}
+.message-list article.user .speaker { display: none; }
+.message-list article.user .message-body {
+  padding: 9px 13px;
+  border-radius: 17px 17px 5px 17px;
+  background: color-mix(in srgb, var(--surface) 80%, var(--hover));
+  box-shadow: 0 1px 0 color-mix(in srgb, white 12%, transparent) inset;
+}
+.message-list article.user .content { padding-top: 0; }
 .speaker {
   width: 32px;
   height: 32px;
@@ -889,9 +906,9 @@ main {
 .nova-browser.maximized.restoring { animation: workspace-conceal .32s cubic-bezier(.22,.75,.18,1) both; pointer-events: none; }
 @keyframes workspace-reveal { from { width: var(--browser-width); } to { width: 100vw; } }
 @keyframes workspace-conceal { from { width: 100vw; } to { width: var(--browser-width); } }
-.nova-browser > .browser-tabs { width: 100%; min-width: 0; }
-.nova-browser > .browser-address { width: calc(100% - 24px); min-width: 0; }
-.nova-browser > .browser-surface { width: 100%; min-width: 0; }
+.nova-browser > .browser-tabs { width: var(--browser-width); min-width: var(--browser-width); }
+.nova-browser > .browser-address { width: calc(var(--browser-width) - 24px); min-width: calc(var(--browser-width) - 24px); }
+.nova-browser > .browser-surface { width: var(--browser-width); min-width: var(--browser-width); }
 .nova-browser > .browser-tabs,
 .nova-browser > .browser-address,
 .nova-browser > .browser-surface { justify-self: end; }
