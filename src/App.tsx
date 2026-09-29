@@ -138,6 +138,18 @@ const agentStepLabel = (step: string) => ({
   web_search: "Preparing a web search…",
   open_url: "Preparing to open a website…",
 } as Record<string, string>)[step] || `Working on ${step.replaceAll("_", " ")}…`;
+const normalStarterPrompts = [
+  { title: "Plan a project", detail: "Turn an idea into clear steps", prompt: "Help me plan a project from scratch", icon: Sparkles },
+  { title: "Explain something", detail: "Make a complex topic simple", prompt: "Explain this concept simply: ", icon: MessageSquare },
+  { title: "Analyze an image", detail: "Upload and ask questions", prompt: "", icon: ImageIcon, upload: true },
+  { title: "Write some code", detail: "Build, debug, or improve", prompt: "Write a clean TypeScript function that ", icon: Code2 },
+];
+const workStarterPrompts = [
+  { title: "Review this project", detail: "Map files, entry points, and architecture", prompt: "Review this project and explain its structure, main entry points, and architecture.", icon: Folder },
+  { title: "Find issues", detail: "Inspect the workspace for likely problems", prompt: "Find likely bugs or fragile areas in this project and propose safe fixes.", icon: Search },
+  { title: "Build a change", detail: "Create or update project files", prompt: "Implement this change in the project: ", icon: Code2 },
+  { title: "Summarize the work", detail: "Review progress and recommend next steps", prompt: "Summarize the recent work in this project and suggest the next steps.", icon: FileText },
+];
 type SettingsTab = keyof typeof settingMeta;
 type ChatDialog = {
   mode: "rename" | "delete";
@@ -152,6 +164,7 @@ type PortableWorkspace = { projectJson: string; chatsJson: string };
 type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
 type AgentApproval = { title: string; detail: string; risk: "browser" | "file" } | null;
+type ModelHealth = { state: "online" | "offline"; latency?: number; checkedAt: number; error?: string };
 type BrowserTab = {
   id: string;
   kind: "home" | "browser" | "artifact" | "document" | "email" | "files" | "projectfiles" | "temporary" | "image";
@@ -314,7 +327,7 @@ export default function App() {
   const [newProvider, setNewProvider] = useState<Provider>({ id: "", name: "", baseUrl: "", apiKey: "", models: [] });
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [testingModel, setTestingModel] = useState("");
-  const [verifiedModels, setVerifiedModels] = useState<Record<string, number>>(
+  const [modelHealth, setModelHealth] = useState<Record<string, ModelHealth>>(
     {},
   );
   const [updateState, setUpdateState] = useState<
@@ -1340,7 +1353,7 @@ export default function App() {
         activeProviderId: readyProvider.id,
         activeModel: model,
       }));
-      setVerifiedModels((current) => ({ ...current, [`${readyProvider.id}:${model}`]: latency }));
+      setModelHealth((current) => ({ ...current, [`${readyProvider.id}:${model}`]: { state: "online", latency, checkedAt: Date.now() } }));
       setModelSetupView("list");
       setManualModel("");
       setToast(`${model} connected and verified · ${latency} ms`);
@@ -1364,20 +1377,28 @@ export default function App() {
         ? { ...current, providers, activeProviderId: fallback?.id || "", activeModel: fallback?.models[0] || "" }
         : { ...current, providers };
     });
-    setVerifiedModels((current) => {
+    setModelHealth((current) => {
       const next = { ...current };
       delete next[`${providerId}:${model}`];
       return next;
     });
   };
   const verifyProviderModel = async (provider: Provider, model: string) => {
-    setTestingModel(`${provider.id}:${model}`);
+    const key = `${provider.id}:${model}`;
+    setTestingModel(key);
+    setModelHealth((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
     try {
       const latency = await testModel(provider, model);
-      setVerifiedModels((current) => ({ ...current, [`${provider.id}:${model}`]: latency }));
+      setModelHealth((current) => ({ ...current, [key]: { state: "online", latency, checkedAt: Date.now() } }));
       setToast(`Model verified in ${latency} ms`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "Model test failed");
+      const message = error instanceof Error ? error.message : "Model test failed";
+      setModelHealth((current) => ({ ...current, [key]: { state: "offline", checkedAt: Date.now(), error: message } }));
+      setToast(message);
     } finally {
       setTestingModel("");
     }
@@ -1434,7 +1455,7 @@ export default function App() {
       setDraftConfig(nextConfig);
       setConfig(nextConfig);
       saveConfig(nextConfig);
-      setVerifiedModels((current) => ({ ...current, [`${providerId}:${model}`]: latency }));
+      setModelHealth((current) => ({ ...current, [`${providerId}:${model}`]: { state: "online", latency, checkedAt: Date.now() } }));
       setModelSetupView("list");
       setToast(`${model} imported, verified, and ready · ${latency} ms`);
     } catch (error) {
@@ -1933,56 +1954,21 @@ export default function App() {
         >
           {chat.messages.length === 0 ? (
             <div className="welcome">
-              <div className="welcome-mark">
-                <BrandMark config={config} />
-              </div>
+              {!chat.workspaceId && <div className="welcome-mark"><BrandMark config={config} /></div>}
               <span className={`eyebrow ${chat.workspaceId ? "work-chat-badge" : ""} ${chat.temporary ? "temporary-badge" : ""}`}>{chat.temporary ? "TEMPORARY CHAT" : chat.workspaceId ? "LOCAL PROJECT · WORK MODE" : "PRIVATE AI WORKSPACE"}</span>
               <h1>{chat.temporary ? "Start a private session" : chat.workspaceId ? `Work on ${workspaces.find((item) => item.id === chat.workspaceId)?.name || "this project"}` : "How can I help?"}</h1>
               <p>
                 {chat.temporary ? "This conversation disappears when you close or restart Nova and is never added to history." : chat.workspaceId ? "Nova can inspect relevant project files for this chat." : "Explore ideas, work with files, and talk to the models you trust."}
               </p>
-              <div className="suggestions">
-                <button
-                  onClick={() => setText("Help me plan a project from scratch")}
-                >
-                  <Sparkles />
-                  <span>
-                    <b>Plan a project</b>
-                    <small>Turn an idea into clear steps</small>
-                  </span>
-                  <ArrowRight />
-                </button>
-                <button
-                  onClick={() => setText("Explain this concept simply: ")}
-                >
-                  <MessageSquare />
-                  <span>
-                    <b>Explain something</b>
-                    <small>Make a complex topic simple</small>
-                  </span>
-                  <ArrowRight />
-                </button>
-                <button onClick={() => fileRef.current?.click()}>
-                  <ImageIcon />
-                  <span>
-                    <b>Analyze an image</b>
-                    <small>Upload and ask questions</small>
-                  </span>
-                  <ArrowRight />
-                </button>
-                <button
-                  onClick={() =>
-                    setText("Write a clean TypeScript function that ")
-                  }
-                >
-                  <Code2 />
-                  <span>
-                    <b>Write some code</b>
-                    <small>Build, debug, or improve</small>
-                  </span>
-                  <ArrowRight />
-                </button>
-              </div>
+              {!chat.temporary && <div className={`suggestions ${chat.workspaceId ? "work-suggestions" : ""}`}>
+                {(chat.workspaceId ? workStarterPrompts : normalStarterPrompts).map(({ title, detail, prompt, icon: StarterIcon, ...starter }) => (
+                  <button key={title} onClick={() => "upload" in starter ? fileRef.current?.click() : setText(prompt)}>
+                    <StarterIcon />
+                    <span><b>{title}</b><small>{detail}</small></span>
+                    <ArrowRight />
+                  </button>
+                ))}
+              </div>}
             </div>
           ) : (
             <div className="message-list">
@@ -2446,15 +2432,16 @@ export default function App() {
                       <div className="model-library">
                         {draftConfig.providers.flatMap((provider) => provider.models.map((model) => {
                           const key = `${provider.id}:${model}`;
-                          const latency = verifiedModels[key];
+                          const health = modelHealth[key];
                           const activeModel = draftConfig.activeProviderId === provider.id && draftConfig.activeModel === model;
                           return <div className={`model-library-row ${activeModel ? "active" : ""}`} key={key}>
                             <button className="model-library-main" onClick={() => setDraftConfig((current) => ({ ...current, activeProviderId: provider.id, activeModel: model }))}>
-                              <span className="model-status"><Bot /></span>
-                              <span><b>{model}</b><small>{provider.name} · {activeModel ? "Currently selected" : "Ready to use"}</small></span>
+                              <span className={`model-status ${health?.state || "unchecked"}`}><Bot /></span>
+                              <span><b>{model}</b><small>{provider.name} · {health?.state === "online" ? "Connection verified now" : health?.state === "offline" ? "Connection unavailable" : activeModel ? "Selected · not tested this session" : "Not tested this session"}</small></span>
                             </button>
                             <div className="model-library-actions">
-                              {latency && <span className="verified-label"><ShieldCheck />{latency} ms</span>}
+                              {health?.state === "online" && <span className="verified-label" title={`Live completion test passed ${new Date(health.checkedAt).toLocaleTimeString()}`}><ShieldCheck />{health.latency} ms</span>}
+                              {health?.state === "offline" && <span className="verified-label failed" title={health.error || "Connection test failed"}><X />Offline</span>}
                               <button className="test-button" disabled={testingModel === key} onClick={() => verifyProviderModel(provider, model)}>{testingModel === key ? "Testing…" : "Test"}</button>
                               <button className="icon-button subtle danger-icon" aria-label={`Remove ${model}`} onClick={() => removeModel(provider.id, model)}><Trash2 /></button>
                             </div>

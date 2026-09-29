@@ -1,20 +1,33 @@
 <div align="center">
   <img src="public/brand/app-icon-master.png" width="86" alt="IDK Nova logo">
   <h1>IDK Nova</h1>
-  <p><strong>Your private, configurable AI workspace for Windows and the web.</strong></p>
+  <p><strong>Your private, configurable AI workspace for Windows, macOS, and the web.</strong></p>
   <p>Connect local Ollama or LM Studio models, company AI servers, and OpenAI-compatible cloud providers from one clean desktop experience.</p>
 
   [![Latest release](https://img.shields.io/github/v/release/r-winn/IDK-Nova?style=flat-square&label=latest)](https://github.com/r-winn/IDK-Nova/releases/latest)
-  [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest)
+  [![Windows](https://img.shields.io/badge/Windows-Download_EXE-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.1_x64-setup.exe)
+  [![macOS](https://img.shields.io/badge/macOS-Universal_DMG-171717?style=flat-square&logo=apple)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.1_universal.dmg)
   [![Web app](https://img.shields.io/badge/Web-Open%20Nova-171717?style=flat-square)](https://r-winn.github.io/IDK-Nova/)
   [![License](https://img.shields.io/github/license/r-winn/IDK-Nova?style=flat-square)](LICENSE)
 </div>
 
 > IDK Nova is an early open-source release. Verify important AI responses and only send sensitive information to providers you trust.
 
+<p align="center"><img src="public/brand/nova-readme.jpg" width="880" alt="IDK Nova product preview"></p>
+
+## Get Nova
+
+| Platform | Recommended download | Alternative |
+| --- | --- | --- |
+| Windows 10/11 (64-bit) | **[Download Setup.exe](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.1_x64-setup.exe)** | [MSI for managed deployment](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.1_x64_en-US.msi) |
+| macOS (Apple Silicon + Intel) | **[Download Universal DMG](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.1_universal.dmg)** | — |
+| Browser | **[Open the web app](https://r-winn.github.io/IDK-Nova/)** | Desktop is required for Nova Work and local GGUF import |
+
+All official binaries are attached to the **[latest GitHub Release](https://github.com/r-winn/IDK-Nova/releases/latest)**. Do not download Nova installers from unofficial mirrors.
+
 ## Download and use on Windows
 
-### 1. Download Nova
+### Install on Windows
 
 Go to **[Latest Release](https://github.com/r-winn/IDK-Nova/releases/latest)** and download one of these files:
 
@@ -25,22 +38,28 @@ Go to **[Latest Release](https://github.com/r-winn/IDK-Nova/releases/latest)** a
 
 Nova currently targets 64-bit Windows 10 and Windows 11. Windows may show a SmartScreen notice because community builds are not yet code-signed. Confirm that the publisher file came from this repository's official Releases page before continuing.
 
+If Microsoft Defender SmartScreen appears, first confirm that the file name and download source match the official release. Then choose **More info → Run anyway**. Never bypass this warning for a copy obtained from another website.
+
 The release pipeline is ready for Authenticode signing. Maintainers can follow
 [WINDOWS_SIGNING.md](WINDOWS_SIGNING.md) to add an encrypted certificate to
 GitHub Actions without committing private signing material.
 
-## Download and use on macOS
+### Install on macOS
 
 Go to **[Latest Release](https://github.com/r-winn/IDK-Nova/releases/latest)** and download the universal `.dmg` file. It contains both Apple Silicon and Intel code, so the same download works on modern M-series MacBooks and older Intel Macs.
 
-1. Open the downloaded DMG.
-2. Drag **IDK Nova** into **Applications**.
-3. Open Nova from Applications.
-4. If macOS blocks the first community build, open **System Settings → Privacy & Security** and choose **Open Anyway** after confirming the DMG came from this repository.
+1. Open `IDK.Nova_*_universal.dmg` from Downloads.
+2. Drag **IDK Nova** into **Applications**. Run the copy in Applications—not the copy inside the DMG.
+3. Try to open Nova once. If macOS blocks it, dismiss the warning without moving the app to Trash.
+4. Open **Apple menu → System Settings → Privacy & Security**.
+5. Scroll to **Security**. Find the message that IDK Nova was blocked and choose **Open Anyway**.
+6. Authenticate with Touch ID or your Mac password, then choose **Open** in the final confirmation.
+
+On some macOS versions you can instead Control-click **IDK Nova** in Applications, choose **Open**, and confirm **Open**. The approval is normally needed only for the first launch of a community build.
 
 The macOS build includes Nova Work, local folder access, the native Workspace browser, provider connections, and the same in-app updater used by Windows. The current community DMG has an ad-hoc signature. A paid Apple Developer ID certificate and notarization are still required to remove the first-launch Gatekeeper approval for public distribution.
 
-### 2. Start an AI provider
+### Start an AI provider
 
 Nova is the interface; the model runs through a provider. The easiest private option is [Ollama](https://ollama.com/).
 
@@ -52,7 +71,7 @@ ollama pull qwen2.5:0.5b
 
 Ollama normally starts its local server automatically. Keep it running while using Nova.
 
-### 3. Connect Nova to the model
+### Connect Nova to the model
 
 1. Open **IDK Nova**.
 2. Open **Settings → Models**.

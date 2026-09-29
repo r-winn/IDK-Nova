@@ -2882,12 +2882,17 @@ body.resizing-browser iframe { pointer-events: none; }
   color: var(--bg);
 }
 .model-status svg { width: 16px; }
+.model-status.online { background: color-mix(in srgb, var(--success) 13%, var(--surface)); color: var(--success); }
+.model-status.offline { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }
+.model-library-row.active .model-status.online { background: var(--success); color: white; }
+.model-library-row.active .model-status.offline { background: var(--danger); color: white; }
 .model-library-actions {
   flex: none;
   display: flex;
   align-items: center;
   gap: 7px;
 }
+.verified-label.failed { color: var(--danger); }
 .danger-icon { color: var(--danger); }
 .models-empty-state {
   min-height: 330px;

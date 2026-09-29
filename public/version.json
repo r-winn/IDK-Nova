@@ -1,6 +1,6 @@
 {
-  "version": "0.14.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.14.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.14.0/IDK.Nova_0.14.0_x64-setup.exe",
-  "notes": ["Temporary chat is now a visible toggle that can be turned on and off on the current normal conversation", "Work chats can no longer be moved into ordinary folders or detached from their workspace", "Agent access now pauses inline for real Yes or No approval and resumes or cancels the requested tool action", "Ask, Approve for me, and Full access now enforce distinct browser and file-action policies", "Work responses show live, human-readable progress for file and browser steps", "Ollama can now be downloaded, checksum-verified, and installed from GitHub on macOS as well as Windows", "Persian and mixed-language input uses consistent bidirectional text handling across platforms", "Only user-authored and response content is selectable; application chrome is protected from accidental selection", "Settings navigation and the Agent access menu now use matching open and close motion", "Workspace Browser sizing now adapts to its actual split width without overflowing the right edge"]
+  "version": "0.14.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.14.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.14.1/IDK.Nova_0.14.1_x64-setup.exe",
+  "notes": ["Model latency now comes only from a fresh, successful completion test", "A failed connection test immediately removes the stale green ping and shows an Offline state", "Normal, Temporary, and Work chats now have purpose-built empty states", "Temporary chats keep the private-session explanation without generic starter prompts", "Work chats use project-oriented actions and a logo-free workspace welcome", "GitHub installation and troubleshooting guidance has been refreshed for Windows and macOS"]
 }
