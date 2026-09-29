@@ -75,6 +75,8 @@ import { Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import { AgentTool, AgentToolCall, discoverModels, runAgentCompletion, streamCompletion, testModel } from "./lib/ai";
 import {
   loadConfig,
@@ -202,7 +204,16 @@ type BrowserTab = {
   entries?: WorkspaceEntry[];
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number; zoom: number };
-const browserZoomForWidth = (width: number) => Math.max(.7, Math.min(1, width / 1180));
+const browserZoomForWidth = (width: number, url = "") => {
+  let isGoogleResults = false;
+  try {
+    const parsed = new URL(url);
+    isGoogleResults = /(^|\.)google\./i.test(parsed.hostname) && parsed.pathname === "/search";
+  } catch { /* an empty browser tab uses the regular scale */ }
+  return isGoogleResults
+    ? Math.max(.42, Math.min(.82, width / 1180))
+    : Math.max(.72, Math.min(1, width / 920));
+};
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
 
 const folderIcons = {
@@ -325,6 +336,8 @@ export default function App() {
   const [browserWidth, setBrowserWidth] = useState(() => loadValue<number>("idk-nova-browser-width", 560));
   const [browserMaximized, setBrowserMaximized] = useState(false);
   const [browserRestoring, setBrowserRestoring] = useState(false);
+  const [browserClosing, setBrowserClosing] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<{ index: number; value: string } | null>(null);
   const [importingLocalModel, setImportingLocalModel] = useState(false);
   const [ollamaInstalled, setOllamaInstalled] = useState<boolean | null>(null);
   const [pendingGgufPath, setPendingGgufPath] = useState("");
@@ -425,6 +438,7 @@ export default function App() {
   useEffect(() => {
     setAgentAccessOpen(false);
     setAgentAccessClosing(false);
+    setEditingMessage(null);
     approvalResolverRef.current?.(false);
     approvalResolverRef.current = null;
     setAgentApproval(null);
@@ -496,7 +510,7 @@ export default function App() {
       const bottom = Math.min(window.innerHeight, rect.bottom, panelRect?.bottom || window.innerHeight);
       const width = Math.max(1, right - left);
       const height = Math.max(1, bottom - top);
-      const zoom = browserZoomForWidth(width);
+      const zoom = browserZoomForWidth(width, activeBrowserTab.url);
       let entry = views.get(activeBrowserTabId);
       if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
         await entry.webview.close().catch(() => undefined);
@@ -548,7 +562,7 @@ export default function App() {
       const width = Math.max(1, right - left);
       entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
       entry.webview.setSize(new LogicalSize(width, Math.max(1, bottom - top))).catch(() => undefined);
-      const zoom = browserZoomForWidth(width);
+      const zoom = browserZoomForWidth(width, activeBrowserTab?.url || "");
       if (!Number.isFinite(entry.zoom) || Math.abs(entry.zoom - zoom) > .01) {
         entry.zoom = zoom;
         entry.webview.setZoom(zoom).catch(() => { entry.zoom = Number.NaN; });
@@ -1098,6 +1112,16 @@ export default function App() {
     }, 320);
   };
   const toggleWorkspaceMaximized = () => setWorkspaceMaximized(!browserMaximized);
+  const closeWorkspace = () => {
+    if (!browserOpen || browserClosing) return;
+    setBrowserClosing(true);
+    setBrowserRestoring(false);
+    window.setTimeout(() => {
+      setBrowserOpen(false);
+      setBrowserMaximized(false);
+      setBrowserClosing(false);
+    }, 360);
+  };
   const startBrowserResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const originX = event.clientX;
@@ -1171,7 +1195,7 @@ export default function App() {
       );
     recognition.start();
   };
-  const send = async () => {
+  const send = async (edited?: { content: string; history: Message[]; attachments?: Attachment[] }) => {
     if (!activeProvider || !config.activeModel) {
       setToast("Connect and select a model before sending a message");
       setDraftConfig(config);
@@ -1179,18 +1203,21 @@ export default function App() {
       setSettingsOpen(true);
       return;
     }
-    if ((!text.trim() && !files.length) || busy || !chat) return;
+    const outgoingText = edited?.content.trim() ?? text.trim();
+    const outgoingFiles = edited?.attachments ?? files;
+    const history = edited?.history ?? chat?.messages ?? [];
+    if ((!outgoingText && !outgoingFiles.length) || busy || !chat) return;
     const user: Message = {
       role: "user",
-      content: text.trim(),
-      attachments: files,
-      quote: replyQuote || undefined,
+      content: outgoingText,
+      attachments: outgoingFiles,
+      quote: edited ? undefined : replyQuote || undefined,
     };
     stickToBottomRef.current = true;
     setShowJumpToBottom(false);
-    const title = chat.messages.length
+    const title = history.length
       ? chat.title
-      : (text.trim() || "Image conversation").slice(0, 36);
+      : (outgoingText || "Image conversation").slice(0, 36);
     setChats((items) =>
       items.map((item) =>
         item.id === active
@@ -1198,7 +1225,7 @@ export default function App() {
               ...item,
               title,
               messages: [
-                ...item.messages,
+                ...history,
                 user,
                 { role: "assistant", content: "", generating: true },
               ],
@@ -1314,7 +1341,7 @@ export default function App() {
           throw new Error(`Unknown tool: ${call.function.name}`);
         };
         try {
-          await runAgentCompletion(config, [...chat.messages, user], `${workspaceContext}\n\nYou can use Nova project, browser, and desktop-control tools. For desktop work: observe the screen before every coordinate-based action, use normalized coordinates from 0 to 1000, take one deliberate action at a time, then observe again to verify the result. Never guess screen state. Never enter or reveal passwords, API keys, payment information, private keys, or other secrets. Do not make purchases, authenticate, send messages, submit forms, change security settings, delete data, or perform irreversible actions. Stop and explain when the requested action is ambiguous or unsafe.`, agentTools, executeAgentTool, (step) => setAgentStatus(agentStepLabel(step)), appendToken, controller.signal);
+          await runAgentCompletion(config, [...history, user], `${workspaceContext}\n\nYou can use Nova project, browser, and desktop-control tools. For desktop work: observe the screen before every coordinate-based action, use normalized coordinates from 0 to 1000, take one deliberate action at a time, then observe again to verify the result. Never guess screen state. Never enter or reveal passwords, API keys, payment information, private keys, or other secrets. Do not make purchases, authenticate, send messages, submit forms, change security settings, delete data, or perform irreversible actions. Stop and explain when the requested action is ambiguous or unsafe.`, agentTools, executeAgentTool, (step) => setAgentStatus(agentStepLabel(step)), appendToken, controller.signal);
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
           if (detail.includes("__NOVA_PERMISSION_DENIED__")) {
@@ -1323,9 +1350,9 @@ export default function App() {
           }
           if (!/400|tools|tool_choice|tool call/i.test(detail)) throw agentError;
           setToast("This provider does not support Agent tools yet · using normal Work chat");
-          await streamCompletion(config, [...chat.messages, user], appendToken, controller.signal, workspaceContext);
+          await streamCompletion(config, [...history, user], appendToken, controller.signal, workspaceContext);
         }
-      } else await streamCompletion(config, [...chat.messages, user], appendToken, controller.signal, workspaceContext);
+      } else await streamCompletion(config, [...history, user], appendToken, controller.signal, workspaceContext);
     } catch (error) {
       if (controller.signal.aborted) {
         setChats((items) => items.map((item) => item.id === active ? {
@@ -1387,6 +1414,15 @@ export default function App() {
       event.preventDefault();
       send();
     }
+  };
+  const submitMessageEdit = () => {
+    if (!editingMessage || busy || !chat) return;
+    const content = editingMessage.value.trim();
+    if (!content) return;
+    const original = chat.messages[editingMessage.index];
+    const history = chat.messages.slice(0, editingMessage.index);
+    setEditingMessage(null);
+    void send({ content, history, attachments: original?.attachments || [] });
   };
   const openSettings = () => {
     setDraftConfig(config);
@@ -1743,7 +1779,17 @@ export default function App() {
       ))}
     </section>
   ));
-  const renderInlineMarkdown = (value: string) => value.split(/(\*\*[^*\n]+\*\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<)]+)/g).map((piece, pieceIndex) => {
+  const renderInlineMarkdown = (value: string) => value.split(/(\$\$[^$\n]+\$\$|\$[^$\n]+\$|\\\([^\n]+?\\\)|\*\*[^*\n]+\*\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s<)]+)/g).map((piece, pieceIndex) => {
+    const math = piece.match(/^\$\$([\s\S]+)\$\$$/) || piece.match(/^\$([^$]+)\$$/) || piece.match(/^\\\(([\s\S]+)\\\)$/);
+    if (math) {
+      const displayMode = piece.startsWith("$$");
+      return <span
+        className={`math-expression ${displayMode ? "display" : "inline"}`}
+        key={pieceIndex}
+        dir="ltr"
+        dangerouslySetInnerHTML={{ __html: katex.renderToString(math[1], { throwOnError: false, displayMode, strict: false }) }}
+      />;
+    }
     const bold = piece.match(/^\*\*(.+)\*\*$/);
     if (bold) return <strong key={pieceIndex}>{bold[1]}</strong>;
     const markdownLink = piece.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
@@ -2001,8 +2047,7 @@ export default function App() {
             </span>
             <button className={`icon-button workspace-button ${browserOpen ? "active" : ""}`} aria-label="Workspace" title="Workspace" onClick={() => {
               if (browserOpen) {
-                setBrowserOpen(false);
-                setBrowserMaximized(false);
+                closeWorkspace();
               } else {
                 const available = window.innerWidth - (sidebar ? 272 : 0);
                 if (available < 760) setBrowserMaximized(true);
@@ -2073,11 +2118,28 @@ export default function App() {
                       </div>
                     ) : null}
                     <div className="content">
-                      {message.content ? renderMessageContent(message) : (
+                      {message.role === "user" && editingMessage?.index === index ? (
+                        <div className="message-edit">
+                          <textarea
+                            autoFocus
+                            dir="auto"
+                            value={editingMessage.value}
+                            onChange={(event) => setEditingMessage({ index, value: event.target.value })}
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") setEditingMessage(null);
+                              if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submitMessageEdit(); }
+                            }}
+                          />
+                          <div><button onClick={() => setEditingMessage(null)}>Cancel</button><button className="save" onClick={submitMessageEdit}>Send</button></div>
+                        </div>
+                      ) : message.content ? renderMessageContent(message) : (
                         <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{chat.workspaceId && agentStatus && <span>{agentStatus}</span>}</div>
                       )}
                     </div>
-                    {message.role === "user" && message.content && <div className="message-actions user-message-actions"><button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
+                    {message.role === "user" && message.content && editingMessage?.index !== index && <div className="message-actions user-message-actions">
+                      <button onClick={() => copy(message.content)}><Copy />Copy</button>
+                      <button disabled={busy} onClick={() => setEditingMessage({ index, value: message.content })}><Pencil />Edit</button>
+                    </div>}
                     {message.role === "assistant" && message.content && (
                       <div className="message-actions">
                         <button disabled={message.generating} onClick={() => copy(message.content)}>
@@ -2250,7 +2312,7 @@ export default function App() {
                 <button
                   className={`send ${busy ? "stop" : ""}`}
                   disabled={!busy && (!config.activeModel || (!text.trim() && !files.length))}
-                  onClick={busy ? stopResponse : send}
+                  onClick={busy ? stopResponse : () => void send()}
                   title={busy ? "Stop response" : "Send message"}
                 >
                   {busy ? <Square /> : <ArrowUp />}
@@ -2833,7 +2895,7 @@ export default function App() {
       )}
       <aside
         ref={browserPanelRef}
-        className={`nova-browser ${browserOpen ? "" : "closed"} ${browserMaximized ? "maximized" : ""} ${browserRestoring ? "restoring" : ""}`}
+        className={`nova-browser ${browserOpen ? "" : "closed"} ${browserMaximized ? "maximized" : ""} ${browserRestoring ? "restoring" : ""} ${browserClosing ? "closing" : ""}`}
         style={{ "--browser-width": `${browserWidth}px` } as CSSProperties}
         aria-label="Nova browser"
         aria-hidden={!browserOpen}
@@ -2852,7 +2914,7 @@ export default function App() {
             <div className="browser-header-actions">
               {activeBrowserTab?.kind === "browser" && <button disabled={!activeBrowserTab.url} onClick={openSystemBrowser} title="Open in your default browser"><ExternalLink /></button>}
               <button onClick={toggleWorkspaceMaximized} title={browserMaximized ? "Restore split view" : "Full screen"}>{browserMaximized ? <Minimize2 /> : <Maximize2 />}</button>
-              <button onClick={() => { setBrowserOpen(false); setBrowserMaximized(false); }} title="Close Workspace"><X /></button>
+              <button onClick={closeWorkspace} title="Close Workspace"><X /></button>
             </div>
           </div>
           {activeBrowserTab?.kind === "browser" ? <form className="browser-address" onSubmit={(event) => { event.preventDefault(); navigateBrowser(activeBrowserTab.input || ""); }}>

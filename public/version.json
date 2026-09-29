@@ -1,6 +1,6 @@
 {
-  "version": "0.15.2",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.2",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.2/IDK.Nova_0.15.2_x64-setup.exe",
-  "notes": ["Starter prompts are now borderless, quieter, and more refined", "User message bubbles have clearer contrast in light and dark themes", "Copy actions follow user messages to the right side", "Temporary mode can only be selected before the first message and cannot change mid-conversation", "Workspace Browser tabs and address bar have a more polished native-browser hierarchy", "Native browser pages are clipped precisely to the visible Workspace panel while opening, closing, resizing, and restoring"]
+  "version": "0.15.3",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.3",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.3/IDK.Nova_0.15.3_x64-setup.exe",
+  "notes": ["User message bubbles return to a softer Nova surface and keep Copy and Edit controls outside the bubble", "Editing a user message regenerates the conversation from that point", "Inline LaTeX math is rendered as readable equations", "Persian assistant responses retain correct glyph order while staying aligned with Nova replies", "Google search results scale correctly inside the macOS Workspace Browser", "Workspace now animates smoothly when closing directly from full screen"]
 }

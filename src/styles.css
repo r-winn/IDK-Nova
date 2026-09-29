@@ -746,14 +746,17 @@ main {
 }
 .message-list article.user .speaker { display: none; }
 .message-list article.user .message-body {
+  padding: 0;
+  background: transparent;
+}
+.message-list article.user .message-body > .content {
   padding: 9px 13px;
   border-radius: 17px 17px 5px 17px;
-  background: color-mix(in srgb, var(--brand) 8%, #e8ece9);
-  box-shadow: 0 1px 0 rgba(255,255,255,.5) inset;
+  background: color-mix(in srgb, var(--surface) 82%, color-mix(in srgb, var(--brand) 8%, var(--hover)));
+  box-shadow: 0 1px 0 color-mix(in srgb, white 16%, transparent) inset, 0 5px 18px rgba(25,35,29,.04);
 }
-:root[data-theme="dark"] .message-list article.user .message-body { background: color-mix(in srgb, var(--brand) 10%, #252a27); box-shadow: 0 1px 0 rgba(255,255,255,.045) inset; }
-.message-list article.user .content { padding-top: 0; }
-.message-list article.user .user-message-actions { justify-content: flex-end; margin-right: -6px; }
+:root[data-theme="dark"] .message-list article.user .message-body > .content { background: color-mix(in srgb, var(--surface) 84%, color-mix(in srgb, var(--brand) 12%, var(--hover))); box-shadow: 0 1px 0 rgba(255,255,255,.045) inset; }
+.message-list article.user .user-message-actions { justify-content: flex-end; margin: 6px -6px 0 0; }
 .speaker {
   width: 32px;
   height: 32px;
@@ -775,12 +778,20 @@ main {
 .content {
   white-space: pre-wrap;
   padding-top: 4px;
-  unicode-bidi: plaintext;
-  text-align: start;
+  direction: ltr;
+  text-align: left;
   overflow-wrap: anywhere;
 }
 .rich-content { display: contents; }
-.prose-segment { white-space: pre-wrap; unicode-bidi: plaintext; }
+.prose-segment { white-space: pre-wrap; direction: ltr; text-align: left; unicode-bidi: isolate; }
+.math-expression { display: inline-flex; max-width: 100%; margin: 0 3px; vertical-align: middle; direction: ltr; overflow-x: auto; overflow-y: hidden; }
+.math-expression.display { display: flex; margin: 12px 0; justify-content: center; }
+.math-expression .katex { font-size: 1.02em; }
+.message-edit { min-width: min(520px, 62vw); }
+.message-edit textarea { width: 100%; min-height: 86px; padding: 0; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--text); font: inherit; line-height: 1.65; }
+.message-edit > div { margin-top: 8px; display: flex; justify-content: flex-end; gap: 6px; }
+.message-edit button { height: 29px; padding: 0 11px; border: 0; border-radius: 9px; background: var(--hover); color: var(--text); font-size: 10px; }
+.message-edit button.save { background: var(--text); color: var(--bg); }
 .markdown-heading { display: inline-block; width: 100%; margin: 14px 0 5px; color: var(--text); line-height: 1.35; }
 .markdown-heading.level-1 { font-size: 1.4em; }
 .markdown-heading.level-2 { font-size: 1.24em; }
@@ -905,8 +916,11 @@ main {
 .nova-browser.closed { width: 0; visibility: hidden; pointer-events: none; border-left-color: transparent; box-shadow: none; transition: width .32s cubic-bezier(.22,.75,.18,1), visibility 0s .32s; }
 .nova-browser.maximized { position: fixed; inset: 0 0 0 auto; width: 100vw; animation: workspace-reveal .32s cubic-bezier(.22,.75,.18,1) both; }
 .nova-browser.maximized.restoring { animation: workspace-conceal .32s cubic-bezier(.22,.75,.18,1) both; pointer-events: none; }
+.nova-browser.closing:not(.maximized) { width: 0; pointer-events: none; box-shadow: none; }
+.nova-browser.maximized.closing { animation: workspace-close-full .36s cubic-bezier(.22,.75,.18,1) both; pointer-events: none; box-shadow: none; }
 @keyframes workspace-reveal { from { width: var(--browser-width); } to { width: 100vw; } }
 @keyframes workspace-conceal { from { width: 100vw; } to { width: var(--browser-width); } }
+@keyframes workspace-close-full { from { width: 100vw; } to { width: 0; } }
 .nova-browser > .browser-tabs { width: var(--browser-width); min-width: var(--browser-width); }
 .nova-browser > .browser-address { width: calc(var(--browser-width) - 24px); min-width: calc(var(--browser-width) - 24px); }
 .nova-browser > .browser-surface { width: var(--browser-width); min-width: var(--browser-width); }
