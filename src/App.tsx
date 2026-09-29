@@ -119,6 +119,12 @@ const agentTools: AgentTool[] = [
   { type: "function", function: { name: "write_file", description: "Create or replace a text/source file inside the current Work project. Existing files are backed up automatically.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"], additionalProperties: false } } },
   { type: "function", function: { name: "web_search", description: "Open a web search in Nova Workspace Browser.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false } } },
   { type: "function", function: { name: "open_url", description: "Open an HTTP or HTTPS URL in Nova Workspace Browser.", parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"], additionalProperties: false } } },
+  { type: "function", function: { name: "observe_screen", description: "Capture the primary desktop display so you can inspect the current visible state. Requires a vision-capable model. Coordinates in subsequent tools are normalized from 0 to 1000.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "open_application", description: "Open an installed macOS or Windows application by its visible application name.", parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"], additionalProperties: false } } },
+  { type: "function", function: { name: "click_screen", description: "Click the visible primary display. x and y are normalized coordinates from 0 to 1000, independent of screen resolution. Observe the screen immediately before and after clicking.", parameters: { type: "object", properties: { x: { type: "integer", minimum: 0, maximum: 1000 }, y: { type: "integer", minimum: 0, maximum: 1000 }, button: { type: "string", enum: ["left", "right", "middle"] } }, required: ["x", "y"], additionalProperties: false } } },
+  { type: "function", function: { name: "type_text", description: "Type text into the currently focused application or field. Never use this for passwords, payment data, private keys, or other secrets.", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false } } },
+  { type: "function", function: { name: "press_key", description: "Press a keyboard key, optionally with modifiers. Supported keys include enter, tab, escape, backspace, delete, space, arrows, home, end, pageup, pagedown, or one character.", parameters: { type: "object", properties: { key: { type: "string" }, modifiers: { type: "array", items: { type: "string", enum: ["shift", "control", "alt", "meta"] } } }, required: ["key"], additionalProperties: false } } },
+  { type: "function", function: { name: "scroll_screen", description: "Scroll the currently focused visible window vertically. Positive values scroll down and negative values scroll up.", parameters: { type: "object", properties: { amount: { type: "integer", minimum: -20, maximum: 20 } }, required: ["amount"], additionalProperties: false } } },
 ];
 const settingMeta = {
   general: ["General", "Personalize Nova and choose how it looks."],
@@ -137,6 +143,12 @@ const agentStepLabel = (step: string) => ({
   write_file: "Creating or updating a project file…",
   web_search: "Preparing a web search…",
   open_url: "Preparing to open a website…",
+  observe_screen: "Looking at the current screen…",
+  open_application: "Opening an application…",
+  click_screen: "Interacting with the screen…",
+  type_text: "Typing into the active application…",
+  press_key: "Using the keyboard…",
+  scroll_screen: "Scrolling the active window…",
 } as Record<string, string>)[step] || `Working on ${step.replaceAll("_", " ")}…`;
 const normalStarterPrompts = [
   { title: "Plan a project", detail: "Turn an idea into clear steps", prompt: "Help me plan a project from scratch", icon: Sparkles },
@@ -163,7 +175,7 @@ type WorkspaceMatch = { path: string; line: number; preview: string };
 type PortableWorkspace = { projectJson: string; chatsJson: string };
 type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
-type AgentApproval = { title: string; detail: string; risk: "browser" | "file" } | null;
+type AgentApproval = { title: string; detail: string; risk: "browser" | "file" | "computer" } | null;
 type ModelHealth = { state: "online" | "offline"; latency?: number; checkedAt: number; error?: string };
 type BrowserTab = {
   id: string;
@@ -1242,19 +1254,28 @@ export default function App() {
         );
       if (project && isDesktopApp()) {
         const executeAgentTool = async (call: AgentToolCall) => {
-          let args: Record<string, string> = {};
+          let args: Record<string, any> = {};
           try { args = JSON.parse(call.function.arguments || "{}"); } catch { throw new Error("Tool arguments are not valid JSON"); }
           const access = project.agentAccess || "ask";
           const isBrowserAction = ["web_search", "open_url"].includes(call.function.name);
           const isFileChange = call.function.name === "write_file";
-          const needsApproval = access === "ask" ? (isBrowserAction || isFileChange) : access === "safe" ? isFileChange : false;
+          const isComputerAction = ["observe_screen", "open_application", "click_screen", "type_text", "press_key", "scroll_screen"].includes(call.function.name);
+          const isComputerMutation = ["open_application", "click_screen", "type_text", "press_key"].includes(call.function.name);
+          const needsApproval = access === "ask" ? (isBrowserAction || isFileChange || isComputerAction) : access === "safe" ? (isFileChange || isComputerMutation) : false;
           if (needsApproval) {
-            const target = call.function.name === "write_file" ? (args.path || "a project file") : call.function.name === "web_search" ? (args.query || "the web") : (args.url || "a website");
+            const target = call.function.name === "write_file" ? (args.path || "a project file")
+              : call.function.name === "web_search" ? (args.query || "the web")
+                : call.function.name === "open_url" ? (args.url || "a website")
+                  : call.function.name === "open_application" ? (args.name || "an application")
+                    : call.function.name === "type_text" ? `Type ${String(args.text || "").slice(0, 90) || "text"}`
+                      : call.function.name === "click_screen" ? `Click at ${args.x}, ${args.y}`
+                        : call.function.name === "press_key" ? `Press ${[...(args.modifiers || []), args.key].filter(Boolean).join(" + ")}`
+                          : call.function.name === "scroll_screen" ? `Scroll ${args.amount}` : "Observe the primary display";
             setAgentStatus("Waiting for your approval…");
             const approved = await requestAgentApproval({
-              title: isFileChange ? "Nova wants to change a project file" : "Nova wants to use the browser",
-              detail: isFileChange ? `Create or update: ${target}` : call.function.name === "web_search" ? `Search for: ${target}` : `Open: ${target}`,
-              risk: isFileChange ? "file" : "browser",
+              title: isFileChange ? "Nova wants to change a project file" : isComputerAction ? "Nova wants to control the computer" : "Nova wants to use the browser",
+              detail: isFileChange ? `Create or update: ${target}` : isComputerAction ? target : call.function.name === "web_search" ? `Search for: ${target}` : `Open: ${target}`,
+              risk: isFileChange ? "file" : isComputerAction ? "computer" : "browser",
             });
             if (!approved) throw new Error("__NOVA_PERMISSION_DENIED__");
           }
@@ -1281,10 +1302,19 @@ export default function App() {
             const url = new URL(args.url); if (!["http:", "https:"].includes(url.protocol)) throw new Error("Only HTTP and HTTPS URLs are allowed");
             navigateBrowser(url.toString(), true); return { ok: true, url: url.toString() };
           }
+          if (call.function.name === "observe_screen") {
+            const observation = await invoke<{ dataUrl: string; width: number; height: number }>("observe_screen");
+            return { ok: true, width: observation.width, height: observation.height, coordinateSystem: "normalized 0..1000", __novaImage: observation.dataUrl };
+          }
+          if (call.function.name === "open_application") { await invoke("open_application", { name: String(args.name || "") }); return { ok: true, application: args.name }; }
+          if (call.function.name === "click_screen") { await invoke("click_screen", { x: Number(args.x), y: Number(args.y), button: String(args.button || "left") }); return { ok: true, x: Number(args.x), y: Number(args.y) }; }
+          if (call.function.name === "type_text") { await invoke("type_text", { text: String(args.text || "") }); return { ok: true, characters: String(args.text || "").length }; }
+          if (call.function.name === "press_key") { await invoke("press_key", { key: String(args.key || ""), modifiers: Array.isArray(args.modifiers) ? args.modifiers.map(String) : [] }); return { ok: true, key: args.key }; }
+          if (call.function.name === "scroll_screen") { await invoke("scroll_screen", { amount: Number(args.amount) }); return { ok: true, amount: Number(args.amount) }; }
           throw new Error(`Unknown tool: ${call.function.name}`);
         };
         try {
-          await runAgentCompletion(config, [...chat.messages, user], `${workspaceContext}\n\nYou may use Nova tools. Never perform purchases, authentication, form submission, deletion, or access outside the project.`, agentTools, executeAgentTool, (step) => setAgentStatus(agentStepLabel(step)), appendToken, controller.signal);
+          await runAgentCompletion(config, [...chat.messages, user], `${workspaceContext}\n\nYou can use Nova project, browser, and desktop-control tools. For desktop work: observe the screen before every coordinate-based action, use normalized coordinates from 0 to 1000, take one deliberate action at a time, then observe again to verify the result. Never guess screen state. Never enter or reveal passwords, API keys, payment information, private keys, or other secrets. Do not make purchases, authenticate, send messages, submit forms, change security settings, delete data, or perform irreversible actions. Stop and explain when the requested action is ambiguous or unsafe.`, agentTools, executeAgentTool, (step) => setAgentStatus(agentStepLabel(step)), appendToken, controller.signal);
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
           if (detail.includes("__NOVA_PERMISSION_DENIED__")) {
@@ -2143,9 +2173,9 @@ export default function App() {
               <div className={`agent-access-popover ${agentAccessClosing ? "closing" : ""}`} role="menu" aria-label="Agent access">
                 <div className="agent-access-title"><span>How should Nova actions be approved?</span><small>Applies only to this Work project</small></div>
                 {([
-                  ["ask", "Ask for approval", "Ask before file changes and browser access", ShieldCheck],
-                  ["safe", "Approve for me", "Ask only before potentially unsafe changes", Workflow],
-                  ["auto", "Full access", "No prompts inside this project folder", Rocket],
+                  ["ask", "Ask for approval", "Ask before screen, app, browser, and file actions", ShieldCheck],
+                  ["safe", "Approve for me", "Observe and research automatically; confirm clicks, typing, and changes", Workflow],
+                  ["auto", "Full access", "Run Work tools automatically until stopped", Rocket],
                 ] as const).map(([value, label, description, Icon]) => (
                   <button
                     type="button"

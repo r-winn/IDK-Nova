@@ -95,7 +95,19 @@ export async function runAgentCompletion(
         if (error instanceof Error && error.message.includes('__NOVA_PERMISSION_DENIED__')) throw error;
         result = { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
-      conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+      const resultObject = result && typeof result === 'object' ? result as Record<string, unknown> : null;
+      const screenImage = typeof resultObject?.__novaImage === 'string' ? resultObject.__novaImage : null;
+      const serializableResult = resultObject ? Object.fromEntries(Object.entries(resultObject).filter(([key]) => key !== '__novaImage')) : result;
+      conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(serializableResult) });
+      if (screenImage) {
+        conversation.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: 'This is the current primary display. Coordinates for click_screen are normalized: top-left is (0,0), center is (500,500), and bottom-right is (1000,1000). Inspect it carefully before acting.' },
+            { type: 'image_url', image_url: { url: screenImage } },
+          ],
+        });
+      }
     }
   }
   throw new Error('Agent stopped after 12 tool steps to prevent an infinite loop');

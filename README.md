@@ -5,8 +5,8 @@
   <p>Connect local Ollama or LM Studio models, company AI servers, and OpenAI-compatible cloud providers from one clean desktop experience.</p>
 
   [![Latest release](https://img.shields.io/github/v/release/r-winn/IDK-Nova?style=flat-square&label=latest)](https://github.com/r-winn/IDK-Nova/releases/latest)
-  [![Windows](https://img.shields.io/badge/Windows-Download_EXE-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.3_x64-setup.exe)
-  [![macOS](https://img.shields.io/badge/macOS-Universal_DMG-171717?style=flat-square&logo=apple)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.3_universal.dmg)
+  [![Windows](https://img.shields.io/badge/Windows-Download_EXE-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.0_x64-setup.exe)
+  [![macOS](https://img.shields.io/badge/macOS-Universal_DMG-171717?style=flat-square&logo=apple)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.0_universal.dmg)
   [![Web app](https://img.shields.io/badge/Web-Open%20Nova-171717?style=flat-square)](https://r-winn.github.io/IDK-Nova/)
   [![License](https://img.shields.io/github/license/r-winn/IDK-Nova?style=flat-square)](LICENSE)
 </div>
@@ -19,8 +19,8 @@
 
 | Platform | Recommended download | Alternative |
 | --- | --- | --- |
-| Windows 10/11 (64-bit) | **[Download Setup.exe](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.3_x64-setup.exe)** | [MSI for managed deployment](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.3_x64_en-US.msi) |
-| macOS (Apple Silicon + Intel) | **[Download Universal DMG](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.14.3_universal.dmg)** | — |
+| Windows 10/11 (64-bit) | **[Download Setup.exe](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.0_x64-setup.exe)** | [MSI for managed deployment](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.0_x64_en-US.msi) |
+| macOS (Apple Silicon + Intel) | **[Download Universal DMG](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.15.0_universal.dmg)** | — |
 | Browser | **[Open the web app](https://r-winn.github.io/IDK-Nova/)** | Desktop is required for Nova Work and local GGUF import |
 
 All official binaries are attached to the **[latest GitHub Release](https://github.com/r-winn/IDK-Nova/releases/latest)**. Do not download Nova installers from unofficial mirrors.
@@ -129,7 +129,15 @@ Nova Work is available in the desktop application because a normal website canno
 3. Start a **New work chat** inside that workspace.
 4. Ask about the project, a feature, or an error. Nova builds a local file index and includes only relevant supported text files in that request.
 
-Nova can read supported project files, search the web in Workspace Browser, and create or update files only inside the attached project. **Ask for approval** prompts before browser access and file changes, **Approve for me** runs safe reads/browser research automatically but confirms project changes, and **Full access** works autonomously inside the attached folder. Nova still blocks purchases, authentication, form submission, deletion, secret files, dependency/build folders, symbolic links, binary files, oversized files, and every path outside the selected project. Choose a provider you trust before discussing private code.
+Nova can read supported project files, search the web in Workspace Browser, create or update project files, observe the primary display, open installed applications, click, type, press shortcuts, and scroll on Windows and macOS. Desktop control requires a provider that supports both tool calling and vision. **Ask for approval** confirms every browser, screen, app, input, and file-changing action. **Approve for me** allows observation and research automatically but confirms clicks, typing, app launches, and file changes. **Full access** can continue automatically until you press Stop.
+
+Desktop access remains visible and interruptible. Nova blocks credential entry, purchases, authentication, sending or submitting forms, security-setting changes, deletion, and other irreversible operations. Project-file tools also block secret files, dependency/build folders, symbolic links, binary files, oversized files, and every path outside the selected project. Choose a provider you trust before discussing private code or sharing your screen.
+
+### Desktop-control permissions
+
+- **macOS:** open **System Settings → Privacy & Security**, enable **Accessibility** and **Screen Recording** for IDK Nova, then fully quit and reopen the app.
+- **Windows:** approve any system permission prompt that appears. Nova controls only the active user desktop and does not install a background service.
+- Start with **Ask for approval** while testing a new model. Use **Full access** only for a model and task you trust, and keep the Stop control visible.
 
 Nova creates a hidden `.nova-work` directory inside a folder after you explicitly attach it. It contains portable project identity, Work chat history, and a compact activity record. Copying the complete project folder to another computer and attaching it there restores that Work history. This is portable local state—not an undisclosed cloud sync service—and can be excluded from version control if you do not want chat history committed to a repository.
 

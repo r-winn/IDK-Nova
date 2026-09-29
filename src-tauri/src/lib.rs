@@ -1,8 +1,140 @@
 use serde::Serialize;
 use futures_util::StreamExt;
-use std::{fs, io::Write, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
+use std::{fs, io::{Cursor, Write}, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
 use tauri::Manager;
 use tauri::ipc::Channel;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+#[cfg(any(windows, target_os = "macos"))]
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScreenObservation {
+    data_url: String,
+    width: u32,
+    height: u32,
+}
+
+fn desktop_control_error(error: impl std::fmt::Display) -> String {
+    #[cfg(target_os = "macos")]
+    return format!("Desktop control failed: {error}. Allow IDK Nova in System Settings → Privacy & Security → Accessibility and Screen Recording.");
+    #[cfg(not(target_os = "macos"))]
+    format!("Desktop control failed: {error}")
+}
+
+#[tauri::command]
+async fn observe_screen() -> Result<ScreenObservation, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            let screen = screenshots::Screen::from_point(0, 0).map_err(desktop_control_error)?;
+            let captured = screen.capture().map_err(desktop_control_error)?;
+            let (width, height) = captured.dimensions();
+            let max_width = 1600u32;
+            let rendered = if width > max_width {
+                let next_height = ((height as f64) * (max_width as f64 / width as f64)).round() as u32;
+                image::imageops::resize(&captured, max_width, next_height, image::imageops::FilterType::Triangle)
+            } else { captured };
+            let mut bytes = Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(rendered).write_to(&mut bytes, image::ImageOutputFormat::Jpeg(72)).map_err(desktop_control_error)?;
+            return Ok(ScreenObservation { data_url: format!("data:image/jpeg;base64,{}", BASE64.encode(bytes.into_inner())), width, height });
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        Err("Desktop observation is currently available on Windows and macOS".into())
+    }).await.map_err(|error| error.to_string())?
+}
+
+fn normalized_position(enigo: &Enigo, x: i32, y: i32) -> Result<(i32, i32), String> {
+    if !(0..=1000).contains(&x) || !(0..=1000).contains(&y) { return Err("Screen coordinates must be between 0 and 1000".into()); }
+    let (width, height) = enigo.main_display().map_err(desktop_control_error)?;
+    Ok((((width.saturating_sub(1)) * x) / 1000, ((height.saturating_sub(1)) * y) / 1000))
+}
+
+#[tauri::command]
+async fn click_screen(x: i32, y: i32, button: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            let mut enigo = Enigo::new(&Settings::default()).map_err(desktop_control_error)?;
+            let (screen_x, screen_y) = normalized_position(&enigo, x, y)?;
+            let mouse_button = match button.as_str() { "right" => Button::Right, "middle" => Button::Middle, _ => Button::Left };
+            enigo.move_mouse(screen_x, screen_y, Coordinate::Abs).map_err(desktop_control_error)?;
+            enigo.button(mouse_button, Direction::Click).map_err(desktop_control_error)?;
+            return Ok(());
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        Err("Desktop input is currently available on Windows and macOS".into())
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn type_text(text: String) -> Result<(), String> {
+    if text.len() > 20_000 { return Err("Text input exceeds the 20,000 character safety limit".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(any(windows, target_os = "macos"))]
+        { let mut enigo = Enigo::new(&Settings::default()).map_err(desktop_control_error)?; enigo.text(&text).map_err(desktop_control_error)?; return Ok(()); }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        Err("Desktop input is currently available on Windows and macOS".into())
+    }).await.map_err(|error| error.to_string())?
+}
+
+fn named_key(value: &str) -> Result<Key, String> {
+    Ok(match value.to_ascii_lowercase().as_str() {
+        "enter" | "return" => Key::Return, "tab" => Key::Tab, "escape" | "esc" => Key::Escape,
+        "backspace" => Key::Backspace, "delete" => Key::Delete, "space" => Key::Space,
+        "up" | "arrowup" => Key::UpArrow, "down" | "arrowdown" => Key::DownArrow,
+        "left" | "arrowleft" => Key::LeftArrow, "right" | "arrowright" => Key::RightArrow,
+        "home" => Key::Home, "end" => Key::End, "pageup" => Key::PageUp, "pagedown" => Key::PageDown,
+        other if other.chars().count() == 1 => Key::Unicode(other.chars().next().unwrap()),
+        _ => return Err("Unsupported key".into()),
+    })
+}
+
+#[tauri::command]
+async fn press_key(key: String, modifiers: Vec<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            let mut enigo = Enigo::new(&Settings::default()).map_err(desktop_control_error)?;
+            let mods: Vec<Key> = modifiers.iter().map(|value| match value.to_ascii_lowercase().as_str() {
+                "shift" => Ok(Key::Shift), "control" | "ctrl" => Ok(Key::Control), "alt" | "option" => Ok(Key::Alt), "meta" | "command" | "cmd" => Ok(Key::Meta), _ => Err("Unsupported modifier".to_string()),
+            }).collect::<Result<_, _>>()?;
+            for modifier in &mods { enigo.key(*modifier, Direction::Press).map_err(desktop_control_error)?; }
+            enigo.key(named_key(&key)?, Direction::Click).map_err(desktop_control_error)?;
+            for modifier in mods.iter().rev() { enigo.key(*modifier, Direction::Release).map_err(desktop_control_error)?; }
+            return Ok(());
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        Err("Desktop input is currently available on Windows and macOS".into())
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn scroll_screen(amount: i32) -> Result<(), String> {
+    if !(-20..=20).contains(&amount) { return Err("Scroll amount must be between -20 and 20".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(any(windows, target_os = "macos"))]
+        { let mut enigo = Enigo::new(&Settings::default()).map_err(desktop_control_error)?; enigo.scroll(amount, Axis::Vertical).map_err(desktop_control_error)?; return Ok(()); }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        Err("Desktop input is currently available on Windows and macOS".into())
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn open_application(name: String) -> Result<(), String> {
+    let name = name.trim().to_string();
+    if name.is_empty() || name.len() > 120 || !name.chars().all(|value| value.is_alphanumeric() || matches!(value, ' ' | '.' | '_' | '-')) { return Err("Enter a valid application name".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "macos")]
+        let status = Command::new("open").args(["-a", &name]).status();
+        #[cfg(windows)]
+        let status = Command::new("cmd.exe").args(["/C", "start", "", &name]).status();
+        #[cfg(not(any(windows, target_os = "macos")))]
+        return Err("Opening applications is currently available on Windows and macOS".into());
+        status.map_err(desktop_control_error).and_then(|value| if value.success() { Ok(()) } else { Err(format!("Could not open {name}")) })
+    }).await.map_err(|error| error.to_string())?
+}
 
 fn ollama_executable() -> Option<PathBuf> {
     if Command::new("ollama").arg("--version").output().map(|output| output.status.success()).unwrap_or(false) { return Some(PathBuf::from("ollama")); }
@@ -390,7 +522,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, observe_screen, click_screen, type_text, press_key, scroll_screen, open_application])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
