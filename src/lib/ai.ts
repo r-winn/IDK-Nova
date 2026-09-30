@@ -19,6 +19,29 @@ const endpoint = (provider: Provider, path: string) => {
   return url.toString();
 };
 
+const conversationInput = (messages: Message[]) => {
+  const recent = messages.slice(-40);
+  let remainingImages = 8;
+  const imageAllowance = new Map<number, number>();
+  for (let index = recent.length - 1; index >= 0 && remainingImages > 0; index -= 1) {
+    const count = Math.min(remainingImages, recent[index].attachments?.filter((file) => file.type.startsWith('image/') && file.url.startsWith('data:')).length || 0);
+    if (count) imageAllowance.set(index, count);
+    remainingImages -= count;
+  }
+  return recent.map((message, index) => {
+    const prefix = message.quote ? `Replying to this excerpt:\n\"${message.quote}\"\n\n` : '';
+    const images = message.attachments?.filter((file) => file.type.startsWith('image/') && file.url.startsWith('data:')).slice(0, imageAllowance.get(index) || 0) || [];
+    if (message.role === 'user' && images.length) return {
+      role: message.role,
+      content: [
+        { type: 'text', text: `${prefix}${message.content || 'Describe this attachment.'}` },
+        ...images.map((file) => ({ type: 'image_url', image_url: { url: file.url } })),
+      ],
+    };
+    return { role: message.role, content: `${prefix}${message.content || (message.attachments?.length ? '[Attachment shared earlier]' : '')}` };
+  });
+};
+
 export async function discoverModels(provider: Provider): Promise<string[]> {
   const response = await request(endpoint(provider, '/models'), { headers: headers(provider) });
   if (!response.ok) throw new Error(`Provider returned ${response.status}`);
@@ -41,13 +64,7 @@ export async function streamCompletion(config: Config, messages: Message[], onTo
   const provider = getActiveProvider(config);
   if (!provider) throw new Error('Add a provider in Settings first');
   if (!config.activeModel) throw new Error('Select a model first');
-  const content = messages.map((message, index) => ({
-    role: message.role,
-    content: index === messages.length - 1 && message.attachments?.length ? [
-      { type: 'text', text: `${message.quote ? `Replying to this excerpt:\n\"${message.quote}\"\n\n` : ''}${message.content || 'Describe this attachment.'}` },
-      ...message.attachments.filter(file => file.type.startsWith('image/')).map(file => ({ type: 'image_url', image_url: { url: file.url } })),
-    ] : `${message.quote ? `Replying to this excerpt:\n\"${message.quote}\"\n\n` : ''}${message.content || (message.attachments?.length ? '[Image shared in an earlier turn]' : '')}`,
-  }));
+  const content = conversationInput(messages);
   const providerMessages = systemContext ? [{ role: 'system', content: systemContext }, ...content] : content;
   const response = await request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: { ...headers(provider), Accept: 'text/event-stream' }, body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, messages: providerMessages }), signal });
   if (!response.ok) throw new Error(`Provider returned ${response.status}: ${await response.text()}`);
@@ -73,9 +90,9 @@ export async function runAgentCompletion(
   if (!provider || !config.activeModel) throw new Error('Connect an agent-capable model first');
   const conversation: any[] = [
     { role: 'system', content: systemContext },
-    ...messages.map((message) => ({ role: message.role, content: `${message.quote ? `Replying to this excerpt:\n"${message.quote}"\n\n` : ''}${message.content}` })),
+    ...conversationInput(messages),
   ];
-  for (let turn = 0; turn < 30; turn += 1) {
+  for (let turn = 0; turn < 10; turn += 1) {
     const response = await request(endpoint(provider, '/chat/completions'), {
       method: 'POST', headers: headers(provider), signal,
       body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: false, messages: conversation, tools, tool_choice: 'auto' }),
@@ -110,5 +127,5 @@ export async function runAgentCompletion(
       }
     }
   }
-  throw new Error('Agent paused after 30 tool steps to prevent an infinite loop. Ask it to continue if more work remains.');
+  throw new Error('Agent paused after 10 turns to prevent an infinite loop. Ask it to continue if more work remains.');
 }

@@ -1,6 +1,6 @@
 {
-  "version": "0.15.7",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.7",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.7/IDK.Nova_0.15.7_x64-setup.exe",
-  "notes": ["Edit is available only for the latest user message", "Chat attachments open directly in Nova Workspace", "PDF files use a full-height in-app viewer", "Text, Markdown, JSON and CSV attachments have a dedicated readable preview", "Unknown file types still open in Workspace with a safe download action", "The GitHub README has been rebuilt as a clean product page without the oversized logo"]
+  "version": "0.15.8",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.15.8",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.15.8/IDK.Nova_0.15.8_x64-setup.exe",
+  "notes": ["Multimodal chat memory now resends relevant prior images", "Persistent chat images are stored locally in IndexedDB", "Agent runs use the standard 10-turn safety limit", "The chat model picker lists every configured provider and model", "Temporary chats remain excluded from persistent memory"]
 }

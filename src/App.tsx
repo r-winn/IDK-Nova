@@ -83,6 +83,7 @@ import {
   loadConfig,
   loadManagedConfig,
   loadValue,
+  restoreChatAttachments,
   saveChats,
   saveConfig,
 } from "./lib/storage";
@@ -444,6 +445,12 @@ export default function App() {
   useEffect(() => {
     saveChats(chats);
   }, [chats]);
+  useEffect(() => {
+    restoreChatAttachments(chats).then((restored) => setChats((current) => {
+      const hasRestorable = current.some((chat) => chat.messages.some((message) => message.attachments?.some((attachment) => attachment.url.startsWith("idb:"))));
+      return hasRestorable ? restored : current;
+    })).catch(() => undefined);
+  }, []);
   useEffect(() => {
     setAgentAccessOpen(false);
     setAgentAccessClosing(false);
@@ -2133,24 +2140,27 @@ export default function App() {
               </button>
               {modelOpen && (
                 <div className="model-menu">
-                  {activeProvider?.models.map((model) => (
-                    <button
-                      key={model}
-                      onClick={() => {
-                        const next = { ...config, activeModel: model };
-                        setConfig(next);
-                        saveConfig(next);
-                        setModelOpen(false);
-                      }}
-                    >
-                      <span>{model}</span>
-                      {config.activeModel === model && <Check />}
-                    </button>
-                  ))}
-                  {!activeProvider?.models.length && (
+                  {config.providers.filter((provider) => provider.models.length).map((provider) => <section className="model-menu-group" key={provider.id}>
+                    <small>{provider.name}</small>
+                    {provider.models.map((model) => (
+                      <button
+                        key={`${provider.id}:${model}`}
+                        onClick={() => {
+                          const next = { ...config, activeProviderId: provider.id, activeModel: model };
+                          setConfig(next);
+                          saveConfig(next);
+                          setModelOpen(false);
+                        }}
+                      >
+                        <span>{model}</span>
+                        {config.activeProviderId === provider.id && config.activeModel === model && <Check />}
+                      </button>
+                    ))}
+                  </section>)}
+                  {!config.providers.some((provider) => provider.models.length) && (
                     <div className="empty-menu">No models connected</div>
                   )}
-                  <button onClick={openSettings}>
+                  <button className="manage-models" onClick={openSettings}>
                     <Settings />
                     <span>Manage models</span>
                   </button>

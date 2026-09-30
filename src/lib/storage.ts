@@ -1,7 +1,56 @@
-import type { Chat, Config } from '../types';
+import type { Attachment, Chat, Config } from '../types';
 import { defaultConfig, defaultProvider } from '../types';
 export function loadValue<T>(key: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(key) || '') as T; } catch { return fallback; } }
-export function saveChats(chats: Chat[]) { const safe = chats.filter(chat => !chat.temporary).map(chat => ({ ...chat, messages: chat.messages.map(message => ({ ...message, attachments: undefined })) })); localStorage.setItem('idk-nova-history', JSON.stringify(safe)); }
+const ATTACHMENT_DB = 'idk-nova-memory';
+const ATTACHMENT_STORE = 'attachments';
+const persistedAttachmentKeys = new Set<string>();
+const openAttachmentDb = () => new Promise<IDBDatabase>((resolve, reject) => {
+  const request = indexedDB.open(ATTACHMENT_DB, 1);
+  request.onupgradeneeded = () => request.result.createObjectStore(ATTACHMENT_STORE);
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+});
+const putAttachment = async (key: string, attachment: Attachment) => {
+  const db = await openAttachmentDb();
+  await new Promise<void>((resolve, reject) => {
+    const request = db.transaction(ATTACHMENT_STORE, 'readwrite').objectStore(ATTACHMENT_STORE).put(attachment.url, key);
+    request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
+  });
+  db.close();
+};
+const getAttachment = async (key: string) => {
+  const db = await openAttachmentDb();
+  const value = await new Promise<string | undefined>((resolve, reject) => {
+    const request = db.transaction(ATTACHMENT_STORE).objectStore(ATTACHMENT_STORE).get(key);
+    request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : undefined); request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return value;
+};
+export function saveChats(chats: Chat[]) {
+  const safe = chats.filter(chat => !chat.temporary).map(chat => ({ ...chat, messages: chat.messages.map((message, messageIndex) => ({
+    ...message,
+    attachments: message.attachments?.map((attachment, attachmentIndex) => {
+      const key = `${chat.id}:${messageIndex}:${attachmentIndex}`;
+      if (!attachment.url.startsWith('idb:') && !persistedAttachmentKeys.has(key)) {
+        persistedAttachmentKeys.add(key);
+        void putAttachment(key, attachment).catch(() => persistedAttachmentKeys.delete(key));
+      }
+      return { ...attachment, url: `idb:${key}` };
+    }),
+  })) }));
+  localStorage.setItem('idk-nova-history', JSON.stringify(safe));
+}
+export async function restoreChatAttachments(chats: Chat[]): Promise<Chat[]> {
+  return Promise.all(chats.map(async (chat) => ({ ...chat, messages: await Promise.all(chat.messages.map(async (message) => ({
+    ...message,
+    attachments: message.attachments ? await Promise.all(message.attachments.map(async (attachment) => {
+      if (!attachment.url.startsWith('idb:')) return attachment;
+      const url = await getAttachment(attachment.url.slice(4)).catch(() => undefined);
+      return url ? { ...attachment, url } : attachment;
+    })) : undefined,
+  }))) })));
+}
 export function loadConfig(): Config {
   const stored = loadValue<any>('idk-nova-config', null) || loadValue<any>('nova-chat-config', null);
   if (!stored) return defaultConfig;
