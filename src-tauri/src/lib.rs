@@ -61,7 +61,7 @@ fn normalized_position(enigo: &Enigo, x: i32, y: i32) -> Result<(i32, i32), Stri
 }
 
 #[tauri::command]
-async fn click_screen(x: i32, y: i32, button: String) -> Result<(), String> {
+async fn click_screen(x: i32, y: i32, button: String, count: Option<u8>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(any(windows, target_os = "macos"))]
         {
@@ -69,7 +69,46 @@ async fn click_screen(x: i32, y: i32, button: String) -> Result<(), String> {
             let (screen_x, screen_y) = normalized_position(&enigo, x, y)?;
             let mouse_button = match button.as_str() { "right" => Button::Right, "middle" => Button::Middle, _ => Button::Left };
             enigo.move_mouse(screen_x, screen_y, Coordinate::Abs).map_err(desktop_control_error)?;
-            enigo.button(mouse_button, Direction::Click).map_err(desktop_control_error)?;
+            let clicks = count.unwrap_or(1).clamp(1, 2);
+            for index in 0..clicks {
+                enigo.button(mouse_button, Direction::Click).map_err(desktop_control_error)?;
+                if index + 1 < clicks { std::thread::sleep(std::time::Duration::from_millis(120)); }
+            }
+            return Ok(());
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        Err("Desktop input is currently available on Windows and macOS".into())
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn move_screen(x: i32, y: i32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            let mut enigo = Enigo::new(&Settings::default()).map_err(desktop_control_error)?;
+            let (screen_x, screen_y) = normalized_position(&enigo, x, y)?;
+            enigo.move_mouse(screen_x, screen_y, Coordinate::Abs).map_err(desktop_control_error)?;
+            return Ok(());
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        Err("Desktop input is currently available on Windows and macOS".into())
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn drag_screen(from_x: i32, from_y: i32, to_x: i32, to_y: i32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            let mut enigo = Enigo::new(&Settings::default()).map_err(desktop_control_error)?;
+            let (start_x, start_y) = normalized_position(&enigo, from_x, from_y)?;
+            let (end_x, end_y) = normalized_position(&enigo, to_x, to_y)?;
+            enigo.move_mouse(start_x, start_y, Coordinate::Abs).map_err(desktop_control_error)?;
+            enigo.button(Button::Left, Direction::Press).map_err(desktop_control_error)?;
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            enigo.move_mouse(end_x, end_y, Coordinate::Abs).map_err(desktop_control_error)?;
+            enigo.button(Button::Left, Direction::Release).map_err(desktop_control_error)?;
             return Ok(());
         }
         #[cfg(not(any(windows, target_os = "macos")))]
@@ -574,7 +613,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, observe_screen, click_screen, type_text, press_key, scroll_screen, open_application, run_terminal])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;

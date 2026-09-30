@@ -1,6 +1,6 @@
 {
-  "version": "0.16.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.16.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.16.0/IDK.Nova_0.16.0_x64-setup.exe",
-  "notes": ["OpenAI Responses API is now the primary conversation engine", "Each chat keeps an independent server-managed response chain", "Follow-up messages send only the new turn through previous_response_id", "Images and Work context remain available across compatible response chains", "Providers without Responses support continue through Chat Completions"]
+  "version": "0.16.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.16.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.16.1/IDK.Nova_0.16.1_x64-setup.exe",
+  "notes": ["Work now enforces tool use for requested browser and desktop actions", "Every visible action automatically returns a fresh screenshot to the agent", "Browser navigation, clicks, typing, scrolling and application launches are visually verified", "Pointer hover, double-click and drag actions are now supported", "Responses and Chat Completions agent loops both support the upgraded runtime"]
 }

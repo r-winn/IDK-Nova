@@ -169,6 +169,7 @@ export async function runAgentCompletion(
   signal?: AbortSignal,
   memory?: ResponseMemory,
   onMemory?: (memory: ResponseMemory) => void,
+  requireTool = false,
 ) {
   const provider = getActiveProvider(config);
   if (!provider || !config.activeModel) throw new Error('Connect an agent-capable model first');
@@ -183,7 +184,7 @@ export async function runAgentCompletion(
     if (!responsesSupported) break;
     const response = await request(endpoint(provider, '/responses'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: previousResponseId || undefined, temperature: config.temperature, store: true, tools: responseTools, tool_choice: 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: previousResponseId || undefined, temperature: config.temperature, store: true, tools: responseTools, tool_choice: turn === 0 && requireTool ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
@@ -193,7 +194,11 @@ export async function runAgentCompletion(
         turn -= 1;
         continue;
       }
-      if (turn === 0 && isUnsupportedResponsesError(response.status)) { unsupportedResponsesProviders.add(providerKey); responsesSupported = false; break; }
+      if (turn === 0 && (isUnsupportedResponsesError(response.status) || (response.status === 400 && /tools?|tool_choice|function.?call/i.test(detail)))) {
+        if (isUnsupportedResponsesError(response.status)) unsupportedResponsesProviders.add(providerKey);
+        responsesSupported = false;
+        break;
+      }
       throw new Error(`Agent provider returned ${response.status}: ${detail}`);
     }
     const payload = await response.json();
@@ -206,6 +211,7 @@ export async function runAgentCompletion(
       return;
     }
     responseInput = [];
+    const screenImages: string[] = [];
     for (const item of calls) {
       const call: AgentToolCall = { id: item.call_id || item.id, type: 'function', function: { name: item.name, arguments: item.arguments || '{}' } };
       onStep(call.function.name);
@@ -219,26 +225,33 @@ export async function runAgentCompletion(
       const screenImage = typeof resultObject?.__novaImage === 'string' ? resultObject.__novaImage : null;
       const serializableResult = resultObject ? Object.fromEntries(Object.entries(resultObject).filter(([key]) => key !== '__novaImage')) : result;
       responseInput.push({ type: 'function_call_output', call_id: call.id, output: JSON.stringify(serializableResult) });
-      if (screenImage) responseInput.push({ role: 'user', content: [{ type: 'input_text', text: 'This is the current primary display. Coordinates are normalized from 0 to 1000. Inspect it before acting.' }, { type: 'input_image', image_url: screenImage }] });
+      if (screenImage) screenImages.push(screenImage);
     }
+    if (screenImages.length) responseInput.push({ role: 'user', content: [{ type: 'input_text', text: 'This is the newest primary-display state after the requested actions. Coordinates are normalized from 0 to 1000. Inspect it carefully and continue until the result is visibly verified.' }, { type: 'input_image', image_url: screenImages.at(-1) }] });
   }
   if (responsesSupported) throw new Error('Agent paused after 10 turns to prevent an infinite loop. Ask it to continue if more work remains.');
   const conversation: any[] = [
     { role: 'system', content: systemContext },
     ...conversationInput(messages),
   ];
+  let forceFirstTool = requireTool;
   for (let turn = 0; turn < 10; turn += 1) {
     const response = await request(endpoint(provider, '/chat/completions'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: false, messages: conversation, tools, tool_choice: 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: false, messages: conversation, tools, tool_choice: turn === 0 && forceFirstTool ? 'required' : 'auto' }),
     });
-    if (!response.ok) throw new Error(`Agent provider returned ${response.status}: ${await response.text()}`);
+    if (!response.ok) {
+      const detail = await response.text();
+      if (turn === 0 && forceFirstTool && response.status === 400 && /tool_choice|required/i.test(detail)) { forceFirstTool = false; turn -= 1; continue; }
+      throw new Error(`Agent provider returned ${response.status}: ${detail}`);
+    }
     const payload = await response.json();
     const assistant = payload.choices?.[0]?.message;
     if (!assistant) throw new Error('Agent provider returned an invalid completion');
     conversation.push({ role: 'assistant', content: assistant.content ?? null, ...(assistant.tool_calls ? { tool_calls: assistant.tool_calls } : {}) });
     const calls: AgentToolCall[] = Array.isArray(assistant.tool_calls) ? assistant.tool_calls : [];
     if (!calls.length) { onToken(assistant.content || 'Task complete.'); return; }
+    const screenImages: string[] = [];
     for (const call of calls) {
       onStep(call.function.name);
       let result: unknown;
@@ -251,16 +264,15 @@ export async function runAgentCompletion(
       const screenImage = typeof resultObject?.__novaImage === 'string' ? resultObject.__novaImage : null;
       const serializableResult = resultObject ? Object.fromEntries(Object.entries(resultObject).filter(([key]) => key !== '__novaImage')) : result;
       conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(serializableResult) });
-      if (screenImage) {
-        conversation.push({
-          role: 'user',
-          content: [
-            { type: 'text', text: 'This is the current primary display. Coordinates for click_screen are normalized: top-left is (0,0), center is (500,500), and bottom-right is (1000,1000). Inspect it carefully before acting.' },
-            { type: 'image_url', image_url: { url: screenImage } },
-          ],
-        });
-      }
+      if (screenImage) screenImages.push(screenImage);
     }
+    if (screenImages.length) conversation.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'This is the newest primary-display state after the requested actions. Coordinates for click_screen are normalized: top-left is (0,0), center is (500,500), and bottom-right is (1000,1000). Inspect it carefully and continue until the result is visibly verified.' },
+        { type: 'image_url', image_url: { url: screenImages.at(-1) } },
+      ],
+    });
   }
   throw new Error('Agent paused after 10 turns to prevent an infinite loop. Ask it to continue if more work remains.');
 }
