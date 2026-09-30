@@ -16,6 +16,15 @@ struct ScreenObservation {
     height: u32,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TerminalOutput {
+    ok: bool,
+    stdout: String,
+    stderr: String,
+    exit_code: i32,
+}
+
 fn desktop_control_error(error: impl std::fmt::Display) -> String {
     #[cfg(target_os = "macos")]
     return format!("Desktop control failed: {error}. Allow IDK Nova in System Settings → Privacy & Security → Accessibility and Screen Recording.");
@@ -133,6 +142,30 @@ async fn open_application(name: String) -> Result<(), String> {
         #[cfg(not(any(windows, target_os = "macos")))]
         return Err("Opening applications is currently available on Windows and macOS".into());
         status.map_err(desktop_control_error).and_then(|value| if value.success() { Ok(()) } else { Err(format!("Could not open {name}")) })
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn run_terminal(command: String) -> Result<TerminalOutput, String> {
+    let command = command.trim().to_string();
+    if command.is_empty() || command.len() > 8_000 { return Err("Enter a terminal command under 8,000 characters".into()); }
+    let lowered = command.to_ascii_lowercase();
+    let blocked = ["rm -rf /", "diskpart", "format ", "shutdown ", "reboot", "remove-item -recurse", "reg delete", "del /s", "cipher /w"];
+    if blocked.iter().any(|pattern| lowered.contains(pattern)) { return Err("Nova blocked a destructive terminal command".into()); }
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "macos")]
+        let output = Command::new("/bin/zsh").args(["-lc", &command]).output();
+        #[cfg(windows)]
+        let output = {
+            use std::os::windows::process::CommandExt;
+            let mut process = Command::new("powershell.exe");
+            process.creation_flags(0x08000000).args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", &command]).output()
+        };
+        #[cfg(not(any(windows, target_os = "macos")))]
+        return Err("Terminal tools are currently available on Windows and macOS".into());
+        let output = output.map_err(desktop_control_error)?;
+        let truncate = |bytes: Vec<u8>| String::from_utf8_lossy(&bytes).chars().take(12_000).collect::<String>();
+        Ok(TerminalOutput { ok: output.status.success(), stdout: truncate(output.stdout), stderr: truncate(output.stderr), exit_code: output.status.code().unwrap_or(-1) })
     }).await.map_err(|error| error.to_string())?
 }
 
@@ -541,7 +574,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, observe_screen, click_screen, type_text, press_key, scroll_screen, open_application])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, observe_screen, click_screen, type_text, press_key, scroll_screen, open_application, run_terminal])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;

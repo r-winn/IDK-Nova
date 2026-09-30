@@ -125,9 +125,11 @@ const agentTools: AgentTool[] = [
   { type: "function", function: { name: "observe_screen", description: "Capture the primary desktop display so you can inspect the current visible state. Requires a vision-capable model. Coordinates in subsequent tools are normalized from 0 to 1000.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "open_application", description: "Open an installed macOS or Windows application by its visible application name.", parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "click_screen", description: "Click the visible primary display. x and y are normalized coordinates from 0 to 1000, independent of screen resolution. Observe the screen immediately before and after clicking.", parameters: { type: "object", properties: { x: { type: "integer", minimum: 0, maximum: 1000 }, y: { type: "integer", minimum: 0, maximum: 1000 }, button: { type: "string", enum: ["left", "right", "middle"] } }, required: ["x", "y"], additionalProperties: false } } },
-  { type: "function", function: { name: "type_text", description: "Type text into the currently focused application or field. Never use this for passwords, payment data, private keys, or other secrets.", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false } } },
+  { type: "function", function: { name: "type_text", description: "Type text into the currently focused application or field. A one-time code obtained through ask_user may be entered. Never use this for passwords, payment data, API keys, recovery codes, private keys, or other durable secrets.", parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false } } },
   { type: "function", function: { name: "press_key", description: "Press a keyboard key, optionally with modifiers. Supported keys include enter, tab, escape, backspace, delete, space, arrows, home, end, pageup, pagedown, or one character.", parameters: { type: "object", properties: { key: { type: "string" }, modifiers: { type: "array", items: { type: "string", enum: ["shift", "control", "alt", "meta"] } } }, required: ["key"], additionalProperties: false } } },
   { type: "function", function: { name: "scroll_screen", description: "Scroll the currently focused visible window vertically. Positive values scroll down and negative values scroll up.", parameters: { type: "object", properties: { amount: { type: "integer", minimum: -20, maximum: 20 } }, required: ["amount"], additionalProperties: false } } },
+  { type: "function", function: { name: "run_terminal", description: "Run a PowerShell command on Windows or a zsh command on macOS. Use only when the user explicitly requested computer or development work. Never run destructive commands, change security settings, or expose secrets.", parameters: { type: "object", properties: { command: { type: "string" }, purpose: { type: "string" } }, required: ["command", "purpose"], additionalProperties: false } } },
+  { type: "function", function: { name: "ask_user", description: "Pause the current task and ask the user for information required to continue, such as a one-time login code or a missing choice. Never request a password, payment card, API key, recovery code, or private key.", parameters: { type: "object", properties: { prompt: { type: "string" }, placeholder: { type: "string" } }, required: ["prompt"], additionalProperties: false } } },
 ];
 const settingMeta = {
   general: ["General", "Personalize Nova and choose how it looks."],
@@ -152,7 +154,13 @@ const agentStepLabel = (step: string) => ({
   type_text: "Typing into the active application…",
   press_key: "Using the keyboard…",
   scroll_screen: "Scrolling the active window…",
+  run_terminal: "Running a terminal command…",
+  ask_user: "Waiting for your input…",
 } as Record<string, string>)[step] || `Working on ${step.replaceAll("_", " ")}…`;
+const textDirection = (value: string): "rtl" | "ltr" => {
+  const firstStrong = value.match(/[A-Za-z\u0590-\u08ff]/)?.[0] || "";
+  return /[\u0590-\u08ff]/.test(firstStrong) ? "rtl" : "ltr";
+};
 const normalStarterPrompts = [
   { title: "Plan a project", detail: "Turn an idea into clear steps", prompt: "Help me plan a project from scratch", icon: Sparkles },
   { title: "Explain something", detail: "Make a complex topic simple", prompt: "Explain this concept simply: ", icon: MessageSquare },
@@ -179,6 +187,7 @@ type PortableWorkspace = { projectJson: string; chatsJson: string };
 type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
 type AgentApproval = { title: string; detail: string; risk: "browser" | "file" | "computer" } | null;
+type AgentInput = { prompt: string; placeholder: string; value: string } | null;
 type ModelHealth = { state: "online" | "offline"; latency?: number; checkedAt: number; error?: string };
 type BrowserTab = {
   id: string;
@@ -323,6 +332,7 @@ export default function App() {
   const [agentAccessOpen, setAgentAccessOpen] = useState(false);
   const [agentAccessClosing, setAgentAccessClosing] = useState(false);
   const [agentApproval, setAgentApproval] = useState<AgentApproval>(null);
+  const [agentInput, setAgentInput] = useState<AgentInput>(null);
   const [agentStatus, setAgentStatus] = useState("");
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar>(null);
@@ -379,6 +389,7 @@ export default function App() {
     startupChatReadyRef = useRef(false),
     abortRef = useRef<AbortController | null>(null);
   const approvalResolverRef = useRef<((approved: boolean) => void) | null>(null);
+  const inputResolverRef = useRef<((value: string | null) => void) | null>(null);
   const chat = chats.find((item) => item.id === active) || chats[0];
   const chatWorkspace = workspaces.find((workspace) => workspace.id === chat?.workspaceId);
   const activeProvider = getActiveProvider(config);
@@ -440,6 +451,9 @@ export default function App() {
     approvalResolverRef.current?.(false);
     approvalResolverRef.current = null;
     setAgentApproval(null);
+    inputResolverRef.current?.(null);
+    inputResolverRef.current = null;
+    setAgentInput(null);
   }, [active]);
   useEffect(() => {
     if (startupChatReadyRef.current) return;
@@ -806,6 +820,16 @@ export default function App() {
     approvalResolverRef.current = null;
     setAgentApproval(null);
     resolve?.(approved);
+  };
+  const requestAgentInput = (prompt: string, placeholder = "Enter the requested value") => new Promise<string | null>((resolve) => {
+    inputResolverRef.current = resolve;
+    setAgentInput({ prompt: prompt.slice(0, 240), placeholder: placeholder.slice(0, 80), value: "" });
+  });
+  const resolveAgentInput = (value: string | null) => {
+    const resolve = inputResolverRef.current;
+    inputResolverRef.current = null;
+    setAgentInput(null);
+    resolve?.(value);
   };
   const confirmChatDialog = () => {
     if (!chatDialog) return;
@@ -1355,8 +1379,8 @@ export default function App() {
           const access = project.agentAccess || "ask";
           const isBrowserAction = ["web_search", "open_url"].includes(call.function.name);
           const isFileChange = call.function.name === "write_file";
-          const isComputerAction = ["observe_screen", "open_application", "click_screen", "type_text", "press_key", "scroll_screen"].includes(call.function.name);
-          const isComputerMutation = ["open_application", "click_screen", "type_text", "press_key"].includes(call.function.name);
+          const isComputerAction = ["observe_screen", "open_application", "click_screen", "type_text", "press_key", "scroll_screen", "run_terminal"].includes(call.function.name);
+          const isComputerMutation = ["open_application", "click_screen", "type_text", "press_key", "run_terminal"].includes(call.function.name);
           const needsApproval = access === "ask" ? (isBrowserAction || isFileChange || isComputerAction) : access === "safe" ? (isFileChange || isComputerMutation) : false;
           if (needsApproval) {
             const target = call.function.name === "write_file" ? (args.path || "a project file")
@@ -1366,6 +1390,7 @@ export default function App() {
                     : call.function.name === "type_text" ? `Type ${String(args.text || "").slice(0, 90) || "text"}`
                       : call.function.name === "click_screen" ? `Click at ${args.x}, ${args.y}`
                         : call.function.name === "press_key" ? `Press ${[...(args.modifiers || []), args.key].filter(Boolean).join(" + ")}`
+                          : call.function.name === "run_terminal" ? (args.purpose || "Run a terminal command")
                           : call.function.name === "scroll_screen" ? `Scroll ${args.amount}` : "Observe the primary display";
             setAgentStatus("Waiting for your approval…");
             const approved = await requestAgentApproval({
@@ -1407,10 +1432,17 @@ export default function App() {
           if (call.function.name === "type_text") { await invoke("type_text", { text: String(args.text || "") }); return { ok: true, characters: String(args.text || "").length }; }
           if (call.function.name === "press_key") { await invoke("press_key", { key: String(args.key || ""), modifiers: Array.isArray(args.modifiers) ? args.modifiers.map(String) : [] }); return { ok: true, key: args.key }; }
           if (call.function.name === "scroll_screen") { await invoke("scroll_screen", { amount: Number(args.amount) }); return { ok: true, amount: Number(args.amount) }; }
+          if (call.function.name === "run_terminal") return await invoke<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>("run_terminal", { command: String(args.command || "") });
+          if (call.function.name === "ask_user") {
+            setAgentStatus("Waiting for your input…");
+            const value = await requestAgentInput(String(args.prompt || "Enter the information needed to continue"), String(args.placeholder || "Enter value"));
+            if (value === null) throw new Error("__NOVA_PERMISSION_DENIED__");
+            return { ok: true, answer: value };
+          }
           throw new Error(`Unknown tool: ${call.function.name}`);
         };
         try {
-          await runAgentCompletion(config, [...history, user], `${workspaceContext}\n\nYou can use Nova project, browser, and desktop-control tools. For desktop work: observe the screen before every coordinate-based action, use normalized coordinates from 0 to 1000, take one deliberate action at a time, then observe again to verify the result. Never guess screen state. Never enter or reveal passwords, API keys, payment information, private keys, or other secrets. Do not make purchases, authenticate, send messages, submit forms, change security settings, delete data, or perform irreversible actions. Stop and explain when the requested action is ambiguous or unsafe.`, agentTools, executeAgentTool, (step) => setAgentStatus(agentStepLabel(step)), appendToken, controller.signal);
+          await runAgentCompletion(config, [...history, user], `${workspaceContext}\n\nYou can use Nova project, browser, terminal, and desktop-control tools. For desktop work: observe the screen before every coordinate-based action, use normalized coordinates from 0 to 1000, take one deliberate action at a time, then observe again to verify the result. The visible operating-system pointer shows the user where you click. Use ask_user when a one-time SMS/login code or a necessary choice is required, then continue from the same step. You may navigate, search, sign in with user-provided non-secret identifiers, and add an item to a shopping cart, but never place an order, confirm a purchase, send a message, or submit another consequential final action without a fresh explicit confirmation. Never request, enter, or reveal passwords, payment information, API keys, recovery codes, private keys, or durable secrets. Never run destructive terminal commands, change security settings, or delete user data. Stop and explain when a requested action is ambiguous or unsafe.`, agentTools, executeAgentTool, (step) => setAgentStatus(agentStepLabel(step)), appendToken, controller.signal);
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
           if (detail.includes("__NOVA_PERMISSION_DENIED__")) {
@@ -1456,6 +1488,8 @@ export default function App() {
       abortRef.current = null;
       approvalResolverRef.current = null;
       setAgentApproval(null);
+      inputResolverRef.current = null;
+      setAgentInput(null);
       setAgentStatus("");
       setBusy(false);
     }
@@ -1464,6 +1498,9 @@ export default function App() {
     approvalResolverRef.current?.(false);
     approvalResolverRef.current = null;
     setAgentApproval(null);
+    inputResolverRef.current?.(null);
+    inputResolverRef.current = null;
+    setAgentInput(null);
     abortRef.current?.abort();
   };
   const jumpToLatest = () => {
@@ -2202,7 +2239,7 @@ export default function App() {
                         )}
                       </div>
                     ) : null}
-                    <div className="content" dir={message.role === "user" ? "auto" : "ltr"}>
+                    <div className="content" dir={message.role === "user" ? textDirection(message.content) : "ltr"}>
                       {message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : (
                         <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{chat.workspaceId && agentStatus && <span>{agentStatus}</span>}</div>
                       )}
@@ -2308,7 +2345,7 @@ export default function App() {
               ))}
             </div>
           )}
-          <div className={`composer ${!config.activeModel ? "locked" : ""} ${agentAccessOpen ? "access-menu-open" : ""}`}>
+          <div className={`composer ${!config.activeModel ? "locked" : ""} ${agentAccessOpen ? "access-menu-open" : ""} ${agentApproval || agentInput ? "agent-waiting" : ""}`}>
             {chatWorkspace && agentAccessOpen && <button className="agent-access-dismiss" aria-label="Close agent access menu" onClick={closeAgentAccess} />}
             {chatWorkspace && agentAccessOpen && (
               <div className={`agent-access-popover ${agentAccessClosing ? "closing" : ""}`} role="menu" aria-label="Agent access">
@@ -2339,9 +2376,13 @@ export default function App() {
             {agentApproval ? <div className="agent-approval-inline">
               <span className={`approval-icon ${agentApproval.risk}`}><ShieldCheck /></span>
               <span><b>{agentApproval.title}</b><small>{agentApproval.detail}</small></span>
-              <div><button onClick={() => resolveAgentApproval(false)}>No</button><button className="approve" onClick={() => resolveAgentApproval(true)}>Yes</button></div>
-            </div> : <textarea
-              dir="auto"
+              <div><button onClick={() => resolveAgentApproval(false)}>Deny</button><button className="approve" onClick={() => resolveAgentApproval(true)}>Allow once</button></div>
+            </div> : agentInput ? <form className="agent-input-inline" onSubmit={(event) => { event.preventDefault(); if (agentInput.value.trim()) resolveAgentInput(agentInput.value.trim()); }}>
+              <span><b>Nova needs your input</b><small>{agentInput.prompt}</small></span>
+              <input autoFocus dir={textDirection(agentInput.value)} value={agentInput.value} placeholder={agentInput.placeholder} onChange={(event) => setAgentInput({ ...agentInput, value: event.target.value })} />
+              <div><button type="button" onClick={() => resolveAgentInput(null)}>Cancel</button><button type="submit" className="approve" disabled={!agentInput.value.trim()}>Continue</button></div>
+            </form> : <textarea
+              dir={textDirection(text)}
               disabled={!config.activeModel}
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -2349,7 +2390,7 @@ export default function App() {
               placeholder={config.activeModel ? `Message ${config.branding.appName}…` : "Choose a model before sending a message"}
               rows={1}
             />}
-            <div className="composer-tools">
+            {!agentApproval && !agentInput && <div className="composer-tools">
               <div>
                 {!editingMessage && chatWorkspace && (
                   <button
@@ -2397,7 +2438,7 @@ export default function App() {
                   {busy ? <Square /> : <ArrowUp />}
                 </button>
               </div>
-            </div>
+            </div>}
             <input
               ref={fileRef}
               hidden
@@ -3060,10 +3101,10 @@ export default function App() {
             {activeBrowserTab?.kind === "browser" && activeBrowserTab.url ? (
               <>
                 {!isDesktopApp() && <iframe key={`${activeBrowserTab.id}-${activeBrowserTab.url}-${browserFrameKey}`} title="Nova browser" src={activeBrowserTab.url} sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin" />}
-                <div className="browser-fallback">
-                  <span>{isDesktopApp() ? "Native secure webview" : "Protected sites may require the system browser."}</span>
+                {!isDesktopApp() && <div className="browser-fallback">
+                  <span>Protected sites may require the system browser.</span>
                   <button onClick={openSystemBrowser}><ExternalLink />Open externally</button>
-                </div>
+                </div>}
               </>
             ) : activeBrowserTab?.kind === "browser" ? (
               <div className="browser-empty">
@@ -3147,7 +3188,7 @@ export default function App() {
                     <article className={`${message.role} ${message.role === "assistant" ? "no-speaker" : ""}`} key={index}>
                       {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
-                        <div className="content" dir={message.role === "user" ? "auto" : "ltr"}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : <span className="typing"><i /><i /><i /></span>}</div>
+                        <div className="content" dir={message.role === "user" ? textDirection(message.content) : "ltr"}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : <span className="typing"><i /><i /><i /></span>}</div>
                         {message.role === "user" && message.content && <div className="message-actions user-message-actions"><button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                         {message.role === "assistant" && message.content && <div className="message-actions">
                           <button disabled={message.generating} onClick={() => copy(message.content)}><Copy />Copy</button>
@@ -3167,7 +3208,7 @@ export default function App() {
                   <div className="temporary-notice"><Clock3 /><span><b>Temporary chat</b><small>Not saved to history</small></span></div>
                   <div className={`composer ${!config.activeModel ? "locked" : ""}`}>
                     <textarea
-                      dir="auto"
+                      dir={textDirection(activeBrowserTab.draft || "")}
                       disabled={!config.activeModel}
                       value={activeBrowserTab.draft || ""}
                       rows={1}

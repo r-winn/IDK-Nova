@@ -75,7 +75,7 @@ export async function runAgentCompletion(
     { role: 'system', content: systemContext },
     ...messages.map((message) => ({ role: message.role, content: `${message.quote ? `Replying to this excerpt:\n"${message.quote}"\n\n` : ''}${message.content}` })),
   ];
-  for (let turn = 0; turn < 12; turn += 1) {
+  for (let turn = 0; turn < 30; turn += 1) {
     const response = await request(endpoint(provider, '/chat/completions'), {
       method: 'POST', headers: headers(provider), signal,
       body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: false, messages: conversation, tools, tool_choice: 'auto' }),
@@ -110,5 +110,5 @@ export async function runAgentCompletion(
       }
     }
   }
-  throw new Error('Agent stopped after 12 tool steps to prevent an infinite loop');
+  throw new Error('Agent paused after 30 tool steps to prevent an infinite loop. Ask it to continue if more work remains.');
 }
