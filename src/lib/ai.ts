@@ -53,8 +53,10 @@ const responsesInput = (messages: Message[]) => conversationInput(messages).map(
 
 const isUnsupportedResponsesError = (status: number) => [404, 405, 501].includes(status);
 const unsupportedResponsesProviders = new Set<string>();
+const statelessResponsesProviders = new Set<string>();
 const responsesProviderKey = (provider: Provider) => `${provider.id}:${provider.baseUrl.replace(/\/$/, '')}`;
 const isStaleResponseError = (status: number, detail: string) => [400, 404].includes(status) && /previous.{0,30}response|response.{0,30}(not found|expired|missing)/i.test(detail);
+const requiresStatelessResponses = (status: number, detail: string) => status === 400 && /(store.{0,30}(not supported|unsupported|must be false)|previous_response_id.{0,30}(not supported|unsupported)|each response request is independent)/i.test(detail);
 const responseMemoryMatches = (memory: ResponseMemory | undefined, provider: Provider, model: string) =>
   Boolean(memory?.previousResponseId && memory.providerId === provider.id && memory.model === model);
 
@@ -109,43 +111,51 @@ export async function testModel(provider: Provider, model: string): Promise<numb
   return Math.round(performance.now() - started);
 }
 
-export async function streamCompletion(config: Config, messages: Message[], onToken: (token: string) => void, signal?: AbortSignal, systemContext?: string, memory?: ResponseMemory, onMemory?: (memory: ResponseMemory) => void) {
+export async function streamCompletion(config: Config, messages: Message[], onToken: (token: string) => void, signal?: AbortSignal, systemContext?: string, memory?: ResponseMemory, onMemory?: (memory?: ResponseMemory) => void) {
   const provider = getActiveProvider(config);
   if (!provider) throw new Error('Add a provider in Settings first');
   if (!config.activeModel) throw new Error('Select a model first');
   const chained = responseMemoryMatches(memory, provider, config.activeModel);
   const providerKey = responsesProviderKey(provider);
   if (!unsupportedResponsesProviders.has(providerKey)) {
-    const createResponse = (useChain: boolean) => request(endpoint(provider, '/responses'), {
+    let stateless = statelessResponsesProviders.has(providerKey);
+    const createResponse = (useChain: boolean, store: boolean) => request(endpoint(provider, '/responses'), {
       method: 'POST',
       headers: { ...headers(provider), Accept: 'text/event-stream' },
       body: JSON.stringify({
         model: config.activeModel,
         instructions: systemContext || undefined,
-        input: responsesInput(useChain ? messages.slice(-1) : messages),
+        input: responsesInput(useChain && store ? messages.slice(-1) : messages),
         previous_response_id: useChain ? memory?.previousResponseId : undefined,
         temperature: config.temperature,
         stream: true,
-        store: true,
+        store,
       }),
       signal,
     });
-    let responseRequest = await createResponse(chained);
+    let responseRequest = await createResponse(chained && !stateless, !stateless);
     if (!responseRequest.ok) {
       const detail = await responseRequest.text();
-      if (chained && isStaleResponseError(responseRequest.status, detail)) responseRequest = await createResponse(false);
+      if (requiresStatelessResponses(responseRequest.status, detail)) {
+        statelessResponsesProviders.add(providerKey);
+        stateless = true;
+        responseRequest = await createResponse(false, false);
+      }
+      else if (chained && isStaleResponseError(responseRequest.status, detail)) responseRequest = await createResponse(false, true);
       else if (isUnsupportedResponsesError(responseRequest.status)) unsupportedResponsesProviders.add(providerKey);
       else throw new Error(`Provider returned ${responseRequest.status}: ${detail}`);
     }
     if (responseRequest.ok) {
       const responseId = await readResponseStream(responseRequest, onToken);
-      if (!responseId) throw new Error('The Responses API did not return a response id');
-      onMemory?.({ providerId: provider.id, model: config.activeModel, previousResponseId: responseId });
+      if (!stateless && !responseId) throw new Error('The Responses API did not return a response id');
+      if (stateless) onMemory?.(undefined);
+      else onMemory?.({ providerId: provider.id, model: config.activeModel, previousResponseId: responseId });
       return;
     }
     if (isUnsupportedResponsesError(responseRequest.status)) unsupportedResponsesProviders.add(providerKey);
     else throw new Error(`Provider returned ${responseRequest.status}: ${await responseRequest.text()}`);
   }
+  onMemory?.(undefined);
   const content = conversationInput(messages);
   const providerMessages = systemContext ? [{ role: 'system', content: systemContext }, ...content] : content;
   const response = await request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: { ...headers(provider), Accept: 'text/event-stream' }, body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, messages: providerMessages }), signal });
@@ -168,15 +178,17 @@ export async function runAgentCompletion(
   onToken: (token: string) => void,
   signal?: AbortSignal,
   memory?: ResponseMemory,
-  onMemory?: (memory: ResponseMemory) => void,
+  onMemory?: (memory?: ResponseMemory) => void,
   requireTool = false,
 ) {
   const provider = getActiveProvider(config);
   if (!provider || !config.activeModel) throw new Error('Connect an agent-capable model first');
   const chained = responseMemoryMatches(memory, provider, config.activeModel);
   const providerKey = responsesProviderKey(provider);
-  let previousResponseId = chained ? memory!.previousResponseId : '';
-  let responseInput: any[] = responsesInput(chained ? messages.slice(-1) : messages);
+  let stateless = statelessResponsesProviders.has(providerKey);
+  let previousResponseId = !stateless && chained ? memory!.previousResponseId : '';
+  let responseInput: any[] = responsesInput(!stateless && chained ? messages.slice(-1) : messages);
+  let statelessContext: any[] = stateless ? [...responseInput] : [];
   const responseTools = tools.map((tool) => ({ type: 'function', name: tool.function.name, description: tool.function.description, parameters: tool.function.parameters }));
   let responsesSupported = !unsupportedResponsesProviders.has(providerKey);
   if (!responsesSupported) previousResponseId = '';
@@ -184,10 +196,19 @@ export async function runAgentCompletion(
     if (!responsesSupported) break;
     const response = await request(endpoint(provider, '/responses'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: previousResponseId || undefined, temperature: config.temperature, store: true, tools: responseTools, tool_choice: turn === 0 && requireTool ? 'required' : 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: config.temperature, store: !stateless, tools: responseTools, tool_choice: turn === 0 && requireTool ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
+      if (requiresStatelessResponses(response.status, detail)) {
+        statelessResponsesProviders.add(providerKey);
+        stateless = true;
+        previousResponseId = '';
+        responseInput = responsesInput(messages);
+        statelessContext = [...responseInput];
+        turn -= 1;
+        continue;
+      }
       if (turn === 0 && chained && isStaleResponseError(response.status, detail)) {
         previousResponseId = '';
         responseInput = responsesInput(messages);
@@ -202,12 +223,14 @@ export async function runAgentCompletion(
       throw new Error(`Agent provider returned ${response.status}: ${detail}`);
     }
     const payload = await response.json();
-    previousResponseId = payload.id || previousResponseId;
+    if (!stateless) previousResponseId = payload.id || previousResponseId;
+    if (stateless && Array.isArray(payload.output)) statelessContext.push(...payload.output);
     const calls = (Array.isArray(payload.output) ? payload.output : []).filter((item: any) => item?.type === 'function_call');
     if (!calls.length) {
       const output = typeof payload.output_text === 'string' ? payload.output_text : (payload.output || []).flatMap((item: any) => item?.content || []).filter((item: any) => item?.type === 'output_text').map((item: any) => item.text || '').join('');
       onToken(output || 'Task complete.');
-      if (previousResponseId) onMemory?.({ providerId: provider.id, model: config.activeModel, previousResponseId });
+      if (stateless) onMemory?.(undefined);
+      else if (previousResponseId) onMemory?.({ providerId: provider.id, model: config.activeModel, previousResponseId });
       return;
     }
     responseInput = [];
@@ -228,8 +251,13 @@ export async function runAgentCompletion(
       if (screenImage) screenImages.push(screenImage);
     }
     if (screenImages.length) responseInput.push({ role: 'user', content: [{ type: 'input_text', text: 'This is the newest primary-display state after the requested actions. Coordinates are normalized from 0 to 1000. Inspect it carefully and continue until the result is visibly verified.' }, { type: 'input_image', image_url: screenImages.at(-1) }] });
+    if (stateless) {
+      statelessContext.push(...responseInput);
+      responseInput = statelessContext;
+    }
   }
   if (responsesSupported) throw new Error('Agent paused after 10 turns to prevent an infinite loop. Ask it to continue if more work remains.');
+  onMemory?.(undefined);
   const conversation: any[] = [
     { role: 'system', content: systemContext },
     ...conversationInput(messages),

@@ -1438,7 +1438,7 @@ export default function App() {
               : item,
           ),
         );
-      const rememberResponse = (responseMemory: NonNullable<Chat["responseMemory"]>) =>
+      const rememberResponse = (responseMemory?: NonNullable<Chat["responseMemory"]>) =>
         setChats((items) => items.map((item) => item.id === active ? { ...item, responseMemory } : item));
       if (project && isDesktopApp()) {
         const executeAgentTool = async (call: AgentToolCall) => {

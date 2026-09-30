@@ -1,6 +1,6 @@
 {
-  "version": "0.16.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.16.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.16.1/IDK.Nova_0.16.1_x64-setup.exe",
-  "notes": ["Work now enforces tool use for requested browser and desktop actions", "Every visible action automatically returns a fresh screenshot to the agent", "Browser navigation, clicks, typing, scrolling and application launches are visually verified", "Pointer hover, double-click and drag actions are now supported", "Responses and Chat Completions agent loops both support the upgraded runtime"]
+  "version": "0.16.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.16.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.16.2/IDK.Nova_0.16.2_x64-setup.exe",
+  "notes": ["Responses providers are automatically classified as stateful or stateless", "Proxies that reject store:true are retried safely with store:false", "Stateless Responses keep complete local message context", "Work preserves response output, reasoning items and tool results throughout each agent run", "Chat Completions remains the final compatibility fallback"]
 }
