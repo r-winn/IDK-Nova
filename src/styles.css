@@ -1099,6 +1099,9 @@ body.resizing-browser iframe { pointer-events: none; }
 .pdf-state svg { width: 22px; }
 .pdf-state.error { color: var(--text); }
 .project-file-actions { display: flex; align-items: center; gap: 5px; }
+.live-work-indicator { height: 28px; padding: 0 7px; color: #27805c; display: flex; align-items: center; gap: 5px; font-size: 8px; font-weight: 700; letter-spacing: .35px; }
+.live-work-indicator i { width: 6px; height: 6px; border-radius: 50%; background: #35ad7a; box-shadow: 0 0 0 4px color-mix(in srgb, #35ad7a 12%, transparent); animation: live-work-pulse 1.8s ease-in-out infinite; }
+@keyframes live-work-pulse { 50% { opacity: .55; transform: scale(.88); } }
 .project-file-create { max-width: 760px; height: 42px; margin: 0 auto 12px; padding: 0 5px 0 12px; border-radius: 11px; background: color-mix(in srgb, var(--surface) 76%, transparent); display: flex; align-items: center; gap: 8px; }
 .project-file-create > svg { width: 15px; color: var(--muted); }
 .project-file-create input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 10px; }

@@ -221,6 +221,11 @@ type BrowserTab = {
   creatingFile?: boolean;
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number; zoom: number };
+type WorkspacePanelSession = { open: boolean; tabs: BrowserTab[]; activeTabId: string; maximized: boolean };
+const newWorkspacePanelSession = (chatId: number): WorkspacePanelSession => {
+  const id = `workspace-${chatId}`;
+  return { open: false, tabs: [{ id, kind: "home", title: "Workspace", url: "", input: "", history: [], historyIndex: -1 }], activeTabId: id, maximized: false };
+};
 const browserZoomForWidth = (width: number) => Math.max(.72, Math.min(1, width / 920));
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
 
@@ -391,8 +396,11 @@ export default function App() {
     abortRef = useRef<AbortController | null>(null);
   const approvalResolverRef = useRef<((approved: boolean) => void) | null>(null);
   const inputResolverRef = useRef<((value: string | null) => void) | null>(null);
+  const workspaceSessionsRef = useRef<Map<number, WorkspacePanelSession>>(new Map());
+  const workspaceSessionChatRef = useRef(active);
   const chat = chats.find((item) => item.id === active) || chats[0];
   const chatWorkspace = workspaces.find((workspace) => workspace.id === chat?.workspaceId);
+  const watchedWorkspace = chatWorkspace || workspaces.find((workspace) => workspace.id === openWorkspaceId);
   const activeProvider = getActiveProvider(config);
   const activeBrowserTab = browserTabs.find((tab) => tab.id === activeBrowserTabId) || browserTabs[0];
   const workspaceArtifacts = useMemo(() => chats.flatMap((sourceChat) => sourceChat.messages.flatMap((message, messageIndex) => {
@@ -463,6 +471,20 @@ export default function App() {
     setAgentInput(null);
   }, [active]);
   useEffect(() => {
+    const previousChatId = workspaceSessionChatRef.current;
+    if (previousChatId === active) return;
+    workspaceSessionsRef.current.set(previousChatId, { open: browserOpen, tabs: browserTabs, activeTabId: activeBrowserTabId, maximized: browserMaximized });
+    const next = workspaceSessionsRef.current.get(active) || newWorkspacePanelSession(active);
+    workspaceSessionChatRef.current = active;
+    setBrowserOpen(next.open);
+    setBrowserTabs(next.tabs);
+    setActiveBrowserTabId(next.activeTabId);
+    setBrowserMaximized(next.maximized);
+    setBrowserClosing(false);
+    setBrowserRestoring(false);
+    setBrowserFrameKey((key) => key + 1);
+  }, [active]);
+  useEffect(() => {
     if (startupChatReadyRef.current) return;
     startupChatReadyRef.current = true;
     const existing = chats.find((item) => !item.archived && !item.folderId && !item.workspaceId && !item.temporary && item.messages.length === 0);
@@ -477,6 +499,37 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("idk-nova-workspaces", JSON.stringify(workspaces));
   }, [workspaces]);
+  useEffect(() => {
+    if (!isDesktopApp() || !watchedWorkspace) return;
+    let cancelled = false;
+    let scanning = false;
+    const syncWorkspace = async () => {
+      if (scanning) return;
+      scanning = true;
+      try {
+        const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: watchedWorkspace.rootPath });
+        if (cancelled) return;
+        const signature = scan.entries.map((entry) => `${entry.path}:${entry.kind}:${entry.size}:${entry.modified}`).join("|");
+        const fileCount = scan.entries.filter((entry) => entry.kind === "file").length;
+        setWorkspaces((items) => items.map((item) => item.id === watchedWorkspace.id && (item.fileCount !== fileCount || item.truncated !== scan.truncated) ? { ...item, fileCount, truncated: scan.truncated } : item));
+        setBrowserTabs((tabs) => {
+          let changed = false;
+          const next = tabs.map((tab) => {
+            if (tab.kind !== "projectfiles" || tab.projectId !== watchedWorkspace.id) return tab;
+            const currentSignature = (tab.entries || []).map((entry) => `${entry.path}:${entry.kind}:${entry.size}:${entry.modified}`).join("|");
+            if (currentSignature === signature) return tab;
+            changed = true;
+            return { ...tab, entries: scan.entries };
+          });
+          return changed ? next : tabs;
+        });
+      } catch { /* transient file-system changes are retried automatically */ }
+      finally { scanning = false; }
+    };
+    void syncWorkspace();
+    const timer = window.setInterval(syncWorkspace, 1200);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [watchedWorkspace?.id, watchedWorkspace?.rootPath]);
   useEffect(() => {
     if (!isDesktopApp()) return;
     const timer = window.setTimeout(() => {
@@ -842,6 +895,7 @@ export default function App() {
     if (!chatDialog) return;
     if (chatDialog.mode === "delete") {
       const next = chats.filter((item) => item.id !== chatDialog.id);
+      workspaceSessionsRef.current.delete(chatDialog.id);
       setChats(next.length ? next : starterChats);
       if (active === chatDialog.id) setActive(next[0]?.id || 1);
       setToast("Conversation deleted");
@@ -2094,7 +2148,7 @@ export default function App() {
               {activeWorkspace && (() => {
                 const workspaceChats = chats.filter((item) => !item.archived && item.workspaceId === activeWorkspace.id && item.messages.length > 0 && !item.temporary);
                 return <>
-                  <div className="folder-view-head"><button className="folder-back" onClick={() => setOpenWorkspaceId(null)}><ArrowRight /><span>Back</span></button><div className="work-head-actions"><button title="Refresh workspace" onClick={async () => { try { setWorkspaceLoading(true); const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: activeWorkspace.rootPath }); setWorkspaces((items) => items.map((item) => item.id === activeWorkspace.id ? { ...item, fileCount: scan.entries.filter((entry) => entry.kind === "file").length, truncated: scan.truncated } : item)); setToast("Workspace index refreshed"); } catch (error) { setToast(String(error)); } finally { setWorkspaceLoading(false); } }}><RefreshCw className={workspaceLoading ? "spin" : ""} /></button><button title="Remove workspace" onClick={() => setWorkspaceDelete(activeWorkspace)}><MoreHorizontal /></button></div></div>
+                  <div className="folder-view-head"><button className="folder-back" onClick={() => setOpenWorkspaceId(null)}><ArrowRight /><span>Back</span></button><div className="work-head-actions"><span className="live-work-indicator"><i />Live</span><button title="Remove workspace" onClick={() => setWorkspaceDelete(activeWorkspace)}><MoreHorizontal /></button></div></div>
                   <div className="folder-hero work-hero"><span><BriefcaseBusiness /></span><div><b>{activeWorkspace.name}</b><small>{activeWorkspace.fileCount} files · Local access</small></div></div>
                   <div className="work-path" title={activeWorkspace.rootPath}><ShieldCheck />{activeWorkspace.rootPath}</div>
                   <button className="folder-new-chat" onClick={freshInWorkspace}><Plus />New work chat</button>
@@ -3181,7 +3235,7 @@ export default function App() {
               </div>
             ) : activeBrowserTab?.kind === "projectfiles" ? (
               <div className="workspace-files project-files">
-                <header><div><span className="work-source-badge"><BriefcaseBusiness />Work files</span><h3>{activeBrowserTab.title}</h3><p>Open, edit, and create supported files directly inside this Work folder.</p></div><div className="project-file-actions"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: !activeBrowserTab.creatingFile, createPath: activeBrowserTab.createPath || "untitled.md" })}><Plus />New file</button><button onClick={() => refreshProjectFiles(activeBrowserTab)}><RefreshCw />Refresh</button></div></header>
+                <header><div><span className="work-source-badge"><BriefcaseBusiness />Work files · Live</span><h3>{activeBrowserTab.title}</h3><p>Files update automatically as the project changes.</p></div><div className="project-file-actions"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: !activeBrowserTab.creatingFile, createPath: activeBrowserTab.createPath || "untitled.md" })}><Plus />New file</button></div></header>
                 {activeBrowserTab.creatingFile && <form className="project-file-create" onSubmit={(event) => { event.preventDefault(); createProjectFile(activeBrowserTab); }}><FileText /><input autoFocus value={activeBrowserTab.createPath || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { createPath: event.target.value })} placeholder="notes.md or src/new-file.ts" /><button type="button" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: false })}>Cancel</button><button type="submit">Create</button></form>}
                 <div className="project-file-list">{(activeBrowserTab.entries || []).map((entry) => <button className={entry.kind} key={entry.path} onClick={() => openProjectFile(activeBrowserTab, entry)} disabled={entry.kind === "directory"} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <FileText />}<span><b>{entry.name}</b><small>{entry.path}{entry.kind === "file" ? ` · ${Math.max(1, Math.round(entry.size / 1024))} KB` : ""}</small></span>{entry.kind === "file" && <ArrowRight />}</button>)}</div>
               </div>
