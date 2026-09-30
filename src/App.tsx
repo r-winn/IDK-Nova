@@ -1378,6 +1378,7 @@ export default function App() {
           ? {
               ...item,
               title,
+              responseMemory: edited ? undefined : item.responseMemory,
               messages: [
                 ...history,
                 user,
@@ -1433,6 +1434,8 @@ export default function App() {
               : item,
           ),
         );
+      const rememberResponse = (responseMemory: NonNullable<Chat["responseMemory"]>) =>
+        setChats((items) => items.map((item) => item.id === active ? { ...item, responseMemory } : item));
       if (project && isDesktopApp()) {
         const executeAgentTool = async (call: AgentToolCall) => {
           let args: Record<string, any> = {};
@@ -1503,7 +1506,7 @@ export default function App() {
           throw new Error(`Unknown tool: ${call.function.name}`);
         };
         try {
-          await runAgentCompletion(config, [...history, user], `${workspaceContext}\n\nYou can use Nova project, browser, terminal, and desktop-control tools. For desktop work: observe the screen before every coordinate-based action, use normalized coordinates from 0 to 1000, take one deliberate action at a time, then observe again to verify the result. The visible operating-system pointer shows the user where you click. Use ask_user when a one-time SMS/login code or a necessary choice is required, then continue from the same step. You may navigate, search, sign in with user-provided non-secret identifiers, and add an item to a shopping cart, but never place an order, confirm a purchase, send a message, or submit another consequential final action without a fresh explicit confirmation. Never request, enter, or reveal passwords, payment information, API keys, recovery codes, private keys, or durable secrets. Never run destructive terminal commands, change security settings, or delete user data. Stop and explain when a requested action is ambiguous or unsafe.`, agentTools, executeAgentTool, (step) => setAgentStatus(agentStepLabel(step)), appendToken, controller.signal);
+          await runAgentCompletion(config, [...history, user], `${workspaceContext}\n\nYou can use Nova project, browser, terminal, and desktop-control tools. For desktop work: observe the screen before every coordinate-based action, use normalized coordinates from 0 to 1000, take one deliberate action at a time, then observe again to verify the result. The visible operating-system pointer shows the user where you click. Use ask_user when a one-time SMS/login code or a necessary choice is required, then continue from the same step. You may navigate, search, sign in with user-provided non-secret identifiers, and add an item to a shopping cart, but never place an order, confirm a purchase, send a message, or submit another consequential final action without a fresh explicit confirmation. Never request, enter, or reveal passwords, payment information, API keys, recovery codes, private keys, or durable secrets. Never run destructive terminal commands, change security settings, or delete user data. Stop and explain when a requested action is ambiguous or unsafe.`, agentTools, executeAgentTool, (step) => setAgentStatus(agentStepLabel(step)), appendToken, controller.signal, edited ? undefined : chat.responseMemory, rememberResponse);
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
           if (detail.includes("__NOVA_PERMISSION_DENIED__")) {
@@ -1512,9 +1515,9 @@ export default function App() {
           }
           if (!/400|tools|tool_choice|tool call/i.test(detail)) throw agentError;
           setToast("This provider does not support Agent tools yet · using normal Work chat");
-          await streamCompletion(config, [...history, user], appendToken, controller.signal, workspaceContext);
+          await streamCompletion(config, [...history, user], appendToken, controller.signal, workspaceContext, edited ? undefined : chat.responseMemory, rememberResponse);
         }
-      } else await streamCompletion(config, [...history, user], appendToken, controller.signal, workspaceContext);
+      } else await streamCompletion(config, [...history, user], appendToken, controller.signal, workspaceContext, edited ? undefined : chat.responseMemory, rememberResponse);
     } catch (error) {
       if (controller.signal.aborted) {
         setChats((items) => items.map((item) => item.id === active ? {
