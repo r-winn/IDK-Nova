@@ -1,6 +1,6 @@
 {
-  "version": "0.16.2",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.16.2",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.16.2/IDK.Nova_0.16.2_x64-setup.exe",
-  "notes": ["Responses providers are automatically classified as stateful or stateless", "Proxies that reject store:true are retried safely with store:false", "Stateless Responses keep complete local message context", "Work preserves response output, reasoning items and tool results throughout each agent run", "Chat Completions remains the final compatibility fallback"]
+  "version": "0.16.3",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.16.3",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.16.3/IDK.Nova_0.16.3_x64-setup.exe",
+  "notes": ["Work keeps all web tasks inside Nova Workspace Browser", "Requests to launch Chrome, Edge or other browsers are redirected into the side panel", "Windows application launches no longer flash a command window", "Tool failures return the agent to planning instead of leaving a stale activity message", "Approval dialogs reliably appear above native browser content"]
 }

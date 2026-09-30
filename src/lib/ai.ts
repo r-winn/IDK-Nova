@@ -244,6 +244,7 @@ export async function runAgentCompletion(
         if (error instanceof Error && error.message.includes('__NOVA_PERMISSION_DENIED__')) throw error;
         result = { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
+      onStep('thinking');
       const resultObject = result && typeof result === 'object' ? result as Record<string, unknown> : null;
       const screenImage = typeof resultObject?.__novaImage === 'string' ? resultObject.__novaImage : null;
       const serializableResult = resultObject ? Object.fromEntries(Object.entries(resultObject).filter(([key]) => key !== '__novaImage')) : result;
@@ -288,6 +289,7 @@ export async function runAgentCompletion(
         if (error instanceof Error && error.message.includes('__NOVA_PERMISSION_DENIED__')) throw error;
         result = { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
+      onStep('thinking');
       const resultObject = result && typeof result === 'object' ? result as Record<string, unknown> : null;
       const screenImage = typeof resultObject?.__novaImage === 'string' ? resultObject.__novaImage : null;
       const serializableResult = resultObject ? Object.fromEntries(Object.entries(resultObject).filter(([key]) => key !== '__novaImage')) : result;

@@ -177,7 +177,12 @@ async fn open_application(name: String) -> Result<(), String> {
         #[cfg(target_os = "macos")]
         let status = Command::new("open").args(["-a", &name]).status();
         #[cfg(windows)]
-        let status = Command::new("cmd.exe").args(["/C", "start", "", &name]).status();
+        let status = {
+            use std::os::windows::process::CommandExt;
+            let escaped = name.replace('\'', "''");
+            let mut process = Command::new("powershell.exe");
+            process.creation_flags(0x08000000).args(["-NoLogo", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &format!("Start-Process -FilePath '{escaped}'")]).status()
+        };
         #[cfg(not(any(windows, target_os = "macos")))]
         return Err("Opening applications is currently available on Windows and macOS".into());
         status.map_err(desktop_control_error).and_then(|value| if value.success() { Ok(()) } else { Err(format!("Could not open {name}")) })
