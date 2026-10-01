@@ -228,15 +228,13 @@ const browserBounds = (surface: HTMLDivElement) => {
     height: Math.max(1, Math.round(rect.height)),
   };
 };
-let nativeWindowOffsetPromise: Promise<{ x: number; y: number }> | undefined;
-const nativeWindowContentOffset = () => {
+const nativeWindowContentOffset = async () => {
   if (!navigator.platform.toLowerCase().includes("mac")) return Promise.resolve({ x: 0, y: 0 });
-  nativeWindowOffsetPromise ||= (async () => {
+  try {
     const appWindow = getCurrentWindow();
     const [inner, outer, scale] = await Promise.all([appWindow.innerPosition(), appWindow.outerPosition(), appWindow.scaleFactor()]);
     return { x: Math.max(0, (inner.x - outer.x) / scale), y: Math.max(0, (inner.y - outer.y) / scale) };
-  })().catch(() => ({ x: 0, y: 0 }));
-  return nativeWindowOffsetPromise;
+  } catch { return { x: 0, y: 0 }; }
 };
 const parentDirectory = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 const directoryEntries = (entries: WorkspaceEntry[] = [], directory = "") => entries
@@ -687,11 +685,14 @@ export default function App() {
     window.addEventListener("resize", requestSync);
     window.visualViewport?.addEventListener("resize", requestSync);
     window.visualViewport?.addEventListener("scroll", requestSync);
+    let unlistenNativeResize: (() => void) | undefined;
+    void getCurrentWindow().onResized(requestSync).then((unlisten) => { unlistenNativeResize = unlisten; });
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", requestSync);
       window.visualViewport?.removeEventListener("resize", requestSync);
       window.visualViewport?.removeEventListener("scroll", requestSync);
+      unlistenNativeResize?.();
       cancelAnimationFrame(animationFrame);
     };
   }, [browserOpen, activeBrowserTabId, browserMaximized, sidebar]);
@@ -2169,7 +2170,7 @@ export default function App() {
     const markdownLink = piece.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
     const target = markdownLink?.[2] || (/^https?:\/\//i.test(piece) ? piece : "");
     const linkLabel = markdownLink?.[1]?.replace(/^\*\*(.+)\*\*$/, "$1") || piece;
-    return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target, true); }}>{linkLabel}</a> : piece;
+    return target ? <a href={target} key={pieceIndex} title={`Open ${target} in Nova`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.preventDefault(); event.stopPropagation(); navigateBrowser(target, true); }}>{linkLabel}</a> : piece;
   });
   const renderProse = (value: string, key: string | number) => (
     <span className="prose-segment" key={key}>

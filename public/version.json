@@ -1,6 +1,6 @@
 {
-  "version": "0.18.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.18.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.18.1/IDK.Nova_0.18.1_x64-setup.exe",
-  "notes": ["Native browsing now fits the macOS content area and adapts pages to narrow panels", "HTML preview loads local CSS, JavaScript, images and other project assets", "Chat links open directly in Nova Workspace", "Image and PDF viewers have smoother professional controls", "Code files show language-aware badges", "Responses API compatibility now adapts to stateless proxies and model parameters"]
+  "version": "0.18.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.18.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.18.2/IDK.Nova_0.18.2_x64-setup.exe",
+  "notes": ["Windowed macOS browsing now follows the live title-bar offset instead of a cached fullscreen value", "Native browser bounds resync whenever the desktop window changes size", "AI-provided Markdown links and plain URLs now have independent click handling", "Workspace preview, viewers and Responses API improvements from 0.18.1 are included"]
 }

@@ -799,7 +799,7 @@ main {
 .markdown-heading.level-1 { font-size: 1.4em; }
 .markdown-heading.level-2 { font-size: 1.24em; }
 .markdown-heading.level-3 { font-size: 1.1em; }
-.prose-segment a { color: color-mix(in srgb, var(--brand) 72%, var(--text)); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 38%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.prose-segment a { position: relative; z-index: 2; color: color-mix(in srgb, var(--brand) 72%, var(--text)); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 38%, transparent); text-underline-offset: 3px; cursor: pointer; pointer-events: auto; }
 .prose-segment a:hover { text-decoration-color: currentColor; }
 .message-quote,
 .reply-preview {
