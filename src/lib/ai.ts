@@ -55,9 +55,11 @@ const responsesInput = (messages: Message[]) => conversationInput(messages).map(
 const isUnsupportedResponsesError = (status: number) => [404, 405, 501].includes(status);
 const unsupportedResponsesProviders = new Set<string>();
 const statelessResponsesProviders = new Set<string>();
+const temperaturelessResponsesProviders = new Set<string>();
 const responsesProviderKey = (provider: Provider) => `${provider.id}:${provider.baseUrl.replace(/\/$/, '')}`;
 const isStaleResponseError = (status: number, detail: string) => [400, 404].includes(status) && /previous.{0,30}response|response.{0,30}(not found|expired|missing)/i.test(detail);
 const requiresStatelessResponses = (status: number, detail: string) => status === 400 && /(store.{0,30}(not supported|unsupported|must be false)|previous_response_id.{0,30}(not supported|unsupported)|each response request is independent)/i.test(detail);
+const rejectsTemperature = (status: number, detail: string) => status === 400 && /temperature.{0,40}(not supported|unsupported|not allowed|unknown)/i.test(detail);
 const responseMemoryMatches = (memory: ResponseMemory | undefined, provider: Provider, model: string) =>
   Boolean(memory?.previousResponseId && memory.providerId === provider.id && memory.model === model);
 
@@ -67,6 +69,7 @@ const readResponseStream = async (response: Response, onToken: (token: string) =
   const decoder = new TextDecoder();
   let buffer = '';
   let responseId = '';
+  let streamError = '';
   const handle = (raw: string) => {
     if (!raw || raw === '[DONE]') return;
     try {
@@ -74,6 +77,7 @@ const readResponseStream = async (response: Response, onToken: (token: string) =
       responseId = event.response?.id || event.id || responseId;
       if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') onToken(event.delta);
       else if (event.type === 'response.refusal.delta' && typeof event.delta === 'string') onToken(event.delta);
+      else if (event.type === 'response.failed' || event.type === 'error') streamError = event.response?.error?.message || event.error?.message || event.message || 'The provider response failed';
     } catch { /* an incomplete event remains buffered by the caller */ }
   };
   while (true) {
@@ -91,6 +95,7 @@ const readResponseStream = async (response: Response, onToken: (token: string) =
     const data = buffer.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('');
     handle(data);
   }
+  if (streamError) throw new Error(streamError);
   return responseId;
 };
 
@@ -105,10 +110,22 @@ export async function discoverModels(provider: Provider): Promise<string[]> {
 
 export async function testModel(provider: Provider, model: string): Promise<number> {
   const started = performance.now();
+  const providerKey = responsesProviderKey(provider);
+  if (!unsupportedResponsesProviders.has(providerKey)) {
+    const response = await request(endpoint(provider, '/responses'), { method: 'POST', headers: headers(provider), body: JSON.stringify({ model, input: 'Reply with OK', max_output_tokens: 8, store: false }) });
+    if (response.ok) {
+      const payload = await response.json();
+      if (!payload.id && !payload.output) throw new Error('Provider returned an invalid Responses payload');
+      return Math.round(performance.now() - started);
+    }
+    const detail = await response.text();
+    if (isUnsupportedResponsesError(response.status) || (response.status === 400 && /(responses.{0,30}(not supported|unsupported)|(?:unknown|unsupported).{0,24}(?:endpoint|route))/i.test(detail))) unsupportedResponsesProviders.add(providerKey);
+    else throw new Error(`Model test failed (${response.status}): ${detail}`);
+  }
   const response = await request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: headers(provider), body: JSON.stringify({ model, stream: false, max_tokens: 8, messages: [{ role: 'user', content: 'Reply with OK' }] }) });
-  if (!response.ok) throw new Error(`Model test failed (${response.status})`);
+  if (!response.ok) throw new Error(`Model test failed (${response.status}): ${await response.text()}`);
   const payload = await response.json();
-  if (!payload.choices?.[0]?.message) throw new Error('Provider returned an invalid completion');
+  if (!payload.choices?.[0]?.message) throw new Error('Provider returned an invalid Chat Completions payload');
   return Math.round(performance.now() - started);
 }
 
@@ -128,7 +145,7 @@ export async function streamCompletion(config: Config, messages: Message[], onTo
         instructions: systemContext || undefined,
         input: responsesInput(useChain && store ? messages.slice(-1) : messages),
         previous_response_id: useChain ? memory?.previousResponseId : undefined,
-        temperature: config.temperature,
+        temperature: temperaturelessResponsesProviders.has(providerKey) ? undefined : config.temperature,
         stream: true,
         store,
       }),
@@ -141,6 +158,10 @@ export async function streamCompletion(config: Config, messages: Message[], onTo
         statelessResponsesProviders.add(providerKey);
         stateless = true;
         responseRequest = await createResponse(false, false);
+      }
+      else if (rejectsTemperature(responseRequest.status, detail)) {
+        temperaturelessResponsesProviders.add(providerKey);
+        responseRequest = await createResponse(chained && !stateless, !stateless);
       }
       else if (chained && isStaleResponseError(responseRequest.status, detail)) responseRequest = await createResponse(false, true);
       else if (isUnsupportedResponsesError(responseRequest.status)) unsupportedResponsesProviders.add(providerKey);
@@ -206,7 +227,7 @@ export async function runAgentCompletion(
     if (signal?.aborted) throw new DOMException('The task was stopped', 'AbortError');
     const response = await request(endpoint(provider, '/responses'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: config.temperature, store: !stateless, tools: responseTools, tool_choice: turn === 0 && requireTool ? 'required' : 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: temperaturelessResponsesProviders.has(providerKey) ? undefined : config.temperature, store: !stateless, tools: responseTools, tool_choice: turn === 0 && requireTool ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
@@ -216,6 +237,10 @@ export async function runAgentCompletion(
         previousResponseId = '';
         responseInput = responsesInput(messages);
         statelessContext = [...responseInput];
+        continue;
+      }
+      if (!temperaturelessResponsesProviders.has(providerKey) && rejectsTemperature(response.status, detail)) {
+        temperaturelessResponsesProviders.add(providerKey);
         continue;
       }
       if (turn === 0 && chained && isStaleResponseError(response.status, detail)) {

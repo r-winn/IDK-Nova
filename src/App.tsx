@@ -56,6 +56,8 @@ import {
   RefreshCw,
   Reply,
   Rocket,
+  RotateCcw,
+  RotateCw,
   Search,
   Settings,
   ShieldCheck,
@@ -182,12 +184,14 @@ type BrowserTab = {
   historyIndex: number;
   language?: string;
   content?: string;
+  previewContent?: string;
   artifactView?: "edit" | "preview";
   messages?: Message[];
   draft?: string;
   busy?: boolean;
   imageUrl?: string;
   imageZoom?: number;
+  imageRotation?: number;
   fileUrl?: string;
   mime?: string;
   subject?: string;
@@ -209,7 +213,7 @@ type BrowserTab = {
   terminalOutput?: string;
   terminalBusy?: boolean;
 };
-type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
+type NativeBrowserView = { webview: Webview; url: string; frameKey: number; layout: "compact" | "desktop" };
 type WorkspacePanelSession = { open: boolean; tabs: BrowserTab[]; activeTabId: string; maximized: boolean };
 const newWorkspacePanelSession = (chatId: number): WorkspacePanelSession => {
   const id = `workspace-${chatId}`;
@@ -217,19 +221,44 @@ const newWorkspacePanelSession = (chatId: number): WorkspacePanelSession => {
 };
 const browserBounds = (surface: HTMLDivElement) => {
   const rect = surface.getBoundingClientRect();
-  const viewport = window.visualViewport;
-  const viewportWidth = viewport?.width || window.innerWidth;
-  const viewportHeight = viewport?.height || window.innerHeight;
-  const left = Math.max(0, Math.ceil(rect.left));
-  const top = Math.max(0, Math.ceil(rect.top));
-  const right = Math.min(viewportWidth, Math.floor(rect.right));
-  const bottom = Math.min(viewportHeight, Math.floor(rect.bottom));
-  return { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
+  return {
+    left: Math.max(0, Math.round(rect.left)),
+    top: Math.max(0, Math.round(rect.top)),
+    width: Math.max(1, Math.round(rect.width)),
+    height: Math.max(1, Math.round(rect.height)),
+  };
+};
+let nativeWindowOffsetPromise: Promise<{ x: number; y: number }> | undefined;
+const nativeWindowContentOffset = () => {
+  if (!navigator.platform.toLowerCase().includes("mac")) return Promise.resolve({ x: 0, y: 0 });
+  nativeWindowOffsetPromise ||= (async () => {
+    const appWindow = getCurrentWindow();
+    const [inner, outer, scale] = await Promise.all([appWindow.innerPosition(), appWindow.outerPosition(), appWindow.scaleFactor()]);
+    return { x: Math.max(0, (inner.x - outer.x) / scale), y: Math.max(0, (inner.y - outer.y) / scale) };
+  })().catch(() => ({ x: 0, y: 0 }));
+  return nativeWindowOffsetPromise;
 };
 const parentDirectory = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 const directoryEntries = (entries: WorkspaceEntry[] = [], directory = "") => entries
   .filter((entry) => parentDirectory(entry.path) === directory)
   .sort((left, right) => left.kind === right.kind ? left.name.localeCompare(right.name) : left.kind === "directory" ? -1 : 1);
+const resolveWorkspaceReference = (sourcePath: string, reference: string) => {
+  const clean = reference.split(/[?#]/, 1)[0].trim();
+  if (!clean || /^(?:[a-z]+:|#|\/\/)/i.test(clean)) return "";
+  const parts = `${clean.startsWith("/") ? "" : parentDirectory(sourcePath)}/${clean.replace(/^\/+/, "")}`.split("/");
+  const normalized: string[] = [];
+  for (const part of parts) {
+    if (!part || part === ".") continue;
+    if (part === "..") normalized.pop();
+    else normalized.push(part);
+  }
+  return normalized.join("/");
+};
+const fileKind = (name: string) => {
+  const extension = name.split(".").pop()?.toLowerCase() || "file";
+  const labels: Record<string, string> = { js: "JS", jsx: "JSX", ts: "TS", tsx: "TSX", html: "HTML", htm: "HTML", css: "CSS", scss: "SCSS", json: "{}", md: "MD", py: "PY", rs: "RS", go: "GO", java: "JAVA", php: "PHP", vue: "VUE", svelte: "SV", sh: "SH", yml: "YML", yaml: "YML", xml: "XML", sql: "SQL" };
+  return { extension, label: labels[extension] || extension.slice(0, 4).toUpperCase() || "FILE" };
+};
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
 
 const folderIcons = {
@@ -583,9 +612,14 @@ export default function App() {
       if (!browserOpen || overlayOpen || activeBrowserTab?.kind !== "browser" || !activeBrowserTab.url || !browserSurfaceRef.current) return;
       await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
       if (cancelled || !browserSurfaceRef.current) return;
-      const { left, top, width, height } = browserBounds(browserSurfaceRef.current);
+      const bounds = browserBounds(browserSurfaceRef.current);
+      const windowOffset = await nativeWindowContentOffset();
+      const { width, height } = bounds;
+      const left = bounds.left + windowOffset.x;
+      const top = bounds.top + windowOffset.y;
+      const layout: NativeBrowserView["layout"] = width < 720 ? "compact" : "desktop";
       let entry = views.get(activeBrowserTabId);
-      if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
+      if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey || entry.layout !== layout)) {
         await entry.webview.close().catch(() => undefined);
         views.delete(activeBrowserTabId);
         entry = undefined;
@@ -598,8 +632,11 @@ export default function App() {
           y: top,
           width,
           height,
+          userAgent: layout === "compact"
+            ? "Mozilla/5.0 (Linux; Android 13; IDK Nova) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Mobile Safari/537.36"
+            : navigator.userAgent,
         });
-        entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey };
+        entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey, layout };
         views.set(activeBrowserTabId, entry);
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         await webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
@@ -623,33 +660,38 @@ export default function App() {
     const surface = browserSurfaceRef.current;
     let animationFrame = 0;
     let animationUntil = performance.now() + 460;
-    const syncBounds = () => {
+    const syncBounds = async () => {
       const entry = nativeBrowserViewsRef.current.get(activeBrowserTabId);
       if (!entry) return;
-      const { left, top, width, height } = browserBounds(surface);
+      const bounds = browserBounds(surface);
+      const windowOffset = await nativeWindowContentOffset();
+      const { width, height } = bounds;
+      const left = bounds.left + windowOffset.x;
+      const top = bounds.top + windowOffset.y;
       entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
       entry.webview.setSize(new LogicalSize(width, height)).catch(() => undefined);
     };
     const followLayoutAnimation = () => {
-      syncBounds();
+      void syncBounds();
       if (performance.now() < animationUntil) animationFrame = requestAnimationFrame(followLayoutAnimation);
       else animationFrame = 0;
     };
     const observer = new ResizeObserver(() => {
-      syncBounds();
+      void syncBounds();
       animationUntil = performance.now() + 360;
       if (!animationFrame) animationFrame = requestAnimationFrame(followLayoutAnimation);
     });
     observer.observe(surface);
     followLayoutAnimation();
-    window.addEventListener("resize", syncBounds);
-    window.visualViewport?.addEventListener("resize", syncBounds);
-    window.visualViewport?.addEventListener("scroll", syncBounds);
+    const requestSync = () => { void syncBounds(); };
+    window.addEventListener("resize", requestSync);
+    window.visualViewport?.addEventListener("resize", requestSync);
+    window.visualViewport?.addEventListener("scroll", requestSync);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", syncBounds);
-      window.visualViewport?.removeEventListener("resize", syncBounds);
-      window.visualViewport?.removeEventListener("scroll", syncBounds);
+      window.removeEventListener("resize", requestSync);
+      window.visualViewport?.removeEventListener("resize", requestSync);
+      window.visualViewport?.removeEventListener("scroll", requestSync);
       cancelAnimationFrame(animationFrame);
     };
   }, [browserOpen, activeBrowserTabId, browserMaximized, sidebar]);
@@ -1171,6 +1213,57 @@ export default function App() {
   };
   const updateWorkspaceTab = (id: string, changes: Partial<BrowserTab>) =>
     setBrowserTabs((tabs) => tabs.map((tab) => tab.id === id ? { ...tab, ...changes } : tab));
+  const prepareArtifactPreview = async (tab: BrowserTab) => {
+    if (tab.language?.toLowerCase() !== "html" || !tab.projectId || !tab.projectPath) {
+      updateWorkspaceTab(tab.id, { artifactView: "preview", previewContent: tab.content });
+      return;
+    }
+    const project = workspaces.find((item) => item.id === tab.projectId);
+    if (!project) return;
+    try {
+      const document = new DOMParser().parseFromString(tab.content || "", "text/html");
+      const readText = (path: string) => invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath: path });
+      const readAsset = (path: string) => invoke<string>("read_workspace_asset", { rootPath: project.rootPath, relativePath: path });
+      const inlineCssAssets = async (css: string, cssPath: string) => {
+        const matches = [...css.matchAll(/url\(\s*(['"]?)([^)'"\s]+)\1\s*\)/gi)];
+        let inlined = css;
+        for (const match of matches) {
+          const path = resolveWorkspaceReference(cssPath, match[2]);
+          if (!path) continue;
+          try { inlined = inlined.replace(match[0], `url("${await readAsset(path)}")`); } catch { /* leave unresolved references visible in devtools */ }
+        }
+        return inlined;
+      };
+      await Promise.all([...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"][href]')].map(async (link) => {
+        const path = resolveWorkspaceReference(tab.projectPath!, link.getAttribute("href") || "");
+        if (!path) return;
+        const style = document.createElement("style");
+        style.textContent = await inlineCssAssets(await readText(path), path);
+        link.replaceWith(style);
+      }));
+      await Promise.all([...document.querySelectorAll<HTMLScriptElement>("script[src]")].map(async (script) => {
+        const path = resolveWorkspaceReference(tab.projectPath!, script.getAttribute("src") || "");
+        if (!path) return;
+        const inline = document.createElement("script");
+        if (script.type) inline.type = script.type;
+        inline.textContent = await readText(path);
+        script.replaceWith(inline);
+      }));
+      await Promise.all([...document.querySelectorAll<HTMLElement>("img[src], source[src], video[src], audio[src]")].map(async (element) => {
+        const path = resolveWorkspaceReference(tab.projectPath!, element.getAttribute("src") || "");
+        if (!path) return;
+        element.setAttribute("src", await readAsset(path));
+      }));
+      await Promise.all([...document.querySelectorAll<HTMLStyleElement>("style")].map(async (style) => {
+        style.textContent = await inlineCssAssets(style.textContent || "", tab.projectPath!);
+      }));
+      const previewContent = `<!doctype html>\n${document.documentElement.outerHTML}`;
+      updateWorkspaceTab(tab.id, { artifactView: "preview", previewContent });
+    } catch (error) {
+      setToast(`Preview could not load a project dependency: ${error instanceof Error ? error.message : String(error)}`);
+      updateWorkspaceTab(tab.id, { artifactView: "preview", previewContent: tab.content });
+    }
+  };
   const refreshProjectFiles = async (tab: BrowserTab) => {
     const project = workspaces.find((item) => item.id === tab.projectId);
     if (!project) return;
@@ -2075,7 +2168,8 @@ export default function App() {
     if (bold) return <strong key={pieceIndex}>{bold[1]}</strong>;
     const markdownLink = piece.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
     const target = markdownLink?.[2] || (/^https?:\/\//i.test(piece) ? piece : "");
-    return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target, true); }}>{markdownLink?.[1] || piece}</a> : piece;
+    const linkLabel = markdownLink?.[1]?.replace(/^\*\*(.+)\*\*$/, "$1") || piece;
+    return target ? <a href={target} key={pieceIndex} onClick={(event) => { event.preventDefault(); navigateBrowser(target, true); }}>{linkLabel}</a> : piece;
   });
   const renderProse = (value: string, key: string | number) => (
     <span className="prose-segment" key={key}>
@@ -3194,7 +3288,7 @@ export default function App() {
             <div>
               {browserTabs.map((tab) => (
                 <button className={tab.id === activeBrowserTabId ? "active" : ""} key={tab.id} onClick={() => setActiveBrowserTabId(tab.id)} title={tab.title}>
-                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? <Code2 /> : ["document", "file", "pdf"].includes(tab.kind) ? <FileText /> : tab.kind === "email" ? <Mail /> : ["files", "projectfiles"].includes(tab.kind) ? <Folder /> : tab.kind === "temporary" ? <Clock3 /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
+                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? (() => { const kind = fileKind(tab.title); return <em className={`file-kind kind-${kind.extension}`}>{kind.label}</em>; })() : ["document", "file", "pdf"].includes(tab.kind) ? <FileText /> : tab.kind === "email" ? <Mail /> : ["files", "projectfiles"].includes(tab.kind) ? <Folder /> : tab.kind === "temporary" ? <Clock3 /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
                   <span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
                 </button>
               ))}
@@ -3224,7 +3318,7 @@ export default function App() {
               {activeBrowserTab.projectId && <button className={activeBrowserTab.explorerOpen ? "active" : ""} onClick={() => updateWorkspaceTab(activeBrowserTab.id, { explorerOpen: !activeBrowserTab.explorerOpen })}><Folder />Files</button>}
               {activeBrowserTab.projectId && <button className={activeBrowserTab.terminalOpen ? "active" : ""} onClick={() => updateWorkspaceTab(activeBrowserTab.id, { terminalOpen: !activeBrowserTab.terminalOpen })}><Terminal />Terminal</button>}
               <button className={activeBrowserTab.artifactView === "edit" ? "active" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, artifactView: "edit" } : tab))}><Pencil />Edit</button>
-              <button className={activeBrowserTab.artifactView === "preview" ? "active" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, artifactView: "preview" } : tab))}><Globe2 />Preview</button>
+              <button className={activeBrowserTab.artifactView === "preview" ? "active" : ""} onClick={() => void prepareArtifactPreview(activeBrowserTab)}><Globe2 />Preview</button>
               <span />
               <button onClick={() => copy(activeBrowserTab.content || "")}><Copy />Copy</button>
               <button onClick={saveProjectArtifact}>{activeBrowserTab.projectPath ? <><Check />Save to Work</> : <><Download />Save</>}</button>
@@ -3254,7 +3348,9 @@ export default function App() {
               <span>{Math.round((activeBrowserTab.imageZoom || 1) * 100)}%</span>
               <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: Math.max(.25, (activeBrowserTab.imageZoom || 1) - .25) })}><ZoomOut />Zoom out</button>
               <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: Math.min(4, (activeBrowserTab.imageZoom || 1) + .25) })}><ZoomIn />Zoom in</button>
-              <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: 1 })}>Reset</button>
+              <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageRotation: ((activeBrowserTab.imageRotation || 0) - 90) % 360 })} title="Rotate left"><RotateCcw /></button>
+              <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageRotation: ((activeBrowserTab.imageRotation || 0) + 90) % 360 })} title="Rotate right"><RotateCw /></button>
+              <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: 1, imageRotation: 0 })}>Fit</button>
               <button onClick={downloadWorkspaceImage}><Download />Download</button>
             </div>
           ) : activeBrowserTab && ["file", "pdf"].includes(activeBrowserTab.kind) ? (
@@ -3295,15 +3391,15 @@ export default function App() {
                   <nav className="file-breadcrumbs"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: "" })}>Root</button>{(activeBrowserTab.directoryPath || "").split("/").filter(Boolean).map((segment, index, parts) => <Fragment key={`${segment}-${index}`}><ChevronRight /><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: parts.slice(0, index + 1).join("/") })}>{segment}</button></Fragment>)}</nav>
                   <div className="code-explorer-list">
                     {(activeBrowserTab.directoryPath || "") && <button className="directory up" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: parentDirectory(activeBrowserTab.directoryPath || "") })}><ArrowRight /><span><b>..</b><small>Parent folder</small></span></button>}
-                    {directoryEntries(activeBrowserTab.entries, activeBrowserTab.directoryPath || "").map((entry) => <button className={`${entry.kind} ${entry.path === activeBrowserTab.projectPath ? "active" : ""}`} key={entry.path} onClick={() => entry.kind === "directory" ? updateWorkspaceTab(activeBrowserTab.id, { directoryPath: entry.path }) : openProjectFile(activeBrowserTab, entry)} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <FileText />}<span><b>{entry.name}</b><small>{entry.kind === "directory" ? "Folder" : `${Math.max(1, Math.round(entry.size / 1024))} KB`}</small></span>{entry.kind === "directory" && <ChevronRight />}</button>)}
+                    {directoryEntries(activeBrowserTab.entries, activeBrowserTab.directoryPath || "").map((entry) => { const kind = fileKind(entry.name); return <button className={`${entry.kind} ${entry.path === activeBrowserTab.projectPath ? "active" : ""}`} key={entry.path} onClick={() => entry.kind === "directory" ? updateWorkspaceTab(activeBrowserTab.id, { directoryPath: entry.path }) : openProjectFile(activeBrowserTab, entry)} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <i className={`file-kind kind-${kind.extension}`}>{kind.label}</i>}<span><b>{entry.name}</b><small>{entry.kind === "directory" ? "Folder" : `${Math.max(1, Math.round(entry.size / 1024))} KB`}</small></span>{entry.kind === "directory" && <ChevronRight />}</button>})}
                   </div>
                 </aside>}
                 <section className="code-editor-pane">
-                  <div className="code-file-path"><Code2 /><span>{activeBrowserTab.projectPath || activeBrowserTab.title}</span><small>{activeBrowserTab.language || "text"}</small></div>
+                  <div className="code-file-path"><i className={`file-kind kind-${fileKind(activeBrowserTab.title).extension}`}>{fileKind(activeBrowserTab.title).label}</i><span>{activeBrowserTab.projectPath || activeBrowserTab.title}</span><small>{activeBrowserTab.language || "text"}</small></div>
                   <div className="code-editor-content">{activeBrowserTab.artifactView === "edit" ? (
                     <textarea spellCheck={activeBrowserTab.language === "text"} value={activeBrowserTab.content || ""} onChange={(event) => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, content: event.target.value } : tab))} />
                   ) : activeBrowserTab.language?.toLowerCase() === "html" ? (
-                    <iframe title="Artifact preview" sandbox="" srcDoc={activeBrowserTab.content || ""} />
+                    <iframe title="Artifact preview" sandbox="allow-scripts allow-forms allow-modals" srcDoc={activeBrowserTab.previewContent || activeBrowserTab.content || ""} />
                   ) : <div className="document-preview" dir="auto">{activeBrowserTab.content}</div>}</div>
                   {activeBrowserTab.terminalOpen && <section className="workspace-terminal"><header><Terminal /><span>Terminal</span><small>{workspaces.find((item) => item.id === activeBrowserTab.projectId)?.name}</small><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { terminalOutput: "" })}>Clear</button><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { terminalOpen: false })}><X /></button></header><pre>{activeBrowserTab.terminalOutput || "Terminal ready. Commands run inside this Work folder.\n"}{activeBrowserTab.terminalBusy && "Running…\n"}</pre><form onSubmit={(event) => { event.preventDefault(); void runWorkspaceTerminal(activeBrowserTab); }}><span>❯</span><input autoFocus spellCheck={false} value={activeBrowserTab.terminalCommand || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { terminalCommand: event.target.value })} placeholder="Enter a project command" /><button type="submit" disabled={activeBrowserTab.terminalBusy || !activeBrowserTab.terminalCommand?.trim()}><ArrowRight /></button></form></section>}
                 </section>
@@ -3334,7 +3430,8 @@ export default function App() {
               </div>
             ) : activeBrowserTab?.kind === "image" ? (
               <div className="workspace-image-viewer">
-                <div><img src={activeBrowserTab.imageUrl} alt={activeBrowserTab.title} style={{ transform: `scale(${activeBrowserTab.imageZoom || 1})` }} /></div>
+                <header><ImageIcon /><span><b>{activeBrowserTab.title}</b><small>{Math.round((activeBrowserTab.imageZoom || 1) * 100)}% · {activeBrowserTab.imageRotation || 0}°</small></span></header>
+                <div className="image-stage"><img src={activeBrowserTab.imageUrl} alt={activeBrowserTab.title} style={{ transform: `scale(${activeBrowserTab.imageZoom || 1}) rotate(${activeBrowserTab.imageRotation || 0}deg)` }} /></div>
               </div>
             ) : activeBrowserTab?.kind === "pdf" ? (
               <Suspense fallback={<div className="workspace-file-viewer"><div><FileText /><h3>Opening PDF…</h3><p>Preparing the document viewer.</p></div></div>}>
@@ -3359,7 +3456,7 @@ export default function App() {
                 <header><div><span className="work-source-badge"><BriefcaseBusiness />Work files · Live</span><h3>{activeBrowserTab.title}</h3><p>Files update automatically as the project changes.</p></div><div className="project-file-actions"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: true, createKind: "file", createPath: "untitled.md" })}><Plus />New file</button><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: true, createKind: "folder", createPath: "new-folder" })}><Folder />New folder</button></div></header>
                 {activeBrowserTab.creatingFile && <form className="project-file-create" onSubmit={(event) => { event.preventDefault(); createProjectItem(activeBrowserTab); }}>{activeBrowserTab.createKind === "folder" ? <Folder /> : <FileText />}<input autoFocus value={activeBrowserTab.createPath || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { createPath: event.target.value })} placeholder={activeBrowserTab.createKind === "folder" ? "Folder name" : "notes.md or src/new-file.ts"} /><button type="button" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: false })}>Cancel</button><button type="submit">Create {activeBrowserTab.createKind}</button></form>}
                 <nav className="project-breadcrumbs"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: "" })}><BriefcaseBusiness />{activeBrowserTab.title}</button>{(activeBrowserTab.directoryPath || "").split("/").filter(Boolean).map((segment, index, parts) => <Fragment key={`${segment}-${index}`}><ChevronRight /><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: parts.slice(0, index + 1).join("/") })}>{segment}</button></Fragment>)}</nav>
-                <div className="project-file-list">{(activeBrowserTab.directoryPath || "") && <button className="directory up" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: parentDirectory(activeBrowserTab.directoryPath || "") })}><ArrowRight /><span><b>Back</b><small>{parentDirectory(activeBrowserTab.directoryPath || "") || "Project root"}</small></span></button>}{directoryEntries(activeBrowserTab.entries, activeBrowserTab.directoryPath || "").map((entry) => <button className={entry.kind} key={entry.path} onClick={() => entry.kind === "directory" ? updateWorkspaceTab(activeBrowserTab.id, { directoryPath: entry.path }) : openProjectFile(activeBrowserTab, entry)} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <FileText />}<span><b>{entry.name}</b><small>{entry.kind === "directory" ? `${(activeBrowserTab.entries || []).filter((item) => parentDirectory(item.path) === entry.path).length} items` : `${Math.max(1, Math.round(entry.size / 1024))} KB`}</small></span>{entry.kind === "directory" ? <ChevronRight /> : <ArrowRight />}</button>)}</div>
+                <div className="project-file-list">{(activeBrowserTab.directoryPath || "") && <button className="directory up" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: parentDirectory(activeBrowserTab.directoryPath || "") })}><ArrowRight /><span><b>Back</b><small>{parentDirectory(activeBrowserTab.directoryPath || "") || "Project root"}</small></span></button>}{directoryEntries(activeBrowserTab.entries, activeBrowserTab.directoryPath || "").map((entry) => { const kind = fileKind(entry.name); return <button className={entry.kind} key={entry.path} onClick={() => entry.kind === "directory" ? updateWorkspaceTab(activeBrowserTab.id, { directoryPath: entry.path }) : openProjectFile(activeBrowserTab, entry)} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <i className={`file-kind kind-${kind.extension}`}>{kind.label}</i>}<span><b>{entry.name}</b><small>{entry.kind === "directory" ? `${(activeBrowserTab.entries || []).filter((item) => parentDirectory(item.path) === entry.path).length} items` : `${Math.max(1, Math.round(entry.size / 1024))} KB`}</small></span>{entry.kind === "directory" ? <ChevronRight /> : <ArrowRight />}</button>})}</div>
               </div>
             ) : activeBrowserTab?.kind === "temporary" ? (
               <div className="workspace-sidechat">
