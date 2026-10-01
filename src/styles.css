@@ -1058,6 +1058,55 @@ body.resizing-browser iframe { pointer-events: none; }
 .workspace-artifact { height: 100%; padding: 12px; background: transparent; }
 .workspace-artifact textarea { width: 100%; height: 100%; resize: none; padding: 20px; border: 1px solid var(--line); border-radius: 12px; outline: 0; background: var(--surface); color: var(--text); font: 12px/1.72 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .workspace-artifact iframe { width: 100%; height: 100%; border: 0; border-radius: 12px; background: #fff; }
+.workspace-code-studio { padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; background: color-mix(in srgb, var(--bg) 97%, var(--surface)); }
+.workspace-code-studio.with-explorer { grid-template-columns: clamp(176px, 24%, 250px) minmax(0, 1fr); }
+.code-explorer { min-width: 0; height: 100%; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 66%, transparent); display: grid; grid-template-rows: 45px auto minmax(0, 1fr); overflow: hidden; }
+.code-explorer > header { padding: 0 12px; display: flex; align-items: center; gap: 8px; }
+.code-explorer > header > svg { width: 15px; color: var(--muted); }
+.code-explorer > header span { min-width: 0; display: flex; flex-direction: column; }
+.code-explorer > header b { font-size: 12px; }
+.code-explorer > header small { overflow: hidden; color: var(--faint); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.file-breadcrumbs, .project-breadcrumbs { min-width: 0; display: flex; align-items: center; overflow-x: auto; scrollbar-width: none; }
+.file-breadcrumbs { min-height: 30px; padding: 0 8px; border-block: 1px solid var(--line); }
+.file-breadcrumbs::-webkit-scrollbar, .project-breadcrumbs::-webkit-scrollbar { display: none; }
+.file-breadcrumbs button, .project-breadcrumbs button { flex: none; height: 26px; padding: 0 5px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.file-breadcrumbs button:hover, .project-breadcrumbs button:hover { background: var(--hover); color: var(--text); }
+.file-breadcrumbs > svg, .project-breadcrumbs > svg { flex: none; width: 10px; color: var(--faint); }
+.code-explorer-list { min-height: 0; padding: 6px; overflow: auto; }
+.code-explorer-list > button { width: 100%; height: 34px; padding: 0 7px; border: 0; border-radius: 7px; background: transparent; color: var(--text); display: flex; align-items: center; gap: 7px; text-align: left; }
+.code-explorer-list > button:hover { background: var(--hover); }
+.code-explorer-list > button.active { background: color-mix(in srgb, var(--brand) 10%, var(--hover)); }
+.code-explorer-list > button > svg { flex: none; width: 13px; color: var(--muted); }
+.code-explorer-list > button.up > svg { transform: rotate(180deg); }
+.code-explorer-list > button > svg:last-child { width: 10px; margin-left: auto; }
+.code-explorer-list > button span { min-width: 0; display: flex; flex: 1; flex-direction: column; }
+.code-explorer-list > button b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.code-explorer-list > button small { color: var(--faint); font-size: 9px; }
+.code-editor-pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: 31px minmax(0, 1fr); overflow: hidden; }
+.workspace-code-studio.with-terminal .code-editor-pane { grid-template-rows: 31px minmax(120px, 1fr) clamp(155px, 29%, 230px); }
+.code-file-path { min-width: 0; padding: 0 11px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; }
+.code-file-path svg { width: 12px; }
+.code-file-path span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-file-path small { margin-left: auto; color: var(--faint); text-transform: uppercase; }
+.code-editor-content { min-width: 0; min-height: 0; padding: 10px; overflow: hidden; }
+.code-editor-content > textarea { width: 100%; height: 100%; resize: none; padding: 18px; border: 0; border-radius: 9px; outline: 0; background: color-mix(in srgb, var(--surface) 82%, transparent); color: var(--text); font: 12px/1.72 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }
+.code-editor-content > iframe { width: 100%; height: 100%; border: 0; border-radius: 9px; background: #fff; }
+.workspace-terminal { min-width: 0; min-height: 0; border-top: 1px solid var(--line); background: color-mix(in srgb, #111713 96%, transparent); color: #dce7df; display: grid; grid-template-rows: 31px minmax(0, 1fr) 34px; overflow: hidden; }
+.workspace-terminal > header { padding: 0 8px 0 11px; border-bottom: 1px solid rgba(255,255,255,.07); display: flex; align-items: center; gap: 7px; }
+.workspace-terminal > header svg { width: 12px; }
+.workspace-terminal > header span { font-size: 11px; font-weight: 700; }
+.workspace-terminal > header small { color: #819087; font-size: 9px; }
+.workspace-terminal > header button { width: auto; height: 23px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: #819087; font-size: 8px; }
+.workspace-terminal > header button:first-of-type { margin-left: auto; }
+.workspace-terminal > header button:hover { background: rgba(255,255,255,.07); color: white; }
+.workspace-terminal > header button svg { width: 11px; }
+.workspace-terminal > pre { margin: 0; padding: 9px 12px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #cdd9d1; font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; user-select: text; }
+.workspace-terminal > form { padding: 0 7px 0 12px; border-top: 1px solid rgba(255,255,255,.07); display: flex; align-items: center; gap: 7px; }
+.workspace-terminal > form > span { color: #79cf99; font: 10px ui-monospace, monospace; }
+.workspace-terminal input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: white; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.workspace-terminal form button { width: 25px; height: 25px; border: 0; border-radius: 7px; background: rgba(255,255,255,.08); color: white; display: grid; place-items: center; }
+.workspace-terminal form button:disabled { opacity: .3; }
+.workspace-terminal form button svg { width: 11px; }
 .workspace-document { height: 100%; overflow: auto; padding: clamp(18px, 4vw, 42px); background: transparent; }
 .workspace-document > textarea { width: min(780px, 100%); min-height: 100%; margin: auto; padding: clamp(24px, 5vw, 58px); resize: none; border: 0; border-radius: 4px; outline: 0; background: color-mix(in srgb, var(--surface) 96%, white); color: var(--text); box-shadow: 0 16px 55px rgba(0,0,0,.12); font: 14px/1.95 ui-sans-serif, system-ui, sans-serif; text-align: start; unicode-bidi: plaintext; display: block; }
 .workspace-document > article { width: min(780px, 100%); min-height: 100%; margin: auto; padding: clamp(28px, 6vw, 64px); background: color-mix(in srgb, var(--surface) 96%, white); color: var(--text); box-shadow: 0 16px 55px rgba(0,0,0,.12); }
@@ -1131,10 +1180,15 @@ body.resizing-browser iframe { pointer-events: none; }
 .workspace-file-list small { margin-top: 2px; color: var(--muted); font-size: 8px; }
 .work-source-badge { width: fit-content; margin-bottom: 7px; color: #27805c; display: flex; align-items: center; gap: 5px; font-size: 8px; font-weight: 750; letter-spacing: .7px; text-transform: uppercase; }
 .work-source-badge svg { width: 12px; }
+.project-breadcrumbs { max-width: 760px; min-height: 34px; margin: 0 auto 7px; padding: 0 4px; }
+.project-breadcrumbs button { display: flex; align-items: center; gap: 5px; }
+.project-breadcrumbs button svg { width: 12px; }
 .project-file-list { max-width: 760px; margin: auto; display: grid; gap: 2px; }
 .project-file-list > button { width: 100%; min-height: 48px; padding: 7px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text); display: flex; align-items: center; gap: 10px; text-align: left; }
 .project-file-list > button.file:hover { background: color-mix(in srgb, var(--surface) 58%, transparent); }
-.project-file-list > button.directory { min-height: 36px; opacity: .66; cursor: default; }
+.project-file-list > button.directory { min-height: 42px; }
+.project-file-list > button.directory:hover { background: color-mix(in srgb, var(--surface) 58%, transparent); }
+.project-file-list > button.up > svg:first-child { transform: rotate(180deg); }
 .project-file-list > button > svg:first-child { width: 16px; color: var(--muted); }
 .project-file-list > button > svg:last-child { width: 13px; margin-left: auto; color: var(--faint); }
 .project-file-list span { min-width: 0; flex: 1; display: flex; flex-direction: column; }

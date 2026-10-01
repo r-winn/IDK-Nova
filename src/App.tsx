@@ -33,6 +33,7 @@ import {
   ExternalLink,
   FileText,
   Folder,
+  FolderOpen,
   FolderPlus,
   FlaskConical,
   Globe2,
@@ -63,6 +64,7 @@ import {
   Star,
   Square,
   Trash2,
+  Terminal,
   Upload,
   GraduationCap,
   Workflow,
@@ -199,6 +201,13 @@ type BrowserTab = {
   pdfPages?: number;
   createPath?: string;
   creatingFile?: boolean;
+  createKind?: "file" | "folder";
+  directoryPath?: string;
+  explorerOpen?: boolean;
+  terminalOpen?: boolean;
+  terminalCommand?: string;
+  terminalOutput?: string;
+  terminalBusy?: boolean;
 };
 type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 type WorkspacePanelSession = { open: boolean; tabs: BrowserTab[]; activeTabId: string; maximized: boolean };
@@ -217,6 +226,10 @@ const browserBounds = (surface: HTMLDivElement) => {
   const bottom = Math.min(viewportHeight, Math.floor(rect.bottom));
   return { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
 };
+const parentDirectory = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+const directoryEntries = (entries: WorkspaceEntry[] = [], directory = "") => entries
+  .filter((entry) => parentDirectory(entry.path) === directory)
+  .sort((left, right) => left.kind === right.kind ? left.name.localeCompare(right.name) : left.kind === "directory" ? -1 : 1);
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
 
 const folderIcons = {
@@ -511,7 +524,7 @@ export default function App() {
         setBrowserTabs((tabs) => {
           let changed = false;
           const next = tabs.map((tab) => {
-            if (tab.kind !== "projectfiles" || tab.projectId !== watchedWorkspace.id) return tab;
+            if (!["projectfiles", "artifact"].includes(tab.kind) || tab.projectId !== watchedWorkspace.id) return tab;
             const currentSignature = (tab.entries || []).map((entry) => `${entry.path}:${entry.kind}:${entry.size}:${entry.modified}`).join("|");
             if (currentSignature === signature) return tab;
             changed = true;
@@ -1101,7 +1114,7 @@ export default function App() {
     if (project && isDesktopApp()) {
       try {
         const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath });
-        setBrowserTabs((tabs) => [...tabs, { id, kind: "projectfiles", title: project.name, projectId: project.id, entries: scan.entries, url: "", input: "", history: [], historyIndex: -1 }]);
+        setBrowserTabs((tabs) => [...tabs, { id, kind: "projectfiles", title: project.name, projectId: project.id, entries: scan.entries, directoryPath: "", url: "", input: "", history: [], historyIndex: -1 }]);
       } catch (error) { setToast(error instanceof Error ? error.message : String(error)); return; }
     } else setBrowserTabs((tabs) => [...tabs, { id, kind: "files", title: "Files", url: "", input: "", history: [], historyIndex: -1 }]);
     setActiveBrowserTabId(id);
@@ -1133,19 +1146,25 @@ export default function App() {
     const project = workspaces.find((item) => item.id === tab.projectId);
     if (!project) return;
     try {
+      const existing = browserTabs.find((item) => item.projectId === project.id && item.projectPath === entry.path);
+      if (existing) {
+        setActiveBrowserTabId(existing.id);
+        setBrowserOpen(true);
+        return;
+      }
       const extension = entry.name.split(".").pop()?.toLowerCase() || "text";
       if (["pdf", "png", "jpg", "jpeg", "gif", "webp", "svg"].includes(extension)) {
         const fileUrl = await invoke<string>("read_workspace_asset", { rootPath: project.rootPath, relativePath: entry.path });
         const id = `asset-${Date.now()}`;
         const isPdf = extension === "pdf";
-        setBrowserTabs((tabs) => [...tabs, { id, kind: isPdf ? "pdf" : "image", title: entry.name, fileUrl, imageUrl: isPdf ? undefined : fileUrl, imageZoom: 1, projectId: project.id, projectPath: entry.path, url: "", input: "", history: [], historyIndex: -1 }]);
+        setBrowserTabs((tabs) => [...tabs, { id, kind: isPdf ? "pdf" : "image", title: entry.name, fileUrl, imageUrl: isPdf ? undefined : fileUrl, imageZoom: 1, projectId: project.id, projectPath: entry.path, entries: tab.entries, directoryPath: parentDirectory(entry.path), url: "", input: "", history: [], historyIndex: -1 }]);
         setActiveBrowserTabId(id);
         setBrowserOpen(true);
         return;
       }
       const content = await invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath: entry.path });
       const id = `artifact-${Date.now()}`;
-      setBrowserTabs((tabs) => [...tabs, { id, kind: "artifact", title: entry.name, language: extension, content, artifactView: "edit", projectId: project.id, projectPath: entry.path, url: "", input: "", history: [], historyIndex: -1 }]);
+      setBrowserTabs((tabs) => [...tabs, { id, kind: "artifact", title: entry.name, language: extension, content, artifactView: "edit", projectId: project.id, projectPath: entry.path, entries: tab.entries, directoryPath: parentDirectory(entry.path), explorerOpen: true, terminalOpen: false, terminalCommand: "", terminalOutput: "", url: "", input: "", history: [], historyIndex: -1 }]);
       setActiveBrowserTabId(id);
       setBrowserOpen(true);
     } catch (error) { setToast(error instanceof Error ? error.message : String(error)); }
@@ -1158,16 +1177,27 @@ export default function App() {
     const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath });
     updateWorkspaceTab(tab.id, { entries: scan.entries });
   };
-  const createProjectFile = async (tab: BrowserTab) => {
+  const createProjectItem = async (tab: BrowserTab) => {
     const project = workspaces.find((item) => item.id === tab.projectId);
     if (!project) return;
-    const relativePath = tab.createPath?.trim();
-    if (!relativePath) return;
+    const enteredPath = tab.createPath?.trim().replace(/^\/+|\/+$/g, "");
+    if (!enteredPath) return;
+    const relativePath = enteredPath.includes("/") || !tab.directoryPath
+      ? enteredPath
+      : `${tab.directoryPath}/${enteredPath}`;
     try {
-      await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath, content: "" });
+      if (tab.createKind === "folder") {
+        await invoke("create_workspace_directory", { rootPath: project.rootPath, relativePath });
+      } else {
+        await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath, content: "" });
+      }
       await refreshProjectFiles(tab);
-      await openProjectFile(tab, { path: relativePath, name: relativePath.split("/").pop() || relativePath, kind: "file", size: 0, modified: Date.now() });
-      setToast(`Created ${relativePath}`);
+      if (tab.createKind === "folder") {
+        updateWorkspaceTab(tab.id, { directoryPath: relativePath, creatingFile: false, createPath: "" });
+      } else {
+        await openProjectFile(tab, { path: relativePath, name: relativePath.split("/").pop() || relativePath, kind: "file", size: 0, modified: Date.now() });
+      }
+      setToast(`Created ${tab.createKind === "folder" ? "folder" : "file"} ${relativePath}`);
     } catch (error) { setToast(error instanceof Error ? error.message : String(error)); }
   };
   const saveProjectArtifact = async () => {
@@ -1178,6 +1208,20 @@ export default function App() {
       await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath: activeBrowserTab.projectPath, content: activeBrowserTab.content || "" });
       setToast(`Saved ${activeBrowserTab.projectPath}`);
     } catch (error) { setToast(error instanceof Error ? error.message : String(error)); }
+  };
+  const runWorkspaceTerminal = async (tab: BrowserTab) => {
+    const project = workspaces.find((item) => item.id === tab.projectId);
+    const command = tab.terminalCommand?.trim();
+    if (!project || !command || tab.terminalBusy) return;
+    const prompt = `❯ ${command}`;
+    updateWorkspaceTab(tab.id, { terminalBusy: true, terminalCommand: "", terminalOutput: `${tab.terminalOutput ? `${tab.terminalOutput}\n` : ""}${prompt}\n` });
+    try {
+      const result = await invoke<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>("run_terminal", { command, rootPath: project.rootPath });
+      const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || `Process exited with code ${result.exitCode}`;
+      setBrowserTabs((tabs) => tabs.map((item) => item.id === tab.id ? { ...item, terminalBusy: false, terminalOutput: `${item.terminalOutput || ""}${output}\n` } : item));
+    } catch (error) {
+      setBrowserTabs((tabs) => tabs.map((item) => item.id === tab.id ? { ...item, terminalBusy: false, terminalOutput: `${item.terminalOutput || ""}${error instanceof Error ? error.message : String(error)}\n` } : item));
+    }
   };
   const sendTemporaryChat = async () => {
     const tab = browserTabs.find((item) => item.id === activeBrowserTabId);
@@ -3177,6 +3221,8 @@ export default function App() {
             <button type="submit" className="browser-go" aria-label="Go"><ArrowRight /></button>
           </form> : activeBrowserTab?.kind === "artifact" ? (
             <div className="workspace-toolbar">
+              {activeBrowserTab.projectId && <button className={activeBrowserTab.explorerOpen ? "active" : ""} onClick={() => updateWorkspaceTab(activeBrowserTab.id, { explorerOpen: !activeBrowserTab.explorerOpen })}><Folder />Files</button>}
+              {activeBrowserTab.projectId && <button className={activeBrowserTab.terminalOpen ? "active" : ""} onClick={() => updateWorkspaceTab(activeBrowserTab.id, { terminalOpen: !activeBrowserTab.terminalOpen })}><Terminal />Terminal</button>}
               <button className={activeBrowserTab.artifactView === "edit" ? "active" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, artifactView: "edit" } : tab))}><Pencil />Edit</button>
               <button className={activeBrowserTab.artifactView === "preview" ? "active" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, artifactView: "preview" } : tab))}><Globe2 />Preview</button>
               <span />
@@ -3243,12 +3289,24 @@ export default function App() {
                 </div>
               </div>
             ) : activeBrowserTab?.kind === "artifact" ? (
-              <div className="workspace-artifact">
-                {activeBrowserTab.artifactView === "edit" ? (
-                  <textarea spellCheck={activeBrowserTab.language === "text"} value={activeBrowserTab.content || ""} onChange={(event) => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, content: event.target.value } : tab))} />
-                ) : activeBrowserTab.language?.toLowerCase() === "html" ? (
-                  <iframe title="Artifact preview" sandbox="" srcDoc={activeBrowserTab.content || ""} />
-                ) : <div className="document-preview" dir="auto">{activeBrowserTab.content}</div>}
+              <div className={`workspace-artifact workspace-code-studio ${activeBrowserTab.explorerOpen ? "with-explorer" : ""} ${activeBrowserTab.terminalOpen ? "with-terminal" : ""}`}>
+                {activeBrowserTab.explorerOpen && <aside className="code-explorer">
+                  <header><FolderOpen /><span><b>Explorer</b><small>{workspaces.find((item) => item.id === activeBrowserTab.projectId)?.name || "Work files"}</small></span></header>
+                  <nav className="file-breadcrumbs"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: "" })}>Root</button>{(activeBrowserTab.directoryPath || "").split("/").filter(Boolean).map((segment, index, parts) => <Fragment key={`${segment}-${index}`}><ChevronRight /><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: parts.slice(0, index + 1).join("/") })}>{segment}</button></Fragment>)}</nav>
+                  <div className="code-explorer-list">
+                    {(activeBrowserTab.directoryPath || "") && <button className="directory up" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: parentDirectory(activeBrowserTab.directoryPath || "") })}><ArrowRight /><span><b>..</b><small>Parent folder</small></span></button>}
+                    {directoryEntries(activeBrowserTab.entries, activeBrowserTab.directoryPath || "").map((entry) => <button className={`${entry.kind} ${entry.path === activeBrowserTab.projectPath ? "active" : ""}`} key={entry.path} onClick={() => entry.kind === "directory" ? updateWorkspaceTab(activeBrowserTab.id, { directoryPath: entry.path }) : openProjectFile(activeBrowserTab, entry)} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <FileText />}<span><b>{entry.name}</b><small>{entry.kind === "directory" ? "Folder" : `${Math.max(1, Math.round(entry.size / 1024))} KB`}</small></span>{entry.kind === "directory" && <ChevronRight />}</button>)}
+                  </div>
+                </aside>}
+                <section className="code-editor-pane">
+                  <div className="code-file-path"><Code2 /><span>{activeBrowserTab.projectPath || activeBrowserTab.title}</span><small>{activeBrowserTab.language || "text"}</small></div>
+                  <div className="code-editor-content">{activeBrowserTab.artifactView === "edit" ? (
+                    <textarea spellCheck={activeBrowserTab.language === "text"} value={activeBrowserTab.content || ""} onChange={(event) => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTabId ? { ...tab, content: event.target.value } : tab))} />
+                  ) : activeBrowserTab.language?.toLowerCase() === "html" ? (
+                    <iframe title="Artifact preview" sandbox="" srcDoc={activeBrowserTab.content || ""} />
+                  ) : <div className="document-preview" dir="auto">{activeBrowserTab.content}</div>}</div>
+                  {activeBrowserTab.terminalOpen && <section className="workspace-terminal"><header><Terminal /><span>Terminal</span><small>{workspaces.find((item) => item.id === activeBrowserTab.projectId)?.name}</small><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { terminalOutput: "" })}>Clear</button><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { terminalOpen: false })}><X /></button></header><pre>{activeBrowserTab.terminalOutput || "Terminal ready. Commands run inside this Work folder.\n"}{activeBrowserTab.terminalBusy && "Running…\n"}</pre><form onSubmit={(event) => { event.preventDefault(); void runWorkspaceTerminal(activeBrowserTab); }}><span>❯</span><input autoFocus spellCheck={false} value={activeBrowserTab.terminalCommand || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { terminalCommand: event.target.value })} placeholder="Enter a project command" /><button type="submit" disabled={activeBrowserTab.terminalBusy || !activeBrowserTab.terminalCommand?.trim()}><ArrowRight /></button></form></section>}
+                </section>
               </div>
             ) : activeBrowserTab?.kind === "document" ? (
               <div className="workspace-document">
@@ -3298,9 +3356,10 @@ export default function App() {
               </div>
             ) : activeBrowserTab?.kind === "projectfiles" ? (
               <div className="workspace-files project-files">
-                <header><div><span className="work-source-badge"><BriefcaseBusiness />Work files · Live</span><h3>{activeBrowserTab.title}</h3><p>Files update automatically as the project changes.</p></div><div className="project-file-actions"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: !activeBrowserTab.creatingFile, createPath: activeBrowserTab.createPath || "untitled.md" })}><Plus />New file</button></div></header>
-                {activeBrowserTab.creatingFile && <form className="project-file-create" onSubmit={(event) => { event.preventDefault(); createProjectFile(activeBrowserTab); }}><FileText /><input autoFocus value={activeBrowserTab.createPath || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { createPath: event.target.value })} placeholder="notes.md or src/new-file.ts" /><button type="button" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: false })}>Cancel</button><button type="submit">Create</button></form>}
-                <div className="project-file-list">{(activeBrowserTab.entries || []).map((entry) => <button className={entry.kind} key={entry.path} onClick={() => openProjectFile(activeBrowserTab, entry)} disabled={entry.kind === "directory"} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <FileText />}<span><b>{entry.name}</b><small>{entry.path}{entry.kind === "file" ? ` · ${Math.max(1, Math.round(entry.size / 1024))} KB` : ""}</small></span>{entry.kind === "file" && <ArrowRight />}</button>)}</div>
+                <header><div><span className="work-source-badge"><BriefcaseBusiness />Work files · Live</span><h3>{activeBrowserTab.title}</h3><p>Files update automatically as the project changes.</p></div><div className="project-file-actions"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: true, createKind: "file", createPath: "untitled.md" })}><Plus />New file</button><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: true, createKind: "folder", createPath: "new-folder" })}><Folder />New folder</button></div></header>
+                {activeBrowserTab.creatingFile && <form className="project-file-create" onSubmit={(event) => { event.preventDefault(); createProjectItem(activeBrowserTab); }}>{activeBrowserTab.createKind === "folder" ? <Folder /> : <FileText />}<input autoFocus value={activeBrowserTab.createPath || ""} onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { createPath: event.target.value })} placeholder={activeBrowserTab.createKind === "folder" ? "Folder name" : "notes.md or src/new-file.ts"} /><button type="button" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { creatingFile: false })}>Cancel</button><button type="submit">Create {activeBrowserTab.createKind}</button></form>}
+                <nav className="project-breadcrumbs"><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: "" })}><BriefcaseBusiness />{activeBrowserTab.title}</button>{(activeBrowserTab.directoryPath || "").split("/").filter(Boolean).map((segment, index, parts) => <Fragment key={`${segment}-${index}`}><ChevronRight /><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: parts.slice(0, index + 1).join("/") })}>{segment}</button></Fragment>)}</nav>
+                <div className="project-file-list">{(activeBrowserTab.directoryPath || "") && <button className="directory up" onClick={() => updateWorkspaceTab(activeBrowserTab.id, { directoryPath: parentDirectory(activeBrowserTab.directoryPath || "") })}><ArrowRight /><span><b>Back</b><small>{parentDirectory(activeBrowserTab.directoryPath || "") || "Project root"}</small></span></button>}{directoryEntries(activeBrowserTab.entries, activeBrowserTab.directoryPath || "").map((entry) => <button className={entry.kind} key={entry.path} onClick={() => entry.kind === "directory" ? updateWorkspaceTab(activeBrowserTab.id, { directoryPath: entry.path }) : openProjectFile(activeBrowserTab, entry)} title={entry.path}>{entry.kind === "directory" ? <Folder /> : <FileText />}<span><b>{entry.name}</b><small>{entry.kind === "directory" ? `${(activeBrowserTab.entries || []).filter((item) => parentDirectory(item.path) === entry.path).length} items` : `${Math.max(1, Math.round(entry.size / 1024))} KB`}</small></span>{entry.kind === "directory" ? <ChevronRight /> : <ArrowRight />}</button>)}</div>
               </div>
             ) : activeBrowserTab?.kind === "temporary" ? (
               <div className="workspace-sidechat">

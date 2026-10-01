@@ -1,6 +1,6 @@
 {
-  "version": "0.17.2",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.17.2",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.17.2/IDK.Nova_0.17.2_x64-setup.exe",
-  "notes": ["Nova Work now runs through a provider-independent Agent Core", "Tool calls have enforced risk, permission and side-effect metadata", "Work tasks keep a resumable local audit timeline", "Project tools now support focused patches, line-range reads, folders, move, copy and recoverable deletion", "Every Nova file change creates an undo snapshot", "Terminal commands run inside the selected Work folder"]
+  "version": "0.18.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.18.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.18.0/IDK.Nova_0.18.0_x64-setup.exe",
+  "notes": ["Work files now use a real hierarchical folder explorer", "Code files open in an integrated editor with live project navigation", "A project terminal is available beside the code editor", "Create files and folders directly inside the current directory", "Open files update automatically when Work changes the project"]
 }
