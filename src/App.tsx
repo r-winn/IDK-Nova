@@ -146,6 +146,29 @@ const textDirection = (value: string): "rtl" | "ltr" => {
   const firstStrong = value.match(/[A-Za-z\u0590-\u08ff]/)?.[0] || "";
   return /[\u0590-\u08ff]/.test(firstStrong) ? "rtl" : "ltr";
 };
+const isImageGenerationRequest = (value: string) => {
+  const prompt = value.trim();
+  if (!prompt) return false;
+  const englishIntent = /\b(?:generate|create|make|draw|design|render|illustrate)\b[\s\S]{0,90}\b(?:image|photo|picture|poster|wallpaper|logo|illustration|artwork)\b/i.test(prompt)
+    || /\b(?:image|photo|picture|poster|wallpaper|logo|illustration|artwork)\b[\s\S]{0,55}\b(?:generate|create|make|draw|design|render)\b/i.test(prompt);
+  const persianIntent = /(?:عکس|تصویر|پوستر|والپیپر|لوگو|نگاره|طرح)[\s\S]{0,65}(?:بساز|تولید\s*کن|طراحی\s*کن|خلق\s*کن|درست\s*کن|بکش)/i.test(prompt)
+    || /(?:بساز|تولید\s*کن|طراحی\s*کن|خلق\s*کن|درست\s*کن|بکش)[\s\S]{0,65}(?:عکس|تصویر|پوستر|والپیپر|لوگو|نگاره|طرح)/i.test(prompt);
+  return englishIntent || persianIntent;
+};
+const ImageGenerationProgress = () => (
+  <div className="image-generation-progress" role="status" aria-live="polite" aria-label="Creating image">
+    <div className="image-generation-canvas">
+      <span className="image-generation-orb orb-one" />
+      <span className="image-generation-orb orb-two" />
+      <ImageIcon className="image-generation-icon" />
+      <span className="image-generation-dots"><i /><i /><i /></span>
+    </div>
+    <div className="image-generation-copy">
+      <span><Sparkles />Creating image</span>
+      <small>Composing the scene and refining details…</small>
+    </div>
+  </div>
+);
 const normalStarterPrompts = [
   { title: "Plan a project", detail: "Turn an idea into clear steps", prompt: "Help me plan a project from scratch", icon: Sparkles },
   { title: "Explain something", detail: "Make a complex topic simple", prompt: "Explain this concept simply: ", icon: MessageSquare },
@@ -1328,13 +1351,14 @@ export default function App() {
       return;
     }
     const user: Message = { role: "user", content: tab.draft.trim() };
+    const generationKind: Message["generationKind"] = isImageGenerationRequest(user.content) ? "image" : "text";
     const conversation = [...(tab.messages || []), user];
     const startedAt = Date.now();
     updateWorkspaceTab(tab.id, {
       draft: "",
       busy: true,
       startedAt,
-      messages: [...conversation, { role: "assistant", content: "", generating: true }],
+      messages: [...conversation, { role: "assistant", content: "", generating: true, generationKind }],
     });
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1509,6 +1533,7 @@ export default function App() {
       attachments: outgoingFiles,
       quote: edited ? undefined : replyQuote || undefined,
     };
+    const generationKind: Message["generationKind"] = isImageGenerationRequest(outgoingText) ? "image" : "text";
     stickToBottomRef.current = true;
     setShowJumpToBottom(false);
     const title = history.length
@@ -1524,7 +1549,7 @@ export default function App() {
               messages: [
                 ...history,
                 user,
-                { role: "assistant", content: "", generating: true },
+                { role: "assistant", content: "", generating: true, generationKind },
               ],
             }
           : item,
@@ -2499,7 +2524,7 @@ export default function App() {
                       </div>
                     ) : null}
                     <div className="content" dir={message.role === "user" ? textDirection(message.content) : "ltr"}>
-                      {message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : (
+                      {message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : (
                         <div className="agent-progress-wrap">
                           <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{chat.workspaceId && agentStatus && <span>{agentStatus}</span>}</div>
                           {chat.workspaceId && agentTimeline.length > 1 && <div className="agent-timeline" aria-label="Task activity">{agentTimeline.slice(-3).map((item, step) => <span key={`${item}-${step}`} className={step === agentTimeline.slice(-3).length - 1 ? "active" : "done"}>{step === agentTimeline.slice(-3).length - 1 ? <i /> : <Check />}{item}</span>)}</div>}
@@ -3472,7 +3497,7 @@ export default function App() {
                     <article className={`${message.role} ${message.role === "assistant" ? "no-speaker" : ""}`} key={index}>
                       {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
-                        <div className="content" dir={message.role === "user" ? textDirection(message.content) : "ltr"}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : <span className="typing"><i /><i /><i /></span>}</div>
+                        <div className="content" dir={message.role === "user" ? textDirection(message.content) : "ltr"}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : <span className="typing"><i /><i /><i /></span>}</div>
                         {message.role === "user" && message.content && <div className="message-actions user-message-actions"><button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                         {message.role === "assistant" && message.content && <div className="message-actions">
                           <button disabled={message.generating} onClick={() => copy(message.content)}><Copy />Copy</button>
