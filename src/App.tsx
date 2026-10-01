@@ -3,6 +3,8 @@ import {
   CSSProperties,
   Fragment,
   KeyboardEvent,
+  Suspense,
+  lazy,
   useEffect,
   useMemo,
   useRef,
@@ -78,7 +80,6 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import katex from "katex";
 import "katex/dist/katex.min.css";
-import PdfViewer from "./components/PdfViewer";
 import { AgentToolCall, discoverModels, runAgentCompletion, streamCompletion, testModel } from "./lib/ai";
 import { NovaAgentCore } from "./agent/core";
 import { providerTools } from "./agent/catalog";
@@ -108,6 +109,7 @@ import {
   UpdateManifest,
   isNewerVersion,
 } from "./version";
+
 import {
   DownloadProgress,
   NativeUpdate,
@@ -118,6 +120,8 @@ import {
 } from "./lib/updater";
 import { BrandMark } from "./components/BrandMark";
 import { ThemeSelector } from "./components/ThemeSelector";
+
+const PdfViewer = lazy(() => import("./components/PdfViewer"));
 
 const starterChats: Chat[] = [
   { id: 1, title: "Welcome to Nova", time: "Today", messages: [] },
@@ -1553,6 +1557,12 @@ export default function App() {
           if (detail.includes("__NOVA_PERMISSION_DENIED__")) {
             core.cancel();
             setChats((items) => items.map((item) => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, content: "Permission was not granted. The requested action was cancelled." } : message) } : item));
+            return;
+          }
+          if (detail.includes("__NOVA_AGENT_STALLED__")) {
+            const message = detail.replace("__NOVA_AGENT_STALLED__", "");
+            core.pause(message);
+            setChats((items) => items.map((item) => item.id === active ? { ...item, messages: item.messages.map((entry, index) => index === item.messages.length - 1 ? { ...entry, content: message } : entry) } : item));
             return;
           }
           core.fail(detail);
@@ -3269,7 +3279,9 @@ export default function App() {
                 <div><img src={activeBrowserTab.imageUrl} alt={activeBrowserTab.title} style={{ transform: `scale(${activeBrowserTab.imageZoom || 1})` }} /></div>
               </div>
             ) : activeBrowserTab?.kind === "pdf" ? (
-              <PdfViewer dataUrl={activeBrowserTab.fileUrl || ""} title={activeBrowserTab.title} zoom={activeBrowserTab.imageZoom || 1} onPages={(pdfPages) => updateWorkspaceTab(activeBrowserTab.id, { pdfPages })} />
+              <Suspense fallback={<div className="workspace-file-viewer"><div><FileText /><h3>Opening PDF…</h3><p>Preparing the document viewer.</p></div></div>}>
+                <PdfViewer dataUrl={activeBrowserTab.fileUrl || ""} title={activeBrowserTab.title} zoom={activeBrowserTab.imageZoom || 1} onPages={(pdfPages) => updateWorkspaceTab(activeBrowserTab.id, { pdfPages })} />
+              </Suspense>
             ) : activeBrowserTab?.kind === "file" ? (
               <div className="workspace-file-viewer">
                 {activeBrowserTab.content ? <pre dir="auto">{activeBrowserTab.content}</pre> : <div><FileText /><h3>{activeBrowserTab.title}</h3><p>A native preview is not available for this file type.</p><button onClick={downloadWorkspaceFile}><Download />Download file</button></div>}

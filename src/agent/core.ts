@@ -57,6 +57,7 @@ export class NovaAgentCore {
   }
 
   complete() { this.task.event("task", "completed", "Task completed"); }
+  pause(detail: string) { this.task.event("task", "paused", "Task paused after detecting no progress", detail); }
   fail(detail: string) { this.task.event("error", "failed", "Task failed", detail); }
   cancel() { this.task.event("task", "cancelled", "Task cancelled"); }
 }

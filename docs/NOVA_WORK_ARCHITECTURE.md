@@ -44,6 +44,8 @@ created → planning → waiting_permission / waiting_user → running
 
 Each event records its time, tool, call identifier, label, state, and error detail. UI progress is derived from the same activity stream rather than a separate spinner state.
 
+The model/tool loop has no fixed turn count. It continues until the model returns a final answer, the user stops it, an actual provider/tool failure occurs, or the progress watchdog detects a repeated one-, two-, or three-action cycle with unchanged results. Approval and user-input prompts pause the existing run and resume the same run state.
+
 ## Current native tools
 
 - `fs_list`, `fs_read`, `fs_read_range`, `fs_search`

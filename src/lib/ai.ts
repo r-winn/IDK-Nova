@@ -1,6 +1,7 @@
 import type { Config, Message, Provider, ResponseMemory } from '../types';
 import { getActiveProvider } from '../types';
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http';
+import { AgentLoopWatchdog } from '../agent/loop-watchdog';
 
 const isDesktop = () => '__TAURI_INTERNALS__' in window;
 const request: typeof fetch = (input, init) =>
@@ -168,6 +169,13 @@ export async function streamCompletion(config: Config, messages: Message[], onTo
 export type AgentTool = { type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } };
 export type AgentToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 
+const compactScreenFingerprint = (dataUrl: string) => {
+  let hash = 2166136261;
+  const stride = Math.max(1, Math.floor(dataUrl.length / 2048));
+  for (let index = 0; index < dataUrl.length; index += stride) hash = Math.imul(hash ^ dataUrl.charCodeAt(index), 16777619);
+  return `${dataUrl.length}:${(hash >>> 0).toString(16)}`;
+};
+
 export async function runAgentCompletion(
   config: Config,
   messages: Message[],
@@ -191,9 +199,11 @@ export async function runAgentCompletion(
   let statelessContext: any[] = stateless ? [...responseInput] : [];
   const responseTools = tools.map((tool) => ({ type: 'function', name: tool.function.name, description: tool.function.description, parameters: tool.function.parameters }));
   let responsesSupported = !unsupportedResponsesProviders.has(providerKey);
+  const watchdog = new AgentLoopWatchdog();
   if (!responsesSupported) previousResponseId = '';
-  for (let turn = 0; turn < 10; turn += 1) {
-    if (!responsesSupported) break;
+  let turn = 0;
+  while (responsesSupported) {
+    if (signal?.aborted) throw new DOMException('The task was stopped', 'AbortError');
     const response = await request(endpoint(provider, '/responses'), {
       method: 'POST', headers: headers(provider), signal,
       body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: config.temperature, store: !stateless, tools: responseTools, tool_choice: turn === 0 && requireTool ? 'required' : 'auto' }),
@@ -206,13 +216,11 @@ export async function runAgentCompletion(
         previousResponseId = '';
         responseInput = responsesInput(messages);
         statelessContext = [...responseInput];
-        turn -= 1;
         continue;
       }
       if (turn === 0 && chained && isStaleResponseError(response.status, detail)) {
         previousResponseId = '';
         responseInput = responsesInput(messages);
-        turn -= 1;
         continue;
       }
       if (turn === 0 && (isUnsupportedResponsesError(response.status) || (response.status === 400 && /tools?|tool_choice|function.?call/i.test(detail)))) {
@@ -248,6 +256,7 @@ export async function runAgentCompletion(
       const resultObject = result && typeof result === 'object' ? result as Record<string, unknown> : null;
       const screenImage = typeof resultObject?.__novaImage === 'string' ? resultObject.__novaImage : null;
       const serializableResult = resultObject ? Object.fromEntries(Object.entries(resultObject).filter(([key]) => key !== '__novaImage')) : result;
+      watchdog.observe(call, { result: serializableResult, screen: screenImage ? compactScreenFingerprint(screenImage) : undefined });
       responseInput.push({ type: 'function_call_output', call_id: call.id, output: JSON.stringify(serializableResult) });
       if (screenImage) screenImages.push(screenImage);
     }
@@ -256,22 +265,24 @@ export async function runAgentCompletion(
       statelessContext.push(...responseInput);
       responseInput = statelessContext;
     }
+    turn += 1;
   }
-  if (responsesSupported) throw new Error('Agent paused after 10 turns to prevent an infinite loop. Ask it to continue if more work remains.');
   onMemory?.(undefined);
   const conversation: any[] = [
     { role: 'system', content: systemContext },
     ...conversationInput(messages),
   ];
   let forceFirstTool = requireTool;
-  for (let turn = 0; turn < 10; turn += 1) {
+  turn = 0;
+  while (true) {
+    if (signal?.aborted) throw new DOMException('The task was stopped', 'AbortError');
     const response = await request(endpoint(provider, '/chat/completions'), {
       method: 'POST', headers: headers(provider), signal,
       body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: false, messages: conversation, tools, tool_choice: turn === 0 && forceFirstTool ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
-      if (turn === 0 && forceFirstTool && response.status === 400 && /tool_choice|required/i.test(detail)) { forceFirstTool = false; turn -= 1; continue; }
+      if (turn === 0 && forceFirstTool && response.status === 400 && /tool_choice|required/i.test(detail)) { forceFirstTool = false; continue; }
       throw new Error(`Agent provider returned ${response.status}: ${detail}`);
     }
     const payload = await response.json();
@@ -293,6 +304,7 @@ export async function runAgentCompletion(
       const resultObject = result && typeof result === 'object' ? result as Record<string, unknown> : null;
       const screenImage = typeof resultObject?.__novaImage === 'string' ? resultObject.__novaImage : null;
       const serializableResult = resultObject ? Object.fromEntries(Object.entries(resultObject).filter(([key]) => key !== '__novaImage')) : result;
+      watchdog.observe(call, { result: serializableResult, screen: screenImage ? compactScreenFingerprint(screenImage) : undefined });
       conversation.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(serializableResult) });
       if (screenImage) screenImages.push(screenImage);
     }
@@ -303,6 +315,6 @@ export async function runAgentCompletion(
         { type: 'image_url', image_url: { url: screenImages.at(-1) } },
       ],
     });
+    turn += 1;
   }
-  throw new Error('Agent paused after 10 turns to prevent an infinite loop. Ask it to continue if more work remains.');
 }
