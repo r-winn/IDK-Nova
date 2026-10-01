@@ -769,6 +769,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal])
         .setup(|app| {
             #[cfg(desktop)]

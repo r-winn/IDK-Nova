@@ -926,15 +926,15 @@ main {
 @keyframes workspace-reveal { from { width: var(--browser-width); } to { width: 100vw; } }
 @keyframes workspace-conceal { from { width: 100vw; } to { width: var(--browser-width); } }
 @keyframes workspace-close-full { from { width: 100vw; } to { width: 0; } }
-.nova-browser > .browser-tabs { width: var(--browser-width); min-width: var(--browser-width); }
-.nova-browser > .browser-address { width: calc(var(--browser-width) - 24px); min-width: calc(var(--browser-width) - 24px); }
-.nova-browser > .browser-surface { width: var(--browser-width); min-width: var(--browser-width); }
+.nova-browser > .browser-tabs,
+.nova-browser > .browser-surface { width: 100%; min-width: 0; }
+.nova-browser > .browser-address { width: calc(100% - 24px); min-width: 0; }
 .nova-browser > .browser-tabs,
 .nova-browser > .browser-address,
 .nova-browser > .browser-surface { justify-self: end; }
 .nova-browser.maximized > .browser-tabs,
-.nova-browser.maximized > .browser-surface { width: 100vw; }
-.nova-browser.maximized > .browser-address { width: calc(100vw - 24px); }
+.nova-browser.maximized > .browser-surface { width: 100%; }
+.nova-browser.maximized > .browser-address { width: calc(100% - 24px); }
 .browser-resizer { position: absolute; z-index: 4; left: -5px; top: 0; width: 10px; height: 100%; cursor: col-resize; touch-action: none; display: flex; align-items: center; justify-content: center; }
 .browser-resizer::after { content: ""; width: 1px; height: 100%; background: transparent; transition: background .15s; }
 .browser-resizer:hover::after,
@@ -1364,6 +1364,7 @@ body.resizing-browser iframe { pointer-events: none; }
   fill: currentColor;
 }
 .agent-access-trigger.full { color: #e66f2c !important; background: color-mix(in srgb, #e66f2c 10%, transparent) !important; }
+.agent-access-trigger:disabled { opacity: .34; cursor: not-allowed; background: transparent !important; }
 .agent-access-popover {
   position: absolute;
   z-index: 30;

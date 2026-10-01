@@ -16,6 +16,7 @@
     "process:allow-restart",
     "dialog:allow-open",
     "opener:allow-open-url",
+    "notification:default",
     {
       "identifier": "http:default",
       "allow": [

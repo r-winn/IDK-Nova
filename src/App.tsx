@@ -73,6 +73,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import katex from "katex";
@@ -195,13 +196,23 @@ type BrowserTab = {
   createPath?: string;
   creatingFile?: boolean;
 };
-type NativeBrowserView = { webview: Webview; url: string; frameKey: number; zoom: number };
+type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 type WorkspacePanelSession = { open: boolean; tabs: BrowserTab[]; activeTabId: string; maximized: boolean };
 const newWorkspacePanelSession = (chatId: number): WorkspacePanelSession => {
   const id = `workspace-${chatId}`;
   return { open: false, tabs: [{ id, kind: "home", title: "Workspace", url: "", input: "", history: [], historyIndex: -1 }], activeTabId: id, maximized: false };
 };
-const browserZoomForWidth = (width: number) => Math.max(.72, Math.min(1, width / 920));
+const browserBounds = (surface: HTMLDivElement) => {
+  const rect = surface.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const viewportWidth = viewport?.width || window.innerWidth;
+  const viewportHeight = viewport?.height || window.innerHeight;
+  const left = Math.max(0, Math.ceil(rect.left));
+  const top = Math.max(0, Math.ceil(rect.top));
+  const right = Math.min(viewportWidth, Math.floor(rect.right));
+  const bottom = Math.min(viewportHeight, Math.floor(rect.bottom));
+  return { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
+};
 type DocumentArtifact = { kind: "email" | "document"; title: string; subject: string; body: string; before: string; after: string };
 
 const folderIcons = {
@@ -419,6 +430,11 @@ export default function App() {
     document.documentElement.dataset.theme = resolvedDark ? "dark" : "light";
   }, [resolvedDark]);
   useEffect(() => {
+    if (!busy || !agentAccessOpen) return;
+    setAgentAccessClosing(false);
+    setAgentAccessOpen(false);
+  }, [busy, agentAccessOpen]);
+  useEffect(() => {
     if (!isDesktopApp()) return;
     getVersion().then(setInstalledVersion).catch(() => setInstalledVersion(APP_VERSION));
   }, []);
@@ -550,14 +566,7 @@ export default function App() {
       if (!browserOpen || overlayOpen || activeBrowserTab?.kind !== "browser" || !activeBrowserTab.url || !browserSurfaceRef.current) return;
       await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
       if (cancelled || !browserSurfaceRef.current) return;
-      const rect = browserSurfaceRef.current.getBoundingClientRect();
-      const left = Math.max(0, rect.left);
-      const top = Math.max(0, rect.top);
-      const right = Math.min(window.innerWidth, rect.right);
-      const bottom = Math.min(window.innerHeight, rect.bottom);
-      const width = Math.max(1, right - left);
-      const height = Math.max(1, bottom - top);
-      const zoom = browserZoomForWidth(width);
+      const { left, top, width, height } = browserBounds(browserSurfaceRef.current);
       let entry = views.get(activeBrowserTabId);
       if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
         await entry.webview.close().catch(() => undefined);
@@ -573,16 +582,16 @@ export default function App() {
           width,
           height,
         });
-        entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey, zoom };
+        entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey };
         views.set(activeBrowserTabId, entry);
-        await webview.setZoom(zoom).catch(() => { if (entry) entry.zoom = Number.NaN; });
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
+        await webview.setSize(new LogicalSize(width, height)).catch(() => undefined);
+        await webview.setZoom(1).catch(() => undefined);
+        await webview.show().catch(() => undefined);
       } else {
         await entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
         await entry.webview.setSize(new LogicalSize(width, height)).catch(() => undefined);
-        if (!Number.isFinite(entry.zoom) || Math.abs(entry.zoom - zoom) > .01) {
-          entry.zoom = zoom;
-          await entry.webview.setZoom(zoom).catch(() => { if (entry) entry.zoom = Number.NaN; });
-        }
         await entry.webview.show().catch(() => undefined);
       }
     };
@@ -600,19 +609,9 @@ export default function App() {
     const syncBounds = () => {
       const entry = nativeBrowserViewsRef.current.get(activeBrowserTabId);
       if (!entry) return;
-      const rect = surface.getBoundingClientRect();
-      const left = Math.max(0, rect.left);
-      const top = Math.max(0, rect.top);
-      const right = Math.min(window.innerWidth, rect.right);
-      const bottom = Math.min(window.innerHeight, rect.bottom);
-      const width = Math.max(1, right - left);
+      const { left, top, width, height } = browserBounds(surface);
       entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
-      entry.webview.setSize(new LogicalSize(width, Math.max(1, bottom - top))).catch(() => undefined);
-      const zoom = browserZoomForWidth(width);
-      if (!Number.isFinite(entry.zoom) || Math.abs(entry.zoom - zoom) > .01) {
-        entry.zoom = zoom;
-        entry.webview.setZoom(zoom).catch(() => { entry.zoom = Number.NaN; });
-      }
+      entry.webview.setSize(new LogicalSize(width, height)).catch(() => undefined);
     };
     const followLayoutAnimation = () => {
       syncBounds();
@@ -627,9 +626,13 @@ export default function App() {
     observer.observe(surface);
     followLayoutAnimation();
     window.addEventListener("resize", syncBounds);
+    window.visualViewport?.addEventListener("resize", syncBounds);
+    window.visualViewport?.addEventListener("scroll", syncBounds);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", syncBounds);
+      window.visualViewport?.removeEventListener("resize", syncBounds);
+      window.visualViewport?.removeEventListener("scroll", syncBounds);
       cancelAnimationFrame(animationFrame);
     };
   }, [browserOpen, activeBrowserTabId, browserMaximized, sidebar]);
@@ -847,9 +850,18 @@ export default function App() {
     setAgentAccessClosing(true);
     window.setTimeout(() => { setAgentAccessOpen(false); setAgentAccessClosing(false); }, 170);
   };
+  const notifyAgentAttention = async (message: string) => {
+    if (!isDesktopApp()) return;
+    const focused = await getCurrentWindow().isFocused().catch(() => true);
+    if (focused && document.visibilityState === "visible") return;
+    let granted = await isPermissionGranted().catch(() => false);
+    if (!granted) granted = (await requestPermission().catch(() => "denied")) === "granted";
+    if (granted) sendNotification({ title: "Nova Work needs your approval", body: message });
+  };
   const requestAgentApproval = (approval: NonNullable<AgentApproval>) => new Promise<boolean>((resolve) => {
     approvalResolverRef.current = resolve;
     setAgentApproval(approval);
+    void notifyAgentAttention(`${approval.title} — open Nova to choose Allow or Deny.`);
   });
   const resolveAgentApproval = (approved: boolean) => {
     const resolve = approvalResolverRef.current;
@@ -860,6 +872,7 @@ export default function App() {
   const requestAgentInput = (prompt: string, placeholder = "Enter the requested value") => new Promise<string | null>((resolve) => {
     inputResolverRef.current = resolve;
     setAgentInput({ prompt: prompt.slice(0, 240), placeholder: placeholder.slice(0, 80), value: "" });
+    void notifyAgentAttention(`${prompt.slice(0, 120)} — open Nova to continue.`);
   });
   const resolveAgentInput = (value: string | null) => {
     const resolve = inputResolverRef.current;
@@ -870,10 +883,21 @@ export default function App() {
   const confirmChatDialog = () => {
     if (!chatDialog) return;
     if (chatDialog.mode === "delete") {
-      const next = chats.filter((item) => item.id !== chatDialog.id);
+      const deleted = chats.find((item) => item.id === chatDialog.id);
+      let next = chats.filter((item) => item.id !== chatDialog.id);
       workspaceSessionsRef.current.delete(chatDialog.id);
+      if (active === chatDialog.id && deleted?.workspaceId) {
+        let replacement = next.find((item) => !item.archived && item.workspaceId === deleted.workspaceId);
+        if (!replacement) {
+          replacement = { id: Date.now(), title: "New work chat", time: "Today", messages: [], workspaceId: deleted.workspaceId };
+          next = [replacement, ...next];
+        }
+        setOpenWorkspaceId(deleted.workspaceId);
+        setActive(replacement.id);
+      } else if (active === chatDialog.id) {
+        setActive(next[0]?.id || starterChats[0].id);
+      }
       setChats(next.length ? next : starterChats);
-      if (active === chatDialog.id) setActive(next[0]?.id || 1);
       setToast("Conversation deleted");
     } else if (chatDialog.value.trim()) {
       setChats((items) =>
@@ -2450,6 +2474,7 @@ export default function App() {
                     aria-checked={(chatWorkspace.agentAccess || "ask") === value}
                     className={`${(chatWorkspace.agentAccess || "ask") === value ? "selected" : ""} ${value === "auto" ? "risk" : ""}`}
                     key={value}
+                    disabled={busy}
                     onClick={() => {
                       setWorkspaces((items) => items.map((item) => item.id === chatWorkspace.id ? { ...item, agentAccess: value } : item));
                       closeAgentAccess();
@@ -2485,10 +2510,11 @@ export default function App() {
                   <button
                     type="button"
                     className={`agent-access-trigger ${(chatWorkspace.agentAccess || "ask") === "auto" ? "full" : ""}`}
-                    title="Agent access"
+                    title={busy ? "Agent access is locked while Work is running" : "Agent access"}
                     aria-label="Agent access"
                     aria-expanded={agentAccessOpen}
-                    onClick={() => agentAccessOpen ? closeAgentAccess() : (setAgentAccessClosing(false), setAgentAccessOpen(true))}
+                    disabled={busy}
+                    onClick={() => !busy && (agentAccessOpen ? closeAgentAccess() : (setAgentAccessClosing(false), setAgentAccessOpen(true)))}
                   >
                     <ShieldCheck />
                   </button>

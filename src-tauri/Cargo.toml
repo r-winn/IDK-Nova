@@ -1,6 +1,6 @@
 [package]
 name = "idk-nova"
-version = "0.17.0"
+version = "0.17.1"
 description = "A private, local-first AI chat application"
 authors = ["IDK contributors"]
 edition = "2021"
@@ -20,6 +20,7 @@ tauri-plugin-process = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-http = { version = "2", features = ["unsafe-headers"] }
 tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"
