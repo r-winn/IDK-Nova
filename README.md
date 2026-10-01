@@ -5,8 +5,8 @@
   <p>Chat with local or cloud models, work with real project folders, inspect files, and keep every provider under your control.</p>
 
   [![Latest release](https://img.shields.io/github/v/release/r-winn/IDK-Nova?style=flat-square&label=latest)](https://github.com/r-winn/IDK-Nova/releases/latest)
-  [![Windows](https://img.shields.io/badge/Windows-Download_EXE-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.16.3_x64-setup.exe)
-  [![macOS](https://img.shields.io/badge/macOS-Universal_DMG-171717?style=flat-square&logo=apple)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.16.3_universal.dmg)
+  [![Windows](https://img.shields.io/badge/Windows-Download_EXE-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.17.0_x64-setup.exe)
+  [![macOS](https://img.shields.io/badge/macOS-Universal_DMG-171717?style=flat-square&logo=apple)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.17.0_universal.dmg)
   [![Web app](https://img.shields.io/badge/Web-Open%20Nova-171717?style=flat-square)](https://r-winn.github.io/IDK-Nova/)
   [![License](https://img.shields.io/github/license/r-winn/IDK-Nova?style=flat-square)](LICENSE)
 </div>
@@ -14,9 +14,11 @@
 <p align="center">
   <a href="#get-nova"><strong>Download</strong></a> ·
   <a href="https://r-winn.github.io/IDK-Nova/"><strong>Try on the web</strong></a> ·
-  <a href="#nova-work-local-project-intelligence"><strong>Nova Work</strong></a> ·
+  <a href="#nova-work-local-agent-workspace"><strong>Nova Work</strong></a> ·
   <a href="#run-from-source"><strong>Build from source</strong></a>
 </p>
+
+Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
 > [!IMPORTANT]
 > IDK Nova connects directly to the providers you configure. Verify important AI output, review Work actions before approval, and send sensitive information only to providers you trust.
@@ -33,8 +35,8 @@ Nova is local-first and provider-neutral. It does not ship with a hidden model o
 
 | Platform | Recommended download | Alternative |
 | --- | --- | --- |
-| Windows 10/11 (64-bit) | **[Download Setup.exe](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.16.3_x64-setup.exe)** | [MSI for managed deployment](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.16.3_x64_en-US.msi) |
-| macOS (Apple Silicon + Intel) | **[Download Universal DMG](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.16.3_universal.dmg)** | — |
+| Windows 10/11 (64-bit) | **[Download Setup.exe](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.17.0_x64-setup.exe)** | [MSI for managed deployment](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.17.0_x64_en-US.msi) |
+| macOS (Apple Silicon + Intel) | **[Download Universal DMG](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.17.0_universal.dmg)** | — |
 | Browser | **[Open the web app](https://r-winn.github.io/IDK-Nova/)** | Desktop is required for Nova Work and local GGUF import |
 
 All official binaries are attached to the **[latest GitHub Release](https://github.com/r-winn/IDK-Nova/releases/latest)**. Do not download Nova installers from unofficial mirrors.
@@ -134,7 +136,7 @@ Your browser or provider must allow requests from the Nova website. The Windows 
 
 Image analysis requires a vision-capable model. A text-only model such as `qwen2.5:0.5b` can chat and help with code but cannot understand an uploaded image.
 
-## Nova Work: local project intelligence
+## Nova Work: local agent workspace
 
 Nova Work is available in the desktop application because a normal website cannot safely retain broad access to arbitrary folders on your computer.
 
@@ -143,7 +145,21 @@ Nova Work is available in the desktop application because a normal website canno
 3. Start a **New work chat** inside that workspace.
 4. Ask about the project, a feature, or an error. Nova builds a local file index and includes only relevant supported text files in that request.
 
-Nova can read supported project files, search the web in Workspace Browser, create or update project files, observe the primary display, open installed applications, click, type, press shortcuts, and scroll on Windows and macOS. Desktop control requires a provider that supports both tool calling and vision. **Ask for approval** confirms every browser, screen, app, input, and file-changing action. **Approve for me** allows observation and research automatically but confirms clicks, typing, app launches, and file changes. **Full access** can continue automatically until you press Stop.
+Nova Work 0.17 introduces a provider-independent Agent Core. Models request semantic tools; they never receive direct operating-system access. The core validates tool arguments, classifies each call as read/write/external, applies project permissions, records a local task audit trail, executes the native tool, and returns a structured result to the model.
+
+The current Work tool set can list/search/read project files, read selected line ranges, write text files, apply exact focused patches, create directories, move/copy items, move items to recoverable Nova trash, undo the latest Nova file change, run bounded commands in the selected project folder, use Nova Workspace Browser, request user input, and perform visible desktop actions on Windows and macOS. File writes and patches create snapshots under `.nova-work/history`; removal is recoverable and never calls a permanent-delete command.
+
+Desktop control requires a provider that supports both tool calling and vision. **Ask for approval** confirms every changing or external action. **Approve for me** permits low-risk inspection while confirming high-risk actions. **Full access** removes routine prompts but Nova still blocks critical, destructive, credential, payment, privilege-elevation, and security-setting operations.
+
+### Work execution model
+
+```text
+User goal → Agent Core → Tool policy → Approval → Native Tool Host → Structured result → Model verification
+```
+
+Each task is persisted locally with states such as planning, waiting for permission, running, failed, cancelled, and completed. The live activity trail replaces an ambiguous spinner and survives UI reloads as audit data. Tool definitions are provider-neutral and are translated to the OpenAI-compatible function format at the provider boundary.
+
+This release establishes the secure runtime boundary for later process separation, PTY sessions, semantic Playwright browser automation, MCP, artifact workers, and operating-system sandboxes. Those later layers are not falsely advertised as complete in 0.17; the current native host remains part of the Tauri process.
 
 Desktop access remains visible and interruptible. Nova blocks credential entry, purchases, authentication, sending or submitting forms, security-setting changes, deletion, and other irreversible operations. Project-file tools also block secret files, dependency/build folders, symbolic links, binary files, oversized files, and every path outside the selected project. Choose a provider you trust before discussing private code or sharing your screen.
 

@@ -1,6 +1,6 @@
 {
-  "version": "0.16.3",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.16.3",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.16.3/IDK.Nova_0.16.3_x64-setup.exe",
-  "notes": ["Work keeps all web tasks inside Nova Workspace Browser", "Requests to launch Chrome, Edge or other browsers are redirected into the side panel", "Windows application launches no longer flash a command window", "Tool failures return the agent to planning instead of leaving a stale activity message", "Approval dialogs reliably appear above native browser content"]
+  "version": "0.17.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.17.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.17.0/IDK.Nova_0.17.0_x64-setup.exe",
+  "notes": ["Nova Work now runs through a provider-independent Agent Core", "Tool calls have enforced risk, permission and side-effect metadata", "Work tasks keep a resumable local audit timeline", "Project tools now support focused patches, line-range reads, folders, move, copy and recoverable deletion", "Every Nova file change creates an undo snapshot", "Terminal commands run inside the selected Work folder"]
 }

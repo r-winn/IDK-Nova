@@ -1438,6 +1438,13 @@ body.resizing-browser iframe { pointer-events: none; }
   .agent-input-inline > div { justify-content: flex-end; }
 }
 .agent-progress { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 10px; }
+.agent-progress-wrap { display: grid; gap: 11px; padding: 3px 0; }
+.agent-timeline { display: grid; gap: 7px; color: var(--muted); font-size: 9px; }
+.agent-timeline span { display: flex; align-items: center; gap: 8px; min-height: 15px; }
+.agent-timeline svg { width: 12px; height: 12px; color: #35a678; }
+.agent-timeline i { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, #35a678 72%, var(--text)); box-shadow: 0 0 0 4px color-mix(in srgb, #35a678 12%, transparent); animation: agentPulse 1.5s ease-in-out infinite; }
+.agent-timeline .done { opacity: .72; }
+@keyframes agentPulse { 50% { transform: scale(.72); opacity: .55; } }
 
 .folder-list {
   max-height: 0;

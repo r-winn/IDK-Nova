@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use futures_util::StreamExt;
 use std::{fs, io::{Cursor, Write}, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
 use tauri::Manager;
@@ -190,20 +190,23 @@ async fn open_application(name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn run_terminal(command: String) -> Result<TerminalOutput, String> {
+async fn run_terminal(command: String, root_path: Option<String>) -> Result<TerminalOutput, String> {
     let command = command.trim().to_string();
     if command.is_empty() || command.len() > 8_000 { return Err("Enter a terminal command under 8,000 characters".into()); }
     let lowered = command.to_ascii_lowercase();
     let blocked = ["rm -rf /", "diskpart", "format ", "shutdown ", "reboot", "remove-item -recurse", "reg delete", "del /s", "cipher /w"];
     if blocked.iter().any(|pattern| lowered.contains(pattern)) { return Err("Nova blocked a destructive terminal command".into()); }
     tauri::async_runtime::spawn_blocking(move || {
+        let working_directory = root_path.as_deref().map(canonical_root).transpose()?;
         #[cfg(target_os = "macos")]
-        let output = Command::new("/bin/zsh").args(["-lc", &command]).output();
+        let output = { let mut process = Command::new("/bin/zsh"); process.args(["-lc", &command]); if let Some(path) = &working_directory { process.current_dir(path); } process.output() };
         #[cfg(windows)]
         let output = {
             use std::os::windows::process::CommandExt;
             let mut process = Command::new("powershell.exe");
-            process.creation_flags(0x08000000).args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", &command]).output()
+            process.creation_flags(0x08000000).args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", &command]);
+            if let Some(path) = &working_directory { process.current_dir(path); }
+            process.output()
         };
         #[cfg(not(any(windows, target_os = "macos")))]
         return Err("Terminal tools are currently available on Windows and macOS".into());
@@ -424,6 +427,16 @@ struct WorkspaceMatch { path: String, line: usize, preview: String }
 #[serde(rename_all = "camelCase")]
 struct PortableWorkspace { project_json: String, chats_json: String }
 
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceUndo {
+    action: String,
+    path: String,
+    secondary_path: Option<String>,
+    snapshot_path: Option<String>,
+    existed: bool,
+}
+
 fn ignored_name(name: &str) -> bool {
     matches!(name, ".git" | ".svn" | ".hg" | "node_modules" | "target" | "dist" | "build" | ".next" | ".cache" | "coverage")
         || matches!(name, ".env" | ".env.local" | ".env.production" | "id_rsa" | "id_ed25519")
@@ -469,6 +482,45 @@ fn safe_write_target(root: &Path, relative_path: &str) -> Result<PathBuf, String
     let target = root.join(relative);
     if target.exists() && fs::symlink_metadata(&target).map(|meta| meta.file_type().is_symlink()).unwrap_or(true) { return Err("Agent cannot overwrite a symbolic link".into()); }
     Ok(target)
+}
+
+fn nova_data_dir(root: &Path) -> Result<PathBuf, String> {
+    let directory = root.join(".nova-work");
+    if fs::symlink_metadata(&directory).map(|meta| meta.file_type().is_symlink()).unwrap_or(false) { return Err("The .nova-work path cannot be a symbolic link".into()); }
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    Ok(directory)
+}
+
+fn record_undo(root: &Path, undo: &WorkspaceUndo) -> Result<(), String> {
+    let history = nova_data_dir(root)?.join("history");
+    fs::create_dir_all(&history).map_err(|error| error.to_string())?;
+    fs::write(history.join("latest.json"), serde_json::to_vec_pretty(undo).map_err(|error| error.to_string())?).map_err(|error| error.to_string())
+}
+
+fn snapshot_file(root: &Path, target: &Path, relative_path: &str) -> Result<Option<String>, String> {
+    if !target.exists() { return Ok(None); }
+    if !target.is_file() { return Err("Only files can be snapshotted by this operation".into()); }
+    let stamp = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map(|value| value.as_millis()).unwrap_or(0);
+    let relative = format!("history/snapshots/{stamp}/{relative_path}");
+    let snapshot = nova_data_dir(root)?.join(&relative);
+    if let Some(parent) = snapshot.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+    fs::copy(target, &snapshot).map_err(|error| format!("Could not snapshot the existing file: {error}"))?;
+    Ok(Some(relative))
+}
+
+fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
+    if source.is_file() {
+        if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+        fs::copy(source, destination).map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    fs::create_dir_all(destination).map_err(|error| error.to_string())?;
+    for entry in fs::read_dir(source).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        if entry.file_type().map_err(|error| error.to_string())?.is_symlink() { continue; }
+        copy_tree(&entry.path(), &destination.join(entry.file_name()))?;
+    }
+    Ok(())
 }
 
 fn walk_workspace(root: &Path, current: &Path, depth: usize, output: &mut Vec<WorkspaceEntry>, truncated: &mut bool) {
@@ -593,6 +645,108 @@ async fn save_workspace_history(root_path: String, chats_json: String, activity_
 }
 
 #[tauri::command]
+async fn read_workspace_range(root_path: String, relative_path: String, start_line: usize, end_line: usize) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if start_line == 0 || end_line < start_line || end_line - start_line > 2_000 { return Err("Choose a valid range of at most 2,000 lines".into()); }
+        let root = canonical_root(&root_path)?;
+        let target = safe_target(&root, &relative_path)?;
+        if !target.is_file() || !text_file(&target) { return Err("This file cannot be read as text".into()); }
+        let content = fs::read_to_string(target).map_err(|_| "This file is not valid UTF-8 text".to_string())?;
+        Ok(content.lines().enumerate().filter(|(index, _)| *index + 1 >= start_line && *index + 1 <= end_line).map(|(index, line)| format!("{}: {}", index + 1, line)).collect::<Vec<_>>().join("\n"))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn patch_workspace_file(root_path: String, relative_path: String, old_text: String, new_text: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if old_text.is_empty() { return Err("Patch target cannot be empty".into()); }
+        let root = canonical_root(&root_path)?;
+        let target = safe_target(&root, &relative_path)?;
+        if !target.is_file() || !text_file(&target) { return Err("This file cannot be patched as text".into()); }
+        let content = fs::read_to_string(&target).map_err(|_| "This file is not valid UTF-8 text".to_string())?;
+        let occurrences = content.matches(&old_text).count();
+        if occurrences != 1 { return Err(format!("Patch target must match exactly once; found {occurrences}")); }
+        let snapshot = snapshot_file(&root, &target, &relative_path)?;
+        fs::write(&target, content.replacen(&old_text, &new_text, 1)).map_err(|error| error.to_string())?;
+        record_undo(&root, &WorkspaceUndo { action: "write".into(), path: relative_path.clone(), secondary_path: None, snapshot_path: snapshot, existed: true })?;
+        Ok(serde_json::json!({ "ok": true, "path": relative_path.clone(), "changedFiles": [relative_path], "snapshotCreated": true }))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn create_workspace_directory(root_path: String, relative_path: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let target = safe_write_target(&root, &relative_path)?;
+        if target.exists() { return Err("A project item already exists at this path".into()); }
+        fs::create_dir_all(&target).map_err(|error| error.to_string())?;
+        record_undo(&root, &WorkspaceUndo { action: "create".into(), path: relative_path.clone(), secondary_path: None, snapshot_path: None, existed: false })?;
+        Ok(serde_json::json!({ "ok": true, "path": relative_path.clone(), "changedFiles": [relative_path] }))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn move_workspace_item(root_path: String, from_path: String, to_path: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let source = safe_target(&root, &from_path)?;
+        let destination = safe_write_target(&root, &to_path)?;
+        if destination.exists() { return Err("The destination already exists".into()); }
+        if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+        fs::rename(&source, &destination).map_err(|error| error.to_string())?;
+        record_undo(&root, &WorkspaceUndo { action: "move".into(), path: to_path.clone(), secondary_path: Some(from_path.clone()), snapshot_path: None, existed: true })?;
+        Ok(serde_json::json!({ "ok": true, "from": from_path.clone(), "to": to_path.clone(), "changedFiles": [from_path, to_path] }))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn copy_workspace_item(root_path: String, from_path: String, to_path: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let source = safe_target(&root, &from_path)?;
+        let destination = safe_write_target(&root, &to_path)?;
+        if destination.exists() { return Err("The destination already exists".into()); }
+        copy_tree(&source, &destination)?;
+        record_undo(&root, &WorkspaceUndo { action: "create".into(), path: to_path.clone(), secondary_path: None, snapshot_path: None, existed: false })?;
+        Ok(serde_json::json!({ "ok": true, "from": from_path, "to": to_path.clone(), "changedFiles": [to_path] }))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn trash_workspace_item(root_path: String, relative_path: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let source = safe_target(&root, &relative_path)?;
+        let stamp = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map(|value| value.as_millis()).unwrap_or(0);
+        let trash_relative = format!("trash/{stamp}/{relative_path}");
+        let destination = nova_data_dir(&root)?.join(&trash_relative);
+        if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+        fs::rename(&source, &destination).map_err(|error| error.to_string())?;
+        record_undo(&root, &WorkspaceUndo { action: "trash".into(), path: relative_path.clone(), secondary_path: None, snapshot_path: Some(trash_relative), existed: true })?;
+        Ok(serde_json::json!({ "ok": true, "path": relative_path.clone(), "recoverable": true, "changedFiles": [relative_path] }))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn undo_workspace_change(root_path: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let latest = nova_data_dir(&root)?.join("history/latest.json");
+        let undo: WorkspaceUndo = serde_json::from_slice(&fs::read(&latest).map_err(|_| "There is no Nova change to undo".to_string())?).map_err(|error| error.to_string())?;
+        let target = safe_write_target(&root, &undo.path)?;
+        match undo.action.as_str() {
+            "write" => if let Some(snapshot) = undo.snapshot_path { fs::copy(nova_data_dir(&root)?.join(snapshot), &target).map_err(|error| error.to_string())?; } else if target.exists() { fs::remove_file(&target).map_err(|error| error.to_string())?; },
+            "create" => if target.is_dir() { fs::remove_dir_all(&target).map_err(|error| error.to_string())?; } else if target.exists() { fs::remove_file(&target).map_err(|error| error.to_string())?; },
+            "move" => { let original = safe_write_target(&root, undo.secondary_path.as_deref().ok_or("Undo metadata is incomplete")?)?; if let Some(parent) = original.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; } fs::rename(&target, original).map_err(|error| error.to_string())?; },
+            "trash" => { let stored = nova_data_dir(&root)?.join(undo.snapshot_path.ok_or("Undo metadata is incomplete")?); if let Some(parent) = target.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; } fs::rename(stored, &target).map_err(|error| error.to_string())?; },
+            _ => return Err("This Nova change cannot be undone".into()),
+        }
+        let _ = fs::remove_file(latest);
+        Ok(serde_json::json!({ "ok": true, "restored": undo.path.clone(), "changedFiles": [undo.path] }))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn write_workspace_file(root_path: String, relative_path: String, content: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if content.len() > 2_000_000 { return Err("Agent output exceeds the 2 MB file safety limit".into()); }
@@ -600,13 +754,10 @@ async fn write_workspace_file(root_path: String, relative_path: String, content:
         let target = safe_write_target(&root, &relative_path)?;
         if !text_file(&target) { return Err("Agent can only write supported text and source-code files".into()); }
         if let Some(parent) = target.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
-        if target.exists() {
-            let stamp = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map(|value| value.as_millis()).unwrap_or(0);
-            let backup = root.join(".nova-work").join("backups").join(stamp.to_string()).join(&relative_path);
-            if let Some(parent) = backup.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
-            fs::copy(&target, backup).map_err(|error| format!("Could not back up the existing file: {error}"))?;
-        }
+        let existed = target.exists();
+        let snapshot = snapshot_file(&root, &target, &relative_path)?;
         fs::write(&target, content).map_err(|error| format!("Could not write workspace file: {error}"))?;
+        record_undo(&root, &WorkspaceUndo { action: "write".into(), path: relative_path.clone(), secondary_path: None, snapshot_path: snapshot, existed })?;
         Ok(relative_path)
     }).await.map_err(|error| error.to_string())?
 }
@@ -618,7 +769,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
