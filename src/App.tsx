@@ -472,7 +472,7 @@ export default function App() {
   const [syncingId, setSyncingId] = useState("");
   const [manualModel, setManualModel] = useState("");
   const [includeProviderKeys, setIncludeProviderKeys] = useState(false);
-  const [modelSetupView, setModelSetupView] = useState<"list" | "choose" | "api" | "local">("list");
+  const [modelSetupView, setModelSetupView] = useState<"list" | "connections" | "choose" | "api" | "local">("list");
   const [newProvider, setNewProvider] = useState<Provider>({ id: "", name: "", baseUrl: "", apiKey: "", models: [] });
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [testingModel, setTestingModel] = useState("");
@@ -3030,14 +3030,11 @@ export default function App() {
                         <div><h2>Your models</h2><p>Choose which AI Nova uses, test its connection, or remove it.</p></div>
                         <button className="primary-button" onClick={() => beginModelSetup()}><Plus />Add new model</button>
                       </div>
-                      {draftConfig.providers.length > 0 && <section className="provider-connections">
-                        <div className="provider-connections-heading"><div><h3>Provider connections</h3><p>One API key is shared by every model using the same Base URL.</p></div><ShieldCheck /></div>
-                        {draftConfig.providers.map((provider) => <div className="provider-connection-row" key={provider.id}>
-                          <div className="provider-connection-copy"><b>{provider.name}</b><code title={provider.baseUrl}>{provider.baseUrl}</code><small>{provider.models.length} model{provider.models.length === 1 ? "" : "s"}</small></div>
-                          <label><span>API key <small>{provider.apiKey ? "Configured" : "Required only if the provider uses authentication"}</small></span><input type="password" value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value } : item) }))} /></label>
-                        </div>)}
-                        <label className="include-provider-keys"><input type="checkbox" checked={includeProviderKeys} onChange={(event) => setIncludeProviderKeys(event.target.checked)} /><span><b>Include API keys when exporting</b><small>Off by default. Enable only for a configuration file you will store and transfer securely.</small></span></label>
-                      </section>}
+                      {draftConfig.providers.length > 0 && <button className="provider-connections-card" onClick={() => setModelSetupView("connections")}>
+                        <span className="provider-connections-card-icon"><ShieldCheck /></span>
+                        <span><b>API keys & connections</b><small>{draftConfig.providers.length} connection{draftConfig.providers.length === 1 ? "" : "s"} · {draftConfig.providers.filter((provider) => provider.apiKey).length} key{draftConfig.providers.filter((provider) => provider.apiKey).length === 1 ? "" : "s"} configured</small></span>
+                        <ChevronRight />
+                      </button>}
                       <div className="model-library">
                         {draftConfig.providers.flatMap((provider) => provider.models.map((model) => {
                           const key = `${provider.id}:${model}`;
@@ -3059,6 +3056,17 @@ export default function App() {
                         {!draftConfig.providers.some((provider) => provider.models.length) && <div className="models-empty-state"><Bot /><h3>No models added</h3><p>Add an API model or import a GGUF file when you are ready.</p><button className="primary-button" onClick={() => beginModelSetup()}><Plus />Add your first model</button></div>}
                       </div>
                     </>}
+                    {modelSetupView === "connections" && <div className="model-setup-view provider-connections-view">
+                      <button className="setup-back" onClick={() => setModelSetupView("list")}><ChevronRight />Back to models</button>
+                      <div className="setup-title"><h2>API keys & connections</h2><p>Manage one credential for every model that uses the same Base URL.</p></div>
+                      <section className="provider-connections">
+                        {draftConfig.providers.map((provider) => <div className="provider-connection-row" key={provider.id}>
+                          <div className="provider-connection-copy"><b>{provider.name}</b><code title={provider.baseUrl}>{provider.baseUrl}</code><small>{provider.models.length} model{provider.models.length === 1 ? "" : "s"}</small></div>
+                          <label><span>API key <small>{provider.apiKey ? "Configured" : "Required only if this provider uses authentication"}</small></span><input type="password" value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value } : item) }))} /></label>
+                        </div>)}
+                        <label className="include-provider-keys"><input type="checkbox" checked={includeProviderKeys} onChange={(event) => setIncludeProviderKeys(event.target.checked)} /><span><b>Include API keys when exporting</b><small>Off by default. Enable only for a configuration file you will store and transfer securely.</small></span></label>
+                      </section>
+                    </div>}
                     {modelSetupView === "choose" && <div className="model-setup-view">
                       <button className="setup-back" onClick={() => setModelSetupView("list")}><ChevronRight />Back to models</button>
                       <div className="setup-title"><h2>Add a new model</h2><p>How would you like to connect it?</p></div>
