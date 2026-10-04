@@ -146,6 +146,56 @@ const textDirection = (value: string): "rtl" | "ltr" => {
   const firstStrong = value.match(/[A-Za-z\u0590-\u08ff]/)?.[0] || "";
   return /[\u0590-\u08ff]/.test(firstStrong) ? "rtl" : "ltr";
 };
+const providerEndpointKey = (value: string) => value.trim().replace(/\/+$/, "").toLowerCase();
+const providerDisplayName = (baseUrl: string) => { try { return new URL(baseUrl).hostname; } catch { return "Imported provider"; } };
+const mergeProviders = (current: Provider[], imported: unknown): { providers: Provider[]; providerIds: Map<string, string> } => {
+  const providers = current.map((provider) => ({ ...provider, models: [...provider.models] }));
+  const providerIds = new Map<string, string>();
+  if (!Array.isArray(imported)) return { providers, providerIds };
+  for (const raw of imported) {
+    if (!raw || typeof raw !== "object") continue;
+    const candidate = raw as Partial<Provider>;
+    const baseUrl = typeof candidate.baseUrl === "string" ? candidate.baseUrl.trim().replace(/\/+$/, "") : "";
+    if (!baseUrl) continue;
+    const incomingModels = Array.isArray(candidate.models) ? candidate.models.filter((model): model is string => typeof model === "string" && Boolean(model.trim())).map((model) => model.trim()) : [];
+    const existingIndex = providers.findIndex((provider) => providerEndpointKey(provider.baseUrl) === providerEndpointKey(baseUrl));
+    if (existingIndex >= 0) {
+      const existing = providers[existingIndex];
+      providers[existingIndex] = {
+        ...existing,
+        name: (typeof candidate.name === "string" && candidate.name.trim()) || existing.name,
+        apiKey: (typeof candidate.apiKey === "string" && candidate.apiKey.trim()) ? candidate.apiKey.trim() : existing.apiKey,
+        models: [...new Set([...existing.models, ...incomingModels])],
+      };
+      if (candidate.id) providerIds.set(candidate.id, existing.id);
+      continue;
+    }
+    const baseId = (typeof candidate.id === "string" && candidate.id.trim()) || `provider-${Date.now()}-${providers.length}`;
+    const id = providers.some((provider) => provider.id === baseId) ? `${baseId}-${providers.length + 1}` : baseId;
+    providers.push({ id, name: (typeof candidate.name === "string" && candidate.name.trim()) || providerDisplayName(baseUrl), baseUrl, apiKey: typeof candidate.apiKey === "string" ? candidate.apiKey.trim() : "", models: incomingModels });
+    if (candidate.id) providerIds.set(candidate.id, id);
+  }
+  return { providers, providerIds };
+};
+const mergeImportedConfig = (current: Config, value: Partial<Config>): Config => {
+  const { providers, providerIds } = mergeProviders(current.providers, value.providers);
+  const requestedProvider = value.activeProviderId ? providerIds.get(value.activeProviderId) || value.activeProviderId : "";
+  const activeProviderId = providers.some((provider) => provider.id === current.activeProviderId)
+    ? current.activeProviderId
+    : providers.some((provider) => provider.id === requestedProvider) ? requestedProvider : providers[0]?.id || "";
+  const activeProvider = providers.find((provider) => provider.id === activeProviderId);
+  const activeModel = activeProvider?.models.includes(current.activeModel) ? current.activeModel
+    : activeProvider?.models.includes(value.activeModel || "") ? value.activeModel || "" : activeProvider?.models[0] || "";
+  return {
+    ...current,
+    ...value,
+    providers,
+    activeProviderId,
+    activeModel,
+    branding: { ...current.branding, ...(value.branding || {}) },
+    database: { ...current.database, ...(value.database || {}) },
+  };
+};
 const isImageGenerationRequest = (value: string) => {
   const prompt = value.trim();
   if (!prompt) return false;
@@ -244,11 +294,13 @@ const newWorkspacePanelSession = (chatId: number): WorkspacePanelSession => {
 };
 const browserBounds = (surface: HTMLDivElement) => {
   const rect = surface.getBoundingClientRect();
+  const left = Math.max(0, Math.round(rect.left));
+  const top = Math.max(0, Math.round(rect.top));
   return {
-    left: Math.max(0, Math.round(rect.left)),
-    top: Math.max(0, Math.round(rect.top)),
-    width: Math.max(1, Math.round(rect.width)),
-    height: Math.max(1, Math.round(rect.height)),
+    left,
+    top,
+    width: Math.max(1, Math.min(Math.round(rect.width), window.innerWidth - left)),
+    height: Math.max(1, Math.min(Math.round(rect.height), window.innerHeight - top)),
   };
 };
 const parentDirectory = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
@@ -410,6 +462,7 @@ export default function App() {
   );
   const [syncingId, setSyncingId] = useState("");
   const [manualModel, setManualModel] = useState("");
+  const [includeProviderKeys, setIncludeProviderKeys] = useState(false);
   const [modelSetupView, setModelSetupView] = useState<"list" | "choose" | "api" | "local">("list");
   const [newProvider, setNewProvider] = useState<Provider>({ id: "", name: "", baseUrl: "", apiKey: "", models: [] });
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
@@ -645,10 +698,17 @@ export default function App() {
           width,
           height,
           userAgent: navigator.userAgent,
+          acceptFirstMouse: true,
         });
         entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey };
         views.set(activeBrowserTabId, entry);
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await Promise.race([
+          new Promise<void>((resolve, reject) => {
+            void webview.once("tauri://created", () => resolve());
+            void webview.once("tauri://error", (event) => reject(new Error(String(event.payload || "Native browser creation failed"))));
+          }),
+          new Promise<void>((resolve) => window.setTimeout(resolve, 1600)),
+        ]);
         await webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
         await webview.setSize(new LogicalSize(width, height)).catch(() => undefined);
         await webview.setZoom(1).catch(() => undefined);
@@ -746,12 +806,7 @@ export default function App() {
     loadManagedConfig().then((managed) => {
       if (!managed) return;
       setConfig((current) => {
-        const next = {
-          ...current,
-          ...managed,
-          branding: { ...current.branding, ...managed.branding },
-          database: { ...current.database, ...managed.database },
-        } as Config;
+        const next = mergeImportedConfig(current, managed);
         saveConfig(next);
         return next;
       });
@@ -2057,13 +2112,13 @@ export default function App() {
     reader.onload = () => {
       try {
         const value = JSON.parse(String(reader.result));
-        setDraftConfig((current) => ({
-          ...current,
-          ...value,
-          branding: { ...current.branding, ...value.branding },
-          database: { ...current.database, ...value.database },
-        }));
-        setToast("Configuration imported");
+        setDraftConfig((current) => {
+          const next = mergeImportedConfig(current, value);
+          setConfig(next);
+          saveConfig(next);
+          return next;
+        });
+        setToast("Configuration merged · your existing models were kept");
       } catch {
         setToast("Invalid configuration file");
       }
@@ -2081,7 +2136,7 @@ export default function App() {
       ...draftConfig,
       providers: draftConfig.providers.map((provider) => ({
         ...provider,
-        apiKey: "",
+        apiKey: includeProviderKeys ? provider.apiKey : "",
       })),
       database: { ...draftConfig.database, url: "" },
     };
@@ -2092,7 +2147,7 @@ export default function App() {
     link.download = "idk-nova.config.json";
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    setToast("Configuration downloaded to your Downloads folder");
+    setToast(includeProviderKeys ? "Configuration with provider credentials downloaded" : "Safe configuration downloaded without API keys");
   };
   const uploadLogo = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2961,6 +3016,14 @@ export default function App() {
                         <div><h2>Your models</h2><p>Choose which AI Nova uses, test its connection, or remove it.</p></div>
                         <button className="primary-button" onClick={() => beginModelSetup()}><Plus />Add new model</button>
                       </div>
+                      {draftConfig.providers.length > 0 && <section className="provider-connections">
+                        <div className="provider-connections-heading"><div><h3>Provider connections</h3><p>One API key is shared by every model using the same Base URL.</p></div><ShieldCheck /></div>
+                        {draftConfig.providers.map((provider) => <div className="provider-connection-row" key={provider.id}>
+                          <div className="provider-connection-copy"><b>{provider.name}</b><code title={provider.baseUrl}>{provider.baseUrl}</code><small>{provider.models.length} model{provider.models.length === 1 ? "" : "s"}</small></div>
+                          <label><span>API key <small>{provider.apiKey ? "Configured" : "Required only if the provider uses authentication"}</small></span><input type="password" value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value } : item) }))} /></label>
+                        </div>)}
+                        <label className="include-provider-keys"><input type="checkbox" checked={includeProviderKeys} onChange={(event) => setIncludeProviderKeys(event.target.checked)} /><span><b>Include API keys when exporting</b><small>Off by default. Enable only for a configuration file you will store and transfer securely.</small></span></label>
+                      </section>}
                       <div className="model-library">
                         {draftConfig.providers.flatMap((provider) => provider.models.map((model) => {
                           const key = `${provider.id}:${model}`;
