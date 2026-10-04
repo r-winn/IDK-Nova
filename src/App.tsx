@@ -236,7 +236,7 @@ type BrowserTab = {
   terminalOutput?: string;
   terminalBusy?: boolean;
 };
-type NativeBrowserView = { webview: Webview; url: string; frameKey: number; layout: "compact" | "desktop" };
+type NativeBrowserView = { webview: Webview; url: string; frameKey: number };
 type WorkspacePanelSession = { open: boolean; tabs: BrowserTab[]; activeTabId: string; maximized: boolean };
 const newWorkspacePanelSession = (chatId: number): WorkspacePanelSession => {
   const id = `workspace-${chatId}`;
@@ -250,14 +250,6 @@ const browserBounds = (surface: HTMLDivElement) => {
     width: Math.max(1, Math.round(rect.width)),
     height: Math.max(1, Math.round(rect.height)),
   };
-};
-const nativeWindowContentOffset = async () => {
-  if (!navigator.platform.toLowerCase().includes("mac")) return Promise.resolve({ x: 0, y: 0 });
-  try {
-    const appWindow = getCurrentWindow();
-    const [inner, outer, scale] = await Promise.all([appWindow.innerPosition(), appWindow.outerPosition(), appWindow.scaleFactor()]);
-    return { x: Math.max(0, (inner.x - outer.x) / scale), y: Math.max(0, (inner.y - outer.y) / scale) };
-  } catch { return { x: 0, y: 0 }; }
 };
 const parentDirectory = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 const directoryEntries = (entries: WorkspaceEntry[] = [], directory = "") => entries
@@ -600,9 +592,10 @@ export default function App() {
         })));
         invoke("save_workspace_history", {
           rootPath: workspace.rootPath,
+          projectJson: JSON.stringify({ version: 2, ...workspace }, null, 2),
           chatsJson: JSON.stringify(projectChats),
-          activityJson: JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), activity }, null, 2),
-        }).catch(() => undefined);
+          activityJson: JSON.stringify({ version: 2, updatedAt: new Date().toISOString(), activity }, null, 2),
+        }).catch((error) => setToast(`Work history could not be saved: ${error instanceof Error ? error.message : String(error)}`));
       }
     }, 700);
     return () => window.clearTimeout(timer);
@@ -634,13 +627,11 @@ export default function App() {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
       if (cancelled || !browserSurfaceRef.current) return;
       const bounds = browserBounds(browserSurfaceRef.current);
-      const windowOffset = await nativeWindowContentOffset();
       const { width, height } = bounds;
-      const left = bounds.left + windowOffset.x;
-      const top = bounds.top + windowOffset.y;
-      const layout: NativeBrowserView["layout"] = width < 720 ? "compact" : "desktop";
+      const left = bounds.left;
+      const top = bounds.top;
       let entry = views.get(activeBrowserTabId);
-      if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey || entry.layout !== layout)) {
+      if (entry && (entry.url !== activeBrowserTab.url || entry.frameKey !== browserFrameKey)) {
         await entry.webview.close().catch(() => undefined);
         views.delete(activeBrowserTabId);
         entry = undefined;
@@ -653,11 +644,9 @@ export default function App() {
           y: top,
           width,
           height,
-          userAgent: layout === "compact"
-            ? "Mozilla/5.0 (Linux; Android 13; IDK Nova) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Mobile Safari/537.36"
-            : navigator.userAgent,
+          userAgent: navigator.userAgent,
         });
-        entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey, layout };
+        entry = { webview, url: activeBrowserTab.url, frameKey: browserFrameKey };
         views.set(activeBrowserTabId, entry);
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         await webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
@@ -685,10 +674,9 @@ export default function App() {
       const entry = nativeBrowserViewsRef.current.get(activeBrowserTabId);
       if (!entry) return;
       const bounds = browserBounds(surface);
-      const windowOffset = await nativeWindowContentOffset();
       const { width, height } = bounds;
-      const left = bounds.left + windowOffset.x;
-      const top = bounds.top + windowOffset.y;
+      const left = bounds.left;
+      const top = bounds.top;
       entry.webview.setPosition(new LogicalPosition(left, top)).catch(() => undefined);
       entry.webview.setSize(new LogicalSize(width, height)).catch(() => undefined);
     };
@@ -1679,6 +1667,7 @@ export default function App() {
           if (call.function.name === "press_key") { await invoke("press_key", { key: String(args.key || ""), modifiers: Array.isArray(args.modifiers) ? args.modifiers.map(String) : [] }); return await observeAfterAction({ ok: true, key: args.key }); }
           if (call.function.name === "scroll_screen") { await invoke("scroll_screen", { amount: Number(args.amount) }); return await observeAfterAction({ ok: true, amount: Number(args.amount) }); }
           if (call.function.name === "run_terminal") return await invoke<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>("run_terminal", { command: String(args.command || ""), rootPath: project.rootPath });
+          if (call.function.name === "system_install") return await invoke<{ ok: boolean; stdout: string; stderr: string; exitCode: number }>("install_package", { package: String(args.package || "") });
           if (call.function.name === "ask_user") {
             setAgentStatus("Waiting for your input…");
             const value = await requestAgentInput(String(args.prompt || "Enter the information needed to continue"), String(args.placeholder || "Enter value"));
@@ -1703,7 +1692,7 @@ export default function App() {
           if (call.toolName === "fs_delete") return await invoke<Record<string, unknown>>("trash_workspace_item", { rootPath: project.rootPath, relativePath: args.path });
           if (call.toolName === "fs_undo") return await invoke<Record<string, unknown>>("undo_workspace_change", { rootPath: project.rootPath });
           const legacyNames: Record<string, string> = {
-            fs_list: "list_files", fs_read: "read_file", fs_write: "write_file", shell_exec: "run_terminal",
+            fs_list: "list_files", fs_read: "read_file", fs_write: "write_file", shell_exec: "run_terminal", system_install: "system_install",
             browser_open: "open_url", computer_snapshot: "observe_screen", computer_open_app: "open_application",
             computer_click: "click_screen", computer_type: "type_text", computer_key: "press_key", computer_scroll: "scroll_screen",
           };
@@ -3393,10 +3382,11 @@ export default function App() {
             >
             {activeBrowserTab?.kind === "browser" && activeBrowserTab.url ? (
               <>
-                {!isDesktopApp() && <iframe key={`${activeBrowserTab.id}-${activeBrowserTab.url}-${browserFrameKey}`} title="Nova browser" src={activeBrowserTab.url} sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin" />}
                 {!isDesktopApp() && <div className="browser-fallback">
-                  <span>Protected sites may require the system browser.</span>
-                  <button onClick={openSystemBrowser}><ExternalLink />Open externally</button>
+                  <Globe2 />
+                  <strong>Native browser is available in Nova Desktop</strong>
+                  <span>For security and site compatibility, Nova does not place external websites inside an iframe.</span>
+                  <button onClick={openSystemBrowser}><ExternalLink />Open this page externally</button>
                 </div>}
               </>
             ) : activeBrowserTab?.kind === "browser" ? (

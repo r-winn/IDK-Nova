@@ -25,6 +25,15 @@ struct TerminalOutput {
     exit_code: i32,
 }
 
+fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| "Invalid data path".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let temporary = parent.join(format!(".{}.tmp", path.file_name().and_then(|value| value.to_str()).unwrap_or("workspace")));
+    fs::write(&temporary, contents).map_err(|error| error.to_string())?;
+    if path.exists() { fs::remove_file(path).map_err(|error| error.to_string())?; }
+    fs::rename(&temporary, path).map_err(|error| error.to_string())
+}
+
 fn desktop_control_error(error: impl std::fmt::Display) -> String {
     #[cfg(target_os = "macos")]
     return format!("Desktop control failed: {error}. Allow IDK Nova in System Settings → Privacy & Security → Accessibility and Screen Recording.");
@@ -212,6 +221,47 @@ async fn run_terminal(command: String, root_path: Option<String>) -> Result<Term
         return Err("Terminal tools are currently available on Windows and macOS".into());
         let output = output.map_err(desktop_control_error)?;
         let truncate = |bytes: Vec<u8>| String::from_utf8_lossy(&bytes).chars().take(12_000).collect::<String>();
+        Ok(TerminalOutput { ok: output.status.success(), stdout: truncate(output.stdout), stderr: truncate(output.stderr), exit_code: output.status.code().unwrap_or(-1) })
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn install_package(package: String) -> Result<TerminalOutput, String> {
+    let requested = package.trim().to_ascii_lowercase();
+    if requested.is_empty() || requested.len() > 80 || !requested.chars().all(|value| value.is_ascii_alphanumeric() || matches!(value, '.' | '-' | '_' | '+')) {
+        return Err("Enter a valid package name".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(windows)]
+        let output = {
+            use std::os::windows::process::CommandExt;
+            let package_id = match requested.as_str() {
+                "npm" | "node" | "nodejs" => "OpenJS.NodeJS.LTS",
+                "git" => "Git.Git",
+                "python" | "python3" => "Python.Python.3.13",
+                "vscode" | "code" => "Microsoft.VisualStudioCode",
+                "docker" => "Docker.DockerDesktop",
+                "ollama" => "Ollama.Ollama",
+                other => other,
+            };
+            let mut process = Command::new("winget.exe");
+            process.creation_flags(0x08000000).args(["install", "--id", package_id, "--exact", "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity"]);
+            process.output()
+        };
+        #[cfg(target_os = "macos")]
+        let output = {
+            let formula = match requested.as_str() { "npm" | "nodejs" => "node", "python" => "python@3.13", "vscode" | "code" => "visual-studio-code", other => other };
+            if Command::new("brew").arg("--version").output().map(|value| value.status.success()).unwrap_or(false) {
+                let mut process = Command::new("brew");
+                if matches!(formula, "visual-studio-code" | "docker") { process.args(["install", "--cask", formula]); }
+                else { process.args(["install", formula]); }
+                process.output()
+            } else { return Err("Homebrew is required for automatic package installation on macOS. Install Homebrew once, then Nova can install packages automatically.".into()); }
+        };
+        #[cfg(not(any(windows, target_os = "macos")))]
+        return Err("Automatic package installation is currently available on Windows and macOS".into());
+        let output = output.map_err(desktop_control_error)?;
+        let truncate = |bytes: Vec<u8>| String::from_utf8_lossy(&bytes).chars().take(24_000).collect::<String>();
         Ok(TerminalOutput { ok: output.status.success(), stdout: truncate(output.stdout), stderr: truncate(output.stderr), exit_code: output.status.code().unwrap_or(-1) })
     }).await.map_err(|error| error.to_string())?
 }
@@ -438,7 +488,7 @@ struct WorkspaceUndo {
 }
 
 fn ignored_name(name: &str) -> bool {
-    matches!(name, ".git" | ".svn" | ".hg" | "node_modules" | "target" | "dist" | "build" | ".next" | ".cache" | "coverage")
+    matches!(name, ".git" | ".svn" | ".hg" | ".nova-work" | "node_modules" | "target" | "dist" | "build" | ".next" | ".cache" | "coverage")
         || matches!(name, ".env" | ".env.local" | ".env.production" | "id_rsa" | "id_ed25519")
 }
 
@@ -621,8 +671,8 @@ async fn initialize_workspace(root_path: String, project_json: String) -> Result
         fs::create_dir_all(&nova_dir).map_err(|error| format!("Could not create portable workspace data: {error}"))?;
         let project_path = nova_dir.join("project.json");
         let chats_path = nova_dir.join("chats.json");
-        if !project_path.exists() { fs::write(&project_path, &project_json).map_err(|error| error.to_string())?; }
-        if !chats_path.exists() { fs::write(&chats_path, "[]\n").map_err(|error| error.to_string())?; }
+        if !project_path.exists() { atomic_write(&project_path, project_json.as_bytes())?; }
+        if !chats_path.exists() { atomic_write(&chats_path, b"[]\n")?; }
         let stored_project = fs::read_to_string(project_path).map_err(|error| error.to_string())?;
         let stored_chats = fs::read_to_string(chats_path).map_err(|error| error.to_string())?;
         Ok(PortableWorkspace { project_json: stored_project, chats_json: stored_chats })
@@ -630,7 +680,7 @@ async fn initialize_workspace(root_path: String, project_json: String) -> Result
 }
 
 #[tauri::command]
-async fn save_workspace_history(root_path: String, chats_json: String, activity_json: String) -> Result<(), String> {
+async fn save_workspace_history(root_path: String, project_json: String, chats_json: String, activity_json: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root = canonical_root(&root_path)?;
         let nova_dir = root.join(".nova-work");
@@ -638,8 +688,16 @@ async fn save_workspace_history(root_path: String, chats_json: String, activity_
         fs::create_dir_all(&nova_dir).map_err(|error| error.to_string())?;
         let parsed: serde_json::Value = serde_json::from_str(&chats_json).map_err(|_| "Invalid workspace history".to_string())?;
         if !parsed.is_array() { return Err("Invalid workspace history".into()); }
-        fs::write(nova_dir.join("chats.json"), format!("{}\n", serde_json::to_string_pretty(&parsed).map_err(|error| error.to_string())?)).map_err(|error| error.to_string())?;
-        fs::write(nova_dir.join("activity.json"), activity_json).map_err(|error| error.to_string())?;
+        let project: serde_json::Value = serde_json::from_str(&project_json).map_err(|_| "Invalid workspace metadata".to_string())?;
+        let activity: serde_json::Value = serde_json::from_str(&activity_json).map_err(|_| "Invalid workspace activity".to_string())?;
+        let pretty_project = format!("{}\n", serde_json::to_string_pretty(&project).map_err(|error| error.to_string())?);
+        let pretty_chats = format!("{}\n", serde_json::to_string_pretty(&parsed).map_err(|error| error.to_string())?);
+        let pretty_activity = format!("{}\n", serde_json::to_string_pretty(&activity).map_err(|error| error.to_string())?);
+        atomic_write(&nova_dir.join("project.json"), pretty_project.as_bytes())?;
+        atomic_write(&nova_dir.join("chats.json"), pretty_chats.as_bytes())?;
+        atomic_write(&nova_dir.join("activity.json"), pretty_activity.as_bytes())?;
+        let bundle = serde_json::json!({ "version": 2, "project": project, "chats": parsed, "activity": activity });
+        atomic_write(&nova_dir.join("workspace.json"), format!("{}\n", serde_json::to_string_pretty(&bundle).map_err(|error| error.to_string())?).as_bytes())?;
         Ok(())
     }).await.map_err(|error| error.to_string())?
 }
@@ -770,7 +828,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal, install_package])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
