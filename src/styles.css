@@ -790,6 +790,16 @@ main {
 }
 .rich-content { display: contents; }
 .prose-segment { white-space: pre-wrap; direction: ltr; text-align: left; unicode-bidi: isolate; }
+.message-list article.assistant .message-body > .content[dir="rtl"] { direction: rtl; text-align: right; unicode-bidi: plaintext; }
+.message-list article.assistant .message-body > .content[dir="ltr"] { direction: ltr; text-align: left; unicode-bidi: plaintext; }
+.message-list article.assistant .content[dir="rtl"] .prose-segment { direction: rtl; text-align: right; unicode-bidi: plaintext; }
+.message-list article.assistant .content[dir="ltr"] .prose-segment { direction: ltr; text-align: left; unicode-bidi: plaintext; }
+.message-list .prose-segment a,
+.message-list .prose-segment code,
+.message-list .math-expression { unicode-bidi: isolate; }
+.message-list .prose-segment code,
+.message-list .math-expression,
+.message-list .code-artifact { direction: ltr; text-align: left; }
 .message-list article.user .content { text-align: start; unicode-bidi: plaintext; }
 .message-list article.user .prose-segment { direction: inherit; text-align: start; unicode-bidi: plaintext; }
 .math-expression { display: inline-flex; max-width: 100%; margin: 0 3px; vertical-align: middle; direction: ltr; overflow-x: auto; overflow-y: hidden; }

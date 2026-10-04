@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use futures_util::StreamExt;
-use std::{fs, io::{Cursor, Write}, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
+use std::{fs, io::{Cursor, Read, Write}, net::{TcpListener, TcpStream}, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
 use tauri::Manager;
 use tauri::ipc::Channel;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -23,6 +23,88 @@ struct TerminalOutput {
     stdout: String,
     stderr: String,
     exit_code: i32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewServerOutput {
+    ok: bool,
+    url: String,
+    directory: String,
+}
+
+fn preview_mime(path: &Path) -> &'static str {
+    match path.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+        "html" | "htm" => "text/html; charset=utf-8", "css" => "text/css; charset=utf-8",
+        "js" | "mjs" => "text/javascript; charset=utf-8", "json" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml", "png" => "image/png", "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif", "webp" => "image/webp", "ico" => "image/x-icon",
+        "woff" => "font/woff", "woff2" => "font/woff2", "txt" | "md" => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
+fn preview_response(stream: &mut TcpStream, status: &str, content_type: &str, body: &[u8], send_body: bool) {
+    let header = format!("HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\n\r\n", body.len());
+    let _ = stream.write_all(header.as_bytes());
+    if send_body { let _ = stream.write_all(body); }
+    let _ = stream.flush();
+}
+
+fn serve_preview_request(mut stream: TcpStream, root: &Path) {
+    let mut request = [0u8; 16_384];
+    let Ok(read) = stream.read(&mut request) else { return; };
+    if read == 0 { return; }
+    let first_line = String::from_utf8_lossy(&request[..read]).lines().next().unwrap_or("").to_string();
+    let mut fields = first_line.split_whitespace();
+    let method = fields.next().unwrap_or("");
+    let requested = fields.next().unwrap_or("/").split(['?', '#']).next().unwrap_or("/");
+    if !matches!(method, "GET" | "HEAD") {
+        preview_response(&mut stream, "405 Method Not Allowed", "text/plain; charset=utf-8", b"Method not allowed", method != "HEAD");
+        return;
+    }
+    let relative = requested.trim_start_matches('/');
+    if relative.split('/').any(|part| part == "..") || relative.contains('\\') || relative.contains('%') {
+        preview_response(&mut stream, "403 Forbidden", "text/plain; charset=utf-8", b"Forbidden", method != "HEAD");
+        return;
+    }
+    let mut target = root.join(relative);
+    if target.is_dir() { target = target.join("index.html"); }
+    let Ok(canonical) = target.canonicalize() else {
+        preview_response(&mut stream, "404 Not Found", "text/plain; charset=utf-8", b"Not found", method != "HEAD");
+        return;
+    };
+    if !canonical.starts_with(root) || !canonical.is_file() {
+        preview_response(&mut stream, "403 Forbidden", "text/plain; charset=utf-8", b"Forbidden", method != "HEAD");
+        return;
+    }
+    match fs::read(&canonical) {
+        Ok(body) => preview_response(&mut stream, "200 OK", preview_mime(&canonical), &body, method != "HEAD"),
+        Err(_) => preview_response(&mut stream, "500 Internal Server Error", "text/plain; charset=utf-8", b"Could not read file", method != "HEAD"),
+    }
+}
+
+#[tauri::command]
+async fn start_preview_server(root_path: String, relative_path: String, preferred_port: Option<u16>) -> Result<PreviewServerOutput, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let requested = if relative_path.trim().is_empty() { "." } else { relative_path.trim() };
+        let target = safe_target(&root, requested)?;
+        let (directory, entry) = if target.is_file() {
+            (target.parent().ok_or_else(|| "Preview file has no parent directory".to_string())?.to_path_buf(), target.file_name().and_then(|value| value.to_str()).unwrap_or("").to_string())
+        } else { (target, String::new()) };
+        let canonical_directory = directory.canonicalize().map_err(|error| error.to_string())?;
+        if !canonical_directory.starts_with(&root) { return Err("Preview path escapes the Work project".into()); }
+        let bind_port = preferred_port.filter(|port| *port >= 1024).unwrap_or(0);
+        let listener = TcpListener::bind(("127.0.0.1", bind_port)).or_else(|_| TcpListener::bind(("127.0.0.1", 0))).map_err(|error| format!("Could not start the local preview: {error}"))?;
+        let port = listener.local_addr().map_err(|error| error.to_string())?.port();
+        let server_root = canonical_directory.clone();
+        std::thread::Builder::new().name(format!("nova-preview-{port}")).spawn(move || {
+            for connection in listener.incoming() { if let Ok(stream) = connection { serve_preview_request(stream, &server_root); } }
+        }).map_err(|error| error.to_string())?;
+        let suffix = if entry.is_empty() { String::new() } else { format!("/{entry}") };
+        Ok(PreviewServerOutput { ok: true, url: format!("http://127.0.0.1:{port}{suffix}"), directory: canonical_directory.to_string_lossy().to_string() })
+    }).await.map_err(|error| error.to_string())?
 }
 
 fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
@@ -828,7 +910,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal, install_package])
+        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal, install_package, start_preview_server])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;

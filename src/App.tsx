@@ -77,7 +77,7 @@ import {
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
-import { Webview } from "@tauri-apps/api/webview";
+import { getCurrentWebview, Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { Channel, invoke } from "@tauri-apps/api/core";
@@ -302,6 +302,15 @@ const browserBounds = (surface: HTMLDivElement) => {
     width: Math.max(1, Math.min(Math.round(rect.width), window.innerWidth - left)),
     height: Math.max(1, Math.min(Math.round(rect.height), window.innerHeight - top)),
   };
+};
+const nativeBrowserBounds = async (surface: HTMLDivElement) => {
+  const bounds = browserBounds(surface);
+  try {
+    const [origin, scale] = await Promise.all([getCurrentWebview().position(), getCurrentWindow().scaleFactor()]);
+    return { ...bounds, left: bounds.left + origin.x / scale, top: bounds.top + origin.y / scale };
+  } catch {
+    return bounds;
+  }
 };
 const parentDirectory = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 const directoryEntries = (entries: WorkspaceEntry[] = [], directory = "") => entries
@@ -679,7 +688,7 @@ export default function App() {
       if (!browserOpen || overlayOpen || activeBrowserTab?.kind !== "browser" || !activeBrowserTab.url || !browserSurfaceRef.current) return;
       await new Promise<void>((resolve) => window.setTimeout(resolve, 120));
       if (cancelled || !browserSurfaceRef.current) return;
-      const bounds = browserBounds(browserSurfaceRef.current);
+      const bounds = await nativeBrowserBounds(browserSurfaceRef.current);
       const { width, height } = bounds;
       const left = bounds.left;
       const top = bounds.top;
@@ -733,7 +742,7 @@ export default function App() {
     const syncBounds = async () => {
       const entry = nativeBrowserViewsRef.current.get(activeBrowserTabId);
       if (!entry) return;
-      const bounds = browserBounds(surface);
+      const bounds = await nativeBrowserBounds(surface);
       const { width, height } = bounds;
       const left = bounds.left;
       const top = bounds.top;
@@ -1746,6 +1755,11 @@ export default function App() {
           if (call.toolName === "fs_copy") return await invoke<Record<string, unknown>>("copy_workspace_item", { rootPath: project.rootPath, fromPath: args.from, toPath: args.to });
           if (call.toolName === "fs_delete") return await invoke<Record<string, unknown>>("trash_workspace_item", { rootPath: project.rootPath, relativePath: args.path });
           if (call.toolName === "fs_undo") return await invoke<Record<string, unknown>>("undo_workspace_change", { rootPath: project.rootPath });
+          if (call.toolName === "preview_start") {
+            const result = await invoke<{ ok: boolean; url: string; directory: string }>("start_preview_server", { rootPath: project.rootPath, relativePath: String(args.path || "."), preferredPort: args.port ? Number(args.port) : null });
+            navigateBrowser(result.url, true);
+            return { ...result, browserOpened: true };
+          }
           const legacyNames: Record<string, string> = {
             fs_list: "list_files", fs_read: "read_file", fs_write: "write_file", shell_exec: "run_terminal", system_install: "system_install",
             browser_open: "open_url", computer_snapshot: "observe_screen", computer_open_app: "open_application",
@@ -2255,7 +2269,7 @@ export default function App() {
   const renderMessageContent = (message: Message) => (
     <div
       className="rich-content"
-      dir="auto"
+      dir={textDirection(message.content)}
       onMouseUp={(event) => captureSelection(event.currentTarget)}
     >
       {splitContent(message.content).map((part, index) => part.type === "code" ? (
@@ -2567,7 +2581,7 @@ export default function App() {
                         )}
                       </div>
                     ) : null}
-                    <div className="content" dir={message.role === "user" ? textDirection(message.content) : "ltr"}>
+                    <div className="content" dir={textDirection(message.content)}>
                       {message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : (
                         <div className="agent-progress-wrap">
                           <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{chat.workspaceId && agentStatus && <span>{agentStatus}</span>}</div>
@@ -3550,7 +3564,7 @@ export default function App() {
                     <article className={`${message.role} ${message.role === "assistant" ? "no-speaker" : ""}`} key={index}>
                       {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
-                        <div className="content" dir={message.role === "user" ? textDirection(message.content) : "ltr"}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : <span className="typing"><i /><i /><i /></span>}</div>
+                        <div className="content" dir={textDirection(message.content)}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : <span className="typing"><i /><i /><i /></span>}</div>
                         {message.role === "user" && message.content && <div className="message-actions user-message-actions"><button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                         {message.role === "assistant" && message.content && <div className="message-actions">
                           <button disabled={message.generating} onClick={() => copy(message.content)}><Copy />Copy</button>
