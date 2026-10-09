@@ -1,6 +1,6 @@
 {
-  "version": "0.20.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.20.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.20.0/IDK.Nova_0.20.0_x64-setup.exe",
-  "notes": ["New Intelligence settings: scoped memory, context selection, routing, activity, usage and recovery", "Native provider credential vault for macOS and Windows", "Agent plans, cooperative pause/resume and automatic file checkpoints", "Real provider usage and configurable cost estimates", "Improved Responses proxy negotiation and no-progress detection", "This release does not complete the full twelve-part roadmap; see UPGRADE_STATUS.md"]
+  "version": "0.20.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.20.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.20.1/IDK.Nova_0.20.1_x64-setup.exe",
+  "notes": ["New Intelligence settings: scoped memory, context selection, routing, activity, usage and recovery", "Native provider credential vault for macOS and Windows", "Agent plans, cooperative pause/resume and automatic file checkpoints", "Real provider usage and configurable cost estimates", "Improved Responses proxy negotiation and no-progress detection", "Patched KaTeX and source-map-js security advisories", "This release does not complete the full twelve-part roadmap; see UPGRADE_STATUS.md"]
 }

@@ -20,7 +20,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - run: npm test
-      - name: Test native recovery
+      - name: Build UI for native tests
+        run: npm run build
+      - name: Run native recovery tests
         run: cargo test --lib checkpoint_tests
       - name: Import Windows code-signing certificate
         if: env.SIGNING_ENABLED == 'true'
@@ -90,7 +92,9 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - run: npm ci
       - run: npm test
-      - name: Test native recovery
+      - name: Build UI for native tests
+        run: npm run build
+      - name: Run native recovery tests
         run: cargo test --lib checkpoint_tests
       - name: Build universal macOS app and DMG
         uses: tauri-apps/tauri-action@v0

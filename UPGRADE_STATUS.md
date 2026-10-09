@@ -1,4 +1,4 @@
-# Intelligence upgrade 0.20.0 — implementation status
+# Intelligence upgrade 0.20.1 — implementation status
 
 This incremental upgrade is not a completed implementation of the twelve-part product roadmap. Do not describe it as feature-complete or production-verified on all operating systems.
 
@@ -18,6 +18,7 @@ This incremental upgrade is not a completed implementation of the twelve-part pr
 - Keychain/Credential Manager storage for desktop provider keys, migration after successful vault writes, and credential commands restricted to the main webview.
 - Best-effort secret redaction in new activity records and displayed provider failures.
 - Responses compatibility negotiation handles multiple unsupported options; streaming usage options have a compatibility fallback.
+- KaTeX and source-map-js updated to patched releases after dependency advisory checks. Installer publication for 0.20.0 was cancelled before producing a public release.
 
 ## Still required before claiming the requested roadmap is complete
 
