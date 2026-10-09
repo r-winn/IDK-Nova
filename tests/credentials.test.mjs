@@ -62,3 +62,31 @@ test('Autosaving appearance never rewrites unchanged vault credentials', async (
   api.saveConfig({ providers: [{ ...config.providers[0], apiKey: '' }] }); await flush();
   assert.equal(writes, 1);
 });
+test('Missing vault entries retain markers across autosave and permit explicit restore', async () => {
+  let restored = false; const writes = [];
+  const { api, data } = storageWithVault(async (command, args) => {
+    if (command === 'write_provider_credential') { writes.push(args); return; }
+    if (args.allowPrompt) restored = true;
+    return restored ? 'recovered-key' : null;
+  });
+  const stored = { providers: [{ ...config.providers[0], apiKey: '', apiKeyStored: true }] };
+  const hydrated = await api.hydrateProviderCredentials(stored);
+  assert.equal(hydrated.providers[0].apiKeyStored, true);
+  api.saveConfig(hydrated); await flush();
+  assert.equal(JSON.parse(data.get('idk-nova-config')).providers[0].apiKeyStored, true);
+  assert.equal(writes.length, 0);
+  const recovered = await api.restoreProviderCredential(hydrated.providers[0], true);
+  assert.equal(recovered.apiKey, 'recovered-key');
+});
+test('Persisted vault identity survives provider renaming and endpoint formatting changes', async () => {
+  const vault = new Map();
+  const { api, data } = storageWithVault(async (command, args) => {
+    if (command === 'write_provider_credential') vault.set(args.account, args.secret);
+    else return vault.get(args.account) || null;
+  });
+  api.saveConfig(config); await flush();
+  const stored = JSON.parse(data.get('idk-nova-config'));
+  stored.providers[0].id = 'renamed'; stored.providers[0].baseUrl += '/';
+  const hydrated = await api.hydrateProviderCredentials(stored);
+  assert.equal(hydrated.providers[0].apiKey, 'test-only-secret');
+});

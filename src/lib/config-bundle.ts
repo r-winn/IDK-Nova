@@ -4,8 +4,9 @@ import { modelPrices, type ModelPrice } from './usage';
 import { savedPrompts, validatePrompts, type SavedPrompt } from './prompts';
 import { PACKS_CHANGED } from './packs';
 import type { MemoryNote } from './intelligence';
+import { EXTENSIONS_KEY, installedExtensions, validateExtensions } from './extensions';
 
-type Bundle = { schema: 1; prompts?: SavedPrompt[]; intelligence?: IntelligenceSettings; prices?: Record<string, ModelPrice>; personalMemory?: MemoryNote[] };
+type Bundle = { schema: 1; extensions?: string[]; prompts?: SavedPrompt[]; intelligence?: IntelligenceSettings; prices?: Record<string, ModelPrice>; personalMemory?: MemoryNote[] };
 export type ExportSections = { appearance: boolean; providers: boolean; prompts: boolean; packs: boolean; intelligence: boolean; prices: boolean };
 export const defaultExportSections: ExportSections = { appearance: true, providers: true, prompts: true, packs: true, intelligence: true, prices: true };
 export function configPreferences(value: unknown): Partial<Config> {
@@ -48,8 +49,9 @@ export function exportConfigBundle(config: Config, includeKeys = false, includeM
   const personalMemory: MemoryNote[] = includeMemory ? JSON.parse(localStorage.getItem('nova-memory-notes') || '[]').filter((note: MemoryNote) => note.scope === 'personal') : [];
   return {
     ...(sections.appearance ? { theme: config.theme, temperature: config.temperature, branding: config.branding, database: { ...config.database, url: '' } } : {}),
-    ...(sections.providers ? { activeProviderId: config.activeProviderId, activeModel: config.activeModel, providers: config.providers.map(provider => ({ ...provider, apiKey: includeKeys ? provider.apiKey : '', apiKeyStored: false })) } : {}),
+    ...(sections.providers ? { activeProviderId: config.activeProviderId, activeModel: config.activeModel, providers: config.providers.map(provider => ({ id: provider.id, name: provider.name, baseUrl: provider.baseUrl, models: provider.models, apiKey: includeKeys ? provider.apiKey : '', apiKeyStored: false })) } : {}),
     novaBundle: { schema: 1,
+      ...(sections.packs ? { extensions: installedExtensions() } : {}),
       ...(sections.prompts || sections.packs ? { prompts: savedPrompts().filter(prompt => prompt.pack ? sections.packs : sections.prompts) } : {}),
       ...(sections.intelligence ? { intelligence: intelligenceSettings() } : {}),
       ...(sections.prices ? { prices: modelPrices() } : {}),
@@ -60,6 +62,7 @@ export function validateConfigBundle(value: unknown): Bundle | undefined {
   if (value === undefined) return; // Older config files are still supported.
   if (!value || typeof value !== 'object') throw new Error('Invalid configuration bundle.');
   const bundle = value as Bundle;
+  if (bundle.extensions !== undefined) validateExtensions(bundle.extensions);
   if (bundle.schema !== 1 || (bundle.intelligence !== undefined && (!bundle.intelligence || typeof bundle.intelligence.enabled !== 'boolean' || !Number.isInteger(bundle.intelligence.contextMessages) || bundle.intelligence.contextMessages < 2 || bundle.intelligence.contextMessages > 200))) throw new Error('Invalid Intelligence settings.');
   const routes: IntelligenceSettings['routes'] = {};
   for (const role of ['fast', 'strong', 'vision', 'private'] as const) {
@@ -87,7 +90,7 @@ export function validateConfigBundle(value: unknown): Bundle | undefined {
       return { id: note.id, scope: 'personal', text: note.text, pinned: note.pinned };
     });
   }
-  return { schema: 1, ...(bundle.prompts !== undefined ? { prompts: validatePrompts(bundle.prompts) } : {}), ...(bundle.intelligence ? { intelligence: { enabled: bundle.intelligence.enabled, contextMessages: bundle.intelligence.contextMessages, routes } } : {}), ...(bundle.prices !== undefined ? { prices } : {}), ...(personalMemory ? { personalMemory } : {}) };
+  return { schema: 1, ...(bundle.extensions !== undefined ? { extensions: validateExtensions(bundle.extensions) } : {}), ...(bundle.prompts !== undefined ? { prompts: validatePrompts(bundle.prompts) } : {}), ...(bundle.intelligence ? { intelligence: { enabled: bundle.intelligence.enabled, contextMessages: bundle.intelligence.contextMessages, routes } } : {}), ...(bundle.prices !== undefined ? { prices } : {}), ...(personalMemory ? { personalMemory } : {}) };
 }
 export function importConfigBundle(bundle: Bundle | undefined, source: Config, merged: Config) {
   if (!bundle) return;
@@ -105,7 +108,9 @@ export function importConfigBundle(bundle: Bundle | undefined, source: Config, m
   // Roll back portable settings together if storage is full.
   const keys = ['nova-prompts-v1', 'nova-intelligence', 'nova-prices-v1', 'nova-memory-notes'];
   const before = keys.map(key => localStorage.getItem(key));
+  const extensionsBefore = localStorage.getItem(EXTENSIONS_KEY);
   try {
+    if (bundle.extensions !== undefined) localStorage.setItem(EXTENSIONS_KEY, JSON.stringify(validateExtensions([...new Set([...installedExtensions(), ...validateExtensions(bundle.extensions)])])));
     if (bundle.prompts !== undefined) localStorage.setItem(keys[0], JSON.stringify(prompts));
     if (intelligence) localStorage.setItem(keys[1], JSON.stringify(intelligence));
     if (prices) localStorage.setItem(keys[2], JSON.stringify(prices));
@@ -114,8 +119,9 @@ export function importConfigBundle(bundle: Bundle | undefined, source: Config, m
       const ids = new Set(bundle.personalMemory.map(note => note.id));
       localStorage.setItem(keys[3], JSON.stringify([...notes.filter(note => note.scope !== 'personal' || !ids.has(note.id)), ...bundle.personalMemory]));
     }
-    if (bundle.prompts !== undefined) window.dispatchEvent(new Event(PACKS_CHANGED));
+    if (bundle.prompts !== undefined || bundle.extensions !== undefined) window.dispatchEvent(new Event(PACKS_CHANGED));
   } catch (error) {
+    if (extensionsBefore === null) localStorage.removeItem(EXTENSIONS_KEY); else localStorage.setItem(EXTENSIONS_KEY, extensionsBefore);
     keys.forEach(key => localStorage.removeItem(key));
     keys.forEach((key, index) => { if (before[index] !== null) localStorage.setItem(key, before[index]!); });
     throw error;

@@ -3,7 +3,7 @@ use tauri::Webview;
 // Ad-hoc signed community updates can lose the old item's Keychain ACL trust.
 // Fail closed instead of presenting a password dialog during startup/autosave.
 #[cfg(target_os = "macos")]
-fn without_keychain_prompt<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+fn keychain_access<T>(allow_prompt: bool, operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
     static ACCESS: std::sync::Mutex<()> = std::sync::Mutex::new(());
     #[link(name = "Security", kind = "framework")]
     extern "C" {
@@ -13,7 +13,7 @@ fn without_keychain_prompt<T>(operation: impl FnOnce() -> Result<T, String>) -> 
     let _lock = ACCESS.lock().map_err(|_| "Credential access is unavailable".to_string())?;
     let mut previous = 0u8;
     unsafe {
-        if SecKeychainGetUserInteractionAllowed(&mut previous) != 0 || SecKeychainSetUserInteractionAllowed(0) != 0 {
+        if SecKeychainGetUserInteractionAllowed(&mut previous) != 0 || SecKeychainSetUserInteractionAllowed(u8::from(allow_prompt)) != 0 {
             return Err("Could not access Keychain without prompting".into());
         }
     }
@@ -23,7 +23,7 @@ fn without_keychain_prompt<T>(operation: impl FnOnce() -> Result<T, String>) -> 
     operation()
 }
 #[cfg(not(target_os = "macos"))]
-fn without_keychain_prompt<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> { operation() }
+fn keychain_access<T>(_allow_prompt: bool, operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> { operation() }
 
 // Remote browser tabs must never be able to read or modify provider credentials.
 fn trusted_window(webview: &Webview) -> Result<(), String> {
@@ -38,9 +38,9 @@ fn entry(account: &str) -> Result<keyring::Entry, String> {
 }
 
 #[tauri::command]
-pub async fn read_provider_credential(webview: Webview, account: String) -> Result<Option<String>, String> {
+pub async fn read_provider_credential(webview: Webview, account: String, allow_prompt: Option<bool>) -> Result<Option<String>, String> {
     trusted_window(&webview)?;
-    tauri::async_runtime::spawn_blocking(move || without_keychain_prompt(|| {
+    tauri::async_runtime::spawn_blocking(move || keychain_access(allow_prompt.unwrap_or(false), || {
         #[cfg(any(target_os = "macos", windows))]
         { match entry(&account)?.get_password() { Ok(value) => Ok(Some(value)), Err(keyring::Error::NoEntry) => Ok(None), Err(_) => Err("The credential vault is locked or unavailable. Unlock it and try again.".into()) } }
         #[cfg(not(any(target_os = "macos", windows)))]
@@ -51,7 +51,7 @@ pub async fn read_provider_credential(webview: Webview, account: String) -> Resu
 #[tauri::command]
 pub async fn write_provider_credential(webview: Webview, account: String, secret: String) -> Result<(), String> {
     trusted_window(&webview)?;
-    tauri::async_runtime::spawn_blocking(move || without_keychain_prompt(|| {
+    tauri::async_runtime::spawn_blocking(move || keychain_access(false, || {
         #[cfg(any(target_os = "macos", windows))]
         {
             let credential = entry(&account)?;

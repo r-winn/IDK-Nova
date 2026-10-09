@@ -94,9 +94,12 @@ import { toolCommands, commandInstructions } from './agent/commands';
 import { PromptLibrary } from './components/PromptLibrary';
 import { PackPicker } from './components/PackPicker';
 import { packContext, preparePackUse } from './lib/packs';
+import { executeExtension } from './lib/extensions';
+import { CommandSuggestions } from './components/CommandSuggestions';
+import { ToolExecutionSummary } from './components/ToolExecutionSummary';
 import { configPreferences, exportConfigBundle, importConfigBundle, validateConfigBundle, type ExportSections } from './lib/config-bundle';
 import { ConfigExportDialog } from './components/ConfigExportDialog';
-import { chatsAfterDeletion } from './lib/chat-deletion';
+import { chatsAfterDeletion, normalHistoryIfEmpty } from './lib/chat-deletion';
 import { expandPrompts } from './lib/prompts';
 import { enforceWorkPrivacy, isLocalEndpoint } from './lib/intelligence';
 import { diagnoseConnection } from './lib/diagnostics';
@@ -112,6 +115,7 @@ import type { NovaToolCall } from "./agent/protocol";
 import {
   loadConfig,
   hydrateProviderCredentials,
+  restoreProviderCredential,
   loadManagedConfig,
   loadValue,
   restoreChatAttachments,
@@ -162,7 +166,7 @@ const settingMeta = {
   intelligence: ["Intelligence", "Memory, model routing and Work activity."],
   tools: ["Tools & capabilities", "Explore what Nova Work can do."],
   prompts: ["Prompt library", "Reusable instructions for your conversations."],
-  marketplace: ["Marketplace", "Install curated prompt packs."],
+  marketplace: ["Marketplace", "Install local tools and reusable prompt packs."],
   updates: ["Software update", "Keep Nova secure and up to date."],
   about: ["About Nova", "Version, licensing and deployment details."],
 } as const;
@@ -863,7 +867,7 @@ export default function App() {
       setConfig((current) => {
         const hydrated = { ...current, providers: current.providers.map(provider => {
           const stored = restored.providers.find(item => item.id === provider.id && item.baseUrl === provider.baseUrl);
-          return stored && !provider.apiKey ? { ...provider, apiKey: stored.apiKey, apiKeyStored: stored.apiKeyStored } : provider;
+          return stored && !provider.apiKey ? { ...provider, apiKey: stored.apiKey, apiKeyStored: stored.apiKeyStored, credentialAccount: stored.credentialAccount } : provider;
         }) };
         const next = managed ? mergeImportedConfig(hydrated, managed) : hydrated;
         saveConfig(next);
@@ -910,6 +914,7 @@ export default function App() {
     }
   };
   const fresh = () => {
+    setOpenWorkspaceId(null); setOpenFolderId(null);
     const existing = chats.find((item) => !item.archived && !item.folderId && !item.workspaceId && !item.temporary && item.messages.length === 0);
     if (existing) { setActive(existing.id); setText(""); return; }
     const id = Date.now();
@@ -1011,11 +1016,14 @@ export default function App() {
   };
   const deleteWorkspace = (project: WorkProject) => {
     const removedIds = new Set(chats.filter((item) => item.workspaceId === project.id).map((item) => item.id));
+    removedIds.forEach(id => workspaceSessionsRef.current.delete(id));
     const remaining = chats.filter((item) => item.workspaceId !== project.id);
+    const reset = normalHistoryIfEmpty(remaining, Date.now());
     setWorkspaces((current) => current.filter((item) => item.id !== project.id));
-    setChats(remaining.length ? remaining : starterChats);
-    if (removedIds.has(active)) setActive(remaining[0]?.id || starterChats[0].id);
-    if (openWorkspaceId === project.id) setOpenWorkspaceId(null);
+    setChats(reset || remaining);
+    if (reset) { setActive(reset[0].id); setOpenWorkspaceId(null); setOpenFolderId(null); }
+    else if (removedIds.has(active)) setActive(remaining[0].id);
+    if (!reset && openWorkspaceId === project.id) setOpenWorkspaceId(null);
     setBrowserTabs((tabs) => tabs.filter((tab) => tab.projectId !== project.id));
     setWorkspaceDelete(null);
     setToast("Workspace and its chats removed from Nova · project files were not deleted");
@@ -1447,7 +1455,8 @@ export default function App() {
       setSettingsOpen(true);
       return;
     }
-    const packUse = preparePackUse(tab.selectedPacks || []);
+    if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast('Your saved key needs vault access. Restore it in Models → API keys & connections.'); return; }
+    const packUse = preparePackUse(tab.selectedPacks || [], tab.draft);
     const user: Message = { role: "user", content: expandPrompts(tab.draft.trim()), usedPacks: packUse.usedPacks };
     const generationKind: Message["generationKind"] = isImageGenerationRequest(user.content) ? "image" : "text";
     const conversation = [...(tab.messages || []), user];
@@ -1461,13 +1470,20 @@ export default function App() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      await streamCompletion(config, conversation, (token) => setBrowserTabs((tabs) => tabs.map((item) => {
+      const append = (token: string) => setBrowserTabs((tabs) => tabs.map((item) => {
         if (item.id !== tab.id) return item;
         const messages = [...(item.messages || [])];
         const last = messages.length - 1;
         messages[last] = { ...messages[last], content: messages[last].content + token };
         return { ...item, messages };
-      })), controller.signal, packUse.context);
+      }));
+      if (packUse.tools.length) await runAgentCompletion(config, conversation, packUse.context, packUse.tools, async call => {
+        if (!packUse.tools.some(tool => tool.function.name === call.function.name)) throw new Error('Unselected extension.');
+        const result = await executeExtension(call);
+        setBrowserTabs(tabs => tabs.map(item => item.id === tab.id ? { ...item, messages: item.messages?.map((message, index) => index === conversation.length ? { ...message, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
+        return result;
+      }, () => undefined, append, controller.signal, undefined, undefined, false, undefined, toolCommands(user.content, packUse.tools.map(tool => tool.function.name)));
+      else await streamCompletion(config, conversation, append, controller.signal, packUse.context);
     } catch (error) {
       setBrowserTabs((tabs) => tabs.map((item) => {
         if (item.id !== tab.id) return item;
@@ -1623,6 +1639,7 @@ export default function App() {
       return;
     }
     const outgoingText = expandPrompts(edited?.content.trim() ?? text.trim());
+    if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast('Your saved API key needs vault access. Use Restore saved key in Models → API keys & connections.'); setSettingsTab('models'); setModelSetupView('connections'); setSettingsOpen(true); return; }
     const outgoingFiles = edited?.attachments ?? files;
     const history = edited?.history ?? chat?.messages ?? [];
     if ((!outgoingText && !outgoingFiles.length) || busy || !chat) return;
@@ -1630,7 +1647,7 @@ export default function App() {
       setToast('Tool commands require a desktop Work chat. Open a Work project first.');
       return;
     }
-    const packUse = preparePackUse(chat.selectedPacks || []);
+    const packUse = preparePackUse(chat.selectedPacks || [], outgoingText);
     const user: Message = {
       role: "user",
       content: outgoingText,
@@ -1718,6 +1735,12 @@ export default function App() {
         );
       const rememberResponse = (responseMemory?: NonNullable<Chat["responseMemory"]>) =>
         setChats((items) => items.map((item) => item.id === active ? { ...item, responseMemory } : item));
+      const executeSelectedExtension = async (call: AgentToolCall) => {
+        if (!packUse.tools.some(tool => tool.function.name === call.function.name)) throw new Error('Unselected extension.');
+        const result = await executeExtension(call);
+        setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
+        return result;
+      };
       if (project && isDesktopApp()) {
         const executeLegacyAgentTool = async (call: AgentToolCall, policyChecked = false) => {
           let args: Record<string, any> = {};
@@ -1863,8 +1886,9 @@ export default function App() {
         };
         try {
           const actionRequested = /(باز\s*کن|جستجو|سرچ|کلیک|اضافه\s*کن|سبد|وارد\s*شو|لاگین|بساز|ایجاد\s*کن|ویرایش\s*کن|تغییر\s*بده|اجرا\s*کن|open|search|click|add|cart|login|sign\s*in|create|write|edit|run|launch)/i.test(user.content);
-          const requestedTools = toolCommands(user.content, providerTools.map(tool => tool.function.name));
-          await runAgentCompletion(requestConfig, [...requestHistory, user], `${workspaceContext}\n\n${managedMemory}\n\n${NOVA_WORK_SYSTEM}\n\n${commandInstructions(requestedTools)}`, providerTools, executeAgentTool, () => undefined, appendToken, controller.signal, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, actionRequested || requestedTools.length > 0, chat.workspaceId, requestedTools);
+          const allTools = [...providerTools, ...packUse.tools];
+          const requestedTools = toolCommands(user.content, allTools.map(tool => tool.function.name));
+          await runAgentCompletion(requestConfig, [...requestHistory, user], `${workspaceContext}\n\n${managedMemory}\n\n${NOVA_WORK_SYSTEM}\n\n${commandInstructions(requestedTools)}`, allTools, call => packUse.tools.some(tool => tool.function.name === call.function.name) ? executeSelectedExtension(call) : executeAgentTool(call), () => undefined, appendToken, controller.signal, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, actionRequested || requestedTools.length > 0, chat.workspaceId, requestedTools);
           core.complete();
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
@@ -1881,12 +1905,13 @@ export default function App() {
             return;
           }
           core.fail(detail);
-          if (toolCommands(user.content, providerTools.map(tool => tool.function.name)).length) throw agentError;
+          if (packUse.tools.length || toolCommands(user.content, providerTools.map(tool => tool.function.name)).length) throw agentError;
           if (!/400|tools|tool_choice|tool call/i.test(detail)) throw agentError;
           setToast("This provider does not support Agent tools yet · using normal Work chat");
           await streamCompletion(requestConfig, [...requestHistory, user], appendToken, controller.signal, `${workspaceContext}\n${managedMemory}`, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, chat.workspaceId);
         }
-      } else await streamCompletion(requestConfig, [...requestHistory, user], appendToken, controller.signal, workspaceContext, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, chat.workspaceId);
+      } else if (packUse.tools.length) await runAgentCompletion(requestConfig, [...requestHistory, user], workspaceContext, packUse.tools, executeSelectedExtension, () => undefined, appendToken, controller.signal, undefined, rememberResponse, false, chat.workspaceId, toolCommands(user.content, packUse.tools.map(tool => tool.function.name)));
+      else await streamCompletion(requestConfig, [...requestHistory, user], appendToken, controller.signal, workspaceContext, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, chat.workspaceId);
     } catch (error) {
       if (controller.signal.aborted) {
         setChats((items) => items.map((item) => item.id === active ? {
@@ -1964,7 +1989,7 @@ export default function App() {
     setText(message.content);
     setFiles(message.attachments || []);
     setReplyQuote("");
-    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer > textarea")?.focus());
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
   };
   const cancelMessageEdit = () => {
     setEditingMessage(null);
@@ -1972,6 +1997,7 @@ export default function App() {
     setFiles([]);
   };
   const key = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return;
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (editingMessage) submitMessageEdit();
@@ -2063,6 +2089,7 @@ export default function App() {
       return next;
     });
     try {
+      if (!provider.apiKey && provider.apiKeyStored) throw new Error('Saved key needs vault access. Restore it in API keys & connections before testing.');
       const latency = await testModel(provider, model);
       setModelHealth((current) => ({ ...current, [key]: { state: "online", latency, checkedAt: Date.now() } }));
       setToast(`Model verified in ${latency} ms`);
@@ -2700,6 +2727,7 @@ export default function App() {
                         </div>
                       )}
                     </div>
+                    <ToolExecutionSummary message={message} />
                     {message.role === "user" && (message.content || message.usedPacks?.length) && <div className="message-actions user-message-actions">
                       {!!message.usedPacks?.length && <span className="message-pack-marker" title={message.usedPacks.map(pack => `${pack.name} · ${pack.version}`).join('\n')}><Puzzle /><span>{message.usedPacks.map(pack => pack.name).join(' · ')}</span></span>}
                       {message.content && <button onClick={() => copy(message.content)}><Copy />Copy</button>}
@@ -2840,7 +2868,7 @@ export default function App() {
               <span><b>Nova needs your input</b><small>{agentInput.prompt}</small></span>
               <input autoFocus dir={textDirection(agentInput.value)} value={agentInput.value} placeholder={agentInput.placeholder} onChange={(event) => setAgentInput({ ...agentInput, value: event.target.value })} />
               <div><button type="button" onClick={() => resolveAgentInput(null)}>Cancel</button><button type="submit" className="approve" disabled={!agentInput.value.trim()}>Continue</button></div>
-            </form> : <textarea
+            </form> : <CommandSuggestions key={chat.id} value={text} onChange={setText} work={Boolean(chatWorkspace && isDesktopApp())} disabled={busy || Boolean(editingMessage)}><textarea
               dir={textDirection(text)}
               disabled={!config.activeModel}
               value={text}
@@ -2848,7 +2876,7 @@ export default function App() {
               onKeyDown={key}
               placeholder={config.activeModel ? `Message ${config.branding.appName}…` : "Choose a model before sending a message"}
               rows={1}
-            />}
+            /></CommandSuggestions>}
             {!agentApproval && !agentInput && <div className="composer-tools">
               <div>
                 {!editingMessage && chatWorkspace && (
@@ -3154,7 +3182,7 @@ export default function App() {
                       <section className="provider-connections">
                         {draftConfig.providers.map((provider) => <div className="provider-connection-row" key={provider.id}>
                           <div className="provider-connection-copy"><b>{provider.name}</b><code title={provider.baseUrl}>{provider.baseUrl}</code><small>{provider.models.length} model{provider.models.length === 1 ? "" : "s"}</small></div>
-                          <label><span>API key <small>{provider.apiKey ? "Configured" : "Required only if this provider uses authentication"}</small></span><input type="password" disabled={credentialsLoading} value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value, apiKeyStored: false } : item) }))} /><small>{isDesktopApp() ? 'Saved in the operating-system credential vault.' : 'Stored in this browser. Use the desktop app for native credential protection.'}</small></label>
+                          <label><span>API key <small>{provider.apiKey ? "Configured" : provider.apiKeyStored ? "Saved key needs vault access · not deleted" : "Required only if this provider uses authentication"}</small></span><input type="password" disabled={credentialsLoading} value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value, apiKeyStored: false } : item) }))} />{isDesktopApp() && provider.apiKeyStored && !provider.apiKey && <button type="button" className="secondary" disabled={credentialsLoading} onClick={async () => { setCredentialsLoading(true); try { const restored = await restoreProviderCredential(provider, true); setDraftConfig(current => ({ ...current, providers: current.providers.map(item => item.id === provider.id ? { ...item, apiKey: restored.apiKey, apiKeyStored: true, credentialAccount: restored.credentialAccount } : item) })); setToast('Saved API key restored'); } catch (error) { setToast(error instanceof Error ? error.message : 'Could not restore key'); } finally { setCredentialsLoading(false); } }}>Restore saved key</button>}<small>{isDesktopApp() ? 'Saved in the operating-system credential vault.' : 'Stored in this browser. Use the desktop app for native credential protection.'}</small></label>
                         </div>)}
                       </section>
                     </div>}
@@ -3546,6 +3574,7 @@ export default function App() {
                       {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
                         <div className="content" dir={textDirection(message.content)}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : <span className="typing"><i /><i /><i /></span>}</div>
+                        <ToolExecutionSummary message={message} />
                         {message.role === "user" && message.content && <div className="message-actions user-message-actions">{!!message.usedPacks?.length && <span className="message-pack-marker" title={message.usedPacks.map(pack => `${pack.name} · ${pack.version}`).join('\n')}><Puzzle /><span>{message.usedPacks.map(pack => pack.name).join(' · ')}</span></span>}<button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                         {message.role === "assistant" && message.content && <div className="message-actions">
                           <button disabled={message.generating} onClick={() => copy(message.content)}><Copy />Copy</button>
@@ -3564,15 +3593,15 @@ export default function App() {
                   </button>}
                   <div className="temporary-notice"><Clock3 /><span><b>Temporary chat</b><small>Not saved to history</small></span></div>
                   <div className={`composer ${!config.activeModel ? "locked" : ""}`}>
-                    <textarea
+                    <CommandSuggestions key={activeBrowserTab.id} value={activeBrowserTab.draft || ''} onChange={draft => updateWorkspaceTab(activeBrowserTab.id, { draft })} disabled={Boolean(activeBrowserTab.busy)}><textarea
                       dir={textDirection(activeBrowserTab.draft || "")}
                       disabled={!config.activeModel}
                       value={activeBrowserTab.draft || ""}
                       rows={1}
                       placeholder={config.activeModel ? `Message ${config.branding.appName}…` : "Choose a model before sending a message"}
                       onChange={(event) => updateWorkspaceTab(activeBrowserTab.id, { draft: event.target.value })}
-                      onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendTemporaryChat(); } }}
-                    />
+                      onKeyDown={(event) => { if (!event.nativeEvent.isComposing && event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendTemporaryChat(); } }}
+                    /></CommandSuggestions>
                     <div className="composer-tools">
                       <div>
                         <button disabled title="Attachments are not kept in temporary chat"><Paperclip /></button>

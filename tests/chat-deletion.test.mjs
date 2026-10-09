@@ -26,3 +26,9 @@ test('Deleting a Work conversation still retains its Work context when other his
   const existing = chatsAfterDeletion([conversation(10, 'work'), conversation(12, 'work')], 10, 10, 99);
   assert.equal(existing.active, 12);
 });
+test('Archived chats are preserved but never force a fresh Work chat after visible history is deleted', () => {
+  const result = chatsAfterDeletion([conversation(10, 'work'), { ...conversation(20), archived: true }], 10, 10, 99);
+  assert.equal(result.active, 99); assert.equal(result.workspaceId, null);
+  assert.equal(result.chats[0].workspaceId, undefined);
+  assert.equal(result.chats[1].archived, true);
+});

@@ -1,5 +1,13 @@
 # Intelligence upgrade 0.21.1 — implementation status
 
+## 0.24.0 — real local tools and credential recovery
+
+Four audited executable extensions run via the existing Responses/Chat Completions function-calling loop in main and temporary chats: arithmetic, text metrics, JSON validation and Gregorian date intervals. Tool results are shown separately from supplied prompt-pack badges. Only installed/selected tools are offered; explicit mentions activate installed tools. Config bundles carry their allowlisted IDs, never arbitrary code. Prompt-only packages remain clearly labelled and preserve existing installations. Live caret-aware @ suggestions support keyboard selection and ignore email addresses. Removal actions are red in both themes. Deleting all visible conversations starts a normal draft while keeping archived history.
+
+Credential hydration preserves saved-key markers even for NoEntry results; autosave cannot silently erase that reference. Persisted vault identifiers survive connection edits. User-initiated recovery can request macOS Keychain authorization; startup/autosave remain non-interactive. This does not solve missing Developer ID signing or recover secrets physically absent from all storage. The affected user's actual update/vault scenario still needs device retesting; no physical Windows end-to-end result is claimed.
+
+Verification: automated frontend regression tests include actual tool-loop output, arithmetic/input validation, portable extensions, caret suggestions, locked/missing vault reads and identifier continuity. Local macOS native checks and UI smoke tests complement CI installer builds; live third-party model behavior is not guaranteed by local mock-provider tests.
+
 ## 0.23.1 polish
 
 Selective configuration export supports independent appearance, model connections, personal prompts, installed prompt packs, Intelligence, prices and optional personal memory. Omitted sections do not overwrite destination settings. Provider keys remain opt-in. Marketplace actions are aligned and themed; plugin pickers dismiss on selection/outside click. Sent messages record the exact pack snapshot whose instructions are supplied to the request, including temporary side chats. This records input provenance, not guaranteed model adherence. Last-conversation deletion starts a fresh normal chat; Work-context deletion remains supported when other conversations exist. Intelligence content transitions preserve its sticky navigation and recovery actions have consistent spacing. Regression coverage adds selective export/import and both deletion paths. Full physical-device end-to-end testing remains separate from frontend checks and CI installer validation.

@@ -51,9 +51,19 @@ test('Chat Completions fallback also enforces commands', async () => {
   let calls = 0; await run(api, async () => { calls++; return { status: 'success' }; });
   assert.equal(calls, 1); assert.match(requests[1].url, /chat\/completions/);
 });
+test('An executable extension returns real local output into the provider tool loop', async () => {
+  const extension = load('../src/lib/extensions.ts', {}, { localStorage: { getItem: () => '["calculator"]' } });
+  const use = extension.extensionUse(['calculator']);
+  const { api, requests } = agent([{ body: { id: 'r1', output: [{ type: 'function_call', name: 'calculate', call_id: 'c1', arguments: '{"expression":"12*7"}' }] } }, { body: { id: 'r2', output_text: '84' } }]);
+  let answer = '';
+  await api.runAgentCompletion(config, [{ role: 'user', content: '@calculate 12*7' }], use.context, use.tools, extension.executeExtension, () => {}, token => answer += token, undefined, undefined, undefined, false, undefined, ['calculate']);
+  assert.equal(requests[0].body.tools[0].name, 'calculate');
+  assert.match(JSON.stringify(requests[1].body.input), /result.*84/);
+  assert.equal(answer, '84');
+});
 test('Prompt imports reserve tool names and expand only matching mentions', () => {
   const data = new Map();
-  const api = load('../src/lib/prompts.ts', { '../agent/catalog': { NOVA_TOOLS: [{ function: { name: 'fs_checkpoint' } }] } }, { localStorage: { getItem: key => data.get(key) } });
+  const api = load('../src/lib/prompts.ts', { './extensions': { extensionCatalog: [{ tool: 'calculate' }, { tool: 'analyze_text' }] }, '../agent/catalog': { NOVA_TOOLS: [{ function: { name: 'fs_checkpoint' } }] } }, { localStorage: { getItem: key => data.get(key) } });
   assert.throws(() => api.validatePrompts([{ name: 'Test', text: 'Do it', shortcut: 'fs_checkpoint' }]), /reserved/);
   data.set('nova-prompts-v1', JSON.stringify(api.validatePrompts([{ name: 'Email', text: 'Draft an email', shortcut: 'email' }])));
   assert.equal(api.expandPrompts('@email for Sam'), 'Draft an email for Sam');

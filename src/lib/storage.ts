@@ -62,19 +62,26 @@ export function loadConfig(): Config {
 }
 let credentialQueue: Promise<void> = Promise.resolve();
 const savedCredentialValues = new Map<string, string>();
-const credentialAccount = (provider: Config['providers'][number]) => `${provider.id}:${provider.baseUrl.replace(/\/+$/, '')}`;
+// Keep the original vault identifier across config merges and URL edits.
+const credentialAccount = (provider: Config['providers'][number]) => provider.credentialAccount || `${provider.id}:${provider.baseUrl.replace(/\/+$/, '')}`;
+export async function restoreProviderCredential(provider: Config['providers'][number], allowPrompt = false) {
+  const account = credentialAccount(provider);
+  const apiKey = await invoke<string | null>('read_provider_credential', { account, allowPrompt });
+  if (!apiKey) throw new Error('No saved key was found. Re-enter the key for this connection; Nova has not deleted any vault entries.');
+  savedCredentialValues.set(account, apiKey);
+  registerSecrets([apiKey]);
+  return { ...provider, apiKey, apiKeyStored: true, credentialAccount: account };
+}
 export async function hydrateProviderCredentials(config: Config): Promise<Config> {
   if (!('__TAURI_INTERNALS__' in window)) return config;
   const providers = [];
   for (const provider of config.providers) {
     if (!provider.apiKey && provider.apiKeyStored) {
       try {
-        const apiKey = await invoke<string | null>('read_provider_credential', { account: credentialAccount(provider) });
-        savedCredentialValues.set(credentialAccount(provider), apiKey || '');
-        providers.push({ ...provider, apiKey: apiKey || '', apiKeyStored: Boolean(apiKey) });
+        providers.push(await restoreProviderCredential(provider));
       } catch {
         providers.push(provider); // Preserve locked entries; never delete or replace them.
-        window.dispatchEvent(new CustomEvent('nova-credential-error', { detail: 'A saved API key is unavailable. Nova is still usable; enter the provider key in Settings → Models for this session. Existing Keychain data has not been removed.' }));
+        window.dispatchEvent(new CustomEvent('nova-credential-error', { detail: 'A saved API key needs vault access. Use Restore saved key in Settings → Models → API keys & connections. Existing vault data has not been removed.' }));
       }
     } else providers.push(provider);
   }
@@ -93,7 +100,7 @@ export function saveConfig(config: Config) {
       await invoke('write_provider_credential', { account, secret: provider.apiKey });
       savedCredentialValues.set(account, provider.apiKey);
     }
-    localStorage.setItem('idk-nova-config', JSON.stringify({ ...snapshot, providers: snapshot.providers.map(provider => ({ ...provider, apiKey: '', apiKeyStored: Boolean(provider.apiKey || provider.apiKeyStored) })) }));
+    localStorage.setItem('idk-nova-config', JSON.stringify({ ...snapshot, providers: snapshot.providers.map(provider => ({ ...provider, credentialAccount: credentialAccount(provider), apiKey: '', apiKeyStored: Boolean(provider.apiKey || provider.apiKeyStored) })) }));
     localStorage.removeItem('nova-chat-config'); // Remove the migrated legacy credential copy only after vault writes succeed.
   });
   void credentialQueue.catch(() => window.dispatchEvent(new CustomEvent('nova-credential-error', { detail: 'Could not save credentials securely. Settings were not persisted; unlock the system vault, then close Settings to retry.' })));

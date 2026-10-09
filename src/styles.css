@@ -2189,6 +2189,21 @@ body.resizing-browser iframe { pointer-events: none; }
 .marketplace-pack > button.secondary svg { width: 15px; height: 15px; flex: 0 0 15px; }
 .marketplace-pack > button.secondary:hover:not(:disabled) { background: var(--surface); border-color: var(--muted); }
 .marketplace-pack > button.secondary:disabled { opacity: .5; cursor: wait; }
+.command-composer { position: relative; width: 100%; min-width: 0; }
+.tool-execution-summary { margin: 10px 0; font-size: 11px; color: var(--muted); }
+.tool-execution-summary summary { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.tool-execution-summary summary svg { width: 14px; height: 14px; color: #55b98a; }
+.tool-execution-summary pre { padding: 10px; border-radius: 10px; background: var(--hover); overflow-wrap: anywhere; white-space: pre-wrap; max-height: 200px; overflow: auto; }
+.command-suggestions { position: absolute; z-index: 30; bottom: calc(100% + 14px); left: 0; right: 0; max-height: 300px; overflow: auto; padding: 7px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 32px #0002; }
+.command-suggestions > button { display: flex; align-items: center; gap: 12px; padding: 10px 12px; width: 100%; border: 0; border-radius: 9px; color: var(--text); background: transparent; text-align: left; }
+.command-suggestions > button.active, .command-suggestions > button:hover { background: var(--hover); }
+.command-suggestions span { flex: 1; min-width: 0; }
+.command-suggestions b, .command-suggestions small { display: block; }
+.command-suggestions small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
+.command-suggestions em { font-size: 10px; font-style: normal; color: var(--muted); white-space: nowrap; }
+.command-suggestions > small { padding: 5px 12px; }
+.marketplace-pack > button.secondary.pack-remove { color: #ef5757; border-color: #ef575733; background: #ef575710; }
+.marketplace-pack > button.secondary.pack-remove:hover:not(:disabled) { color: #f04949; background: #ef575722; border-color: #ef575766; }
 .settings-sidebar-actions button {
   height: 34px;
   font-size: 10px;

@@ -1,6 +1,6 @@
 {
-  "version": "0.23.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.23.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.23.1/IDK.Nova_0.23.1_x64-setup.exe",
-  "notes": ["Theme-matched marketplace install and remove buttons", "Choose configuration sections in an export checklist", "API keys and personal memory remain opt-in", "Plugin menu closes after selection or outside click", "Sent messages record the prompt packs supplied to the model", "Deleting the last conversation starts a normal chat", "Animated Intelligence sections and spaced recovery actions", "Neutral model-name placeholder"]
+  "version": "0.24.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.24.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.24.0/IDK.Nova_0.24.0_x64-setup.exe",
+  "notes": ["Preserve saved API-key references when vault access fails", "User-initiated saved-key recovery after macOS updates", "Executable local calculator, text analysis, JSON and date tools", "Separate executable tools from prompt-only packs", "Visible verified tool results in main and temporary chats", "Live filtered @command suggestions with keyboard navigation", "Red marketplace removal buttons", "Portable installed extensions in configuration export", "Fresh normal chat after deleting all visible conversations"]
 }

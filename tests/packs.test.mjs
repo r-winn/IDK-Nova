@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 function load(path, dependencies, globals) {
+  if (path !== '../src/lib/extensions.ts' && !dependencies['./extensions']) dependencies = { ...dependencies, './extensions': load('../src/lib/extensions.ts', {}, globals) };
   const module = { exports: {} };
   const code = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   vm.runInNewContext(code, { exports: module.exports, module, require: name => dependencies[name], crypto, Error, TextDecoder, Uint8Array, Event, URL, ...globals });
@@ -16,7 +17,7 @@ function environment() {
   const prompts = load('../src/lib/prompts.ts', { '../agent/catalog': { NOVA_TOOLS: [] } }, globals);
   const packs = load('../src/lib/packs.ts', { './prompts': prompts }, globals);
   const bundle = load('../src/lib/config-bundle.ts', { './prompts': prompts, './packs': packs, './intelligence': { intelligenceSettings: () => JSON.parse(data.get('nova-intelligence') || '{"enabled":false,"contextMessages":40,"routes":{}}') }, './usage': { modelPrices: () => JSON.parse(data.get('nova-prices-v1') || '{}') } }, globals);
-  return { data, events, globals, prompts, packs, bundle };
+  return { data, events, globals, prompts, packs, bundle, extensions: load('../src/lib/extensions.ts', {}, globals) };
 }
 const config = { providers: [{ id: 'source', baseUrl: 'https://test.invalid/v1', models: ['test'], apiKey: 'test-secret', apiKeyStored: true }], database: { url: 'private-database' } };
 test('Portable config carries installed packs, prompts, routing and prices without secrets or history', () => {
@@ -106,4 +107,47 @@ test('A failed bundle write rolls back portable preferences without announcing p
   assert.throws(() => bundle.importConfigBundle(valid, config, config), /quota/);
   assert.equal(JSON.stringify([...data]), before);
   assert.equal(events.length, 0);
+});
+test('Executable tools are opt-in, portable and actually compute results', async () => {
+  const { extensions, packs, bundle, data } = environment();
+  extensions.saveExtensions(['calculator', 'text-analysis']);
+  assert.equal(packs.preparePackUse([]).tools.length, 0);
+  const use = packs.preparePackUse([], '@calculate 12 * 7');
+  assert.equal(use.tools[0].function.name, 'calculate');
+  assert.equal(use.usedPacks[0].id, 'calculator');
+  const result = await extensions.executeExtension({ function: { name: 'calculate', arguments: '{"expression":"12 * 7"}' } });
+  assert.equal(result.result, 84);
+  const exported = bundle.exportConfigBundle(config);
+  data.clear();
+  bundle.importConfigBundle(bundle.validateConfigBundle(exported.novaBundle), config, config);
+  assert.equal(extensions.installedExtensions().length, 2);
+  assert.throws(() => bundle.validateConfigBundle({ schema: 1, extensions: ['unknown-script'] }), /Unknown/);
+});
+test('Calculator parses arithmetic without executing code and text measurements are real', async () => {
+  const { extensions } = environment();
+  assert.equal(extensions.calculate('-2^2 + 3 * (4 + 1)'), 11);
+  assert.equal(extensions.calculate('2^-3'), .125);
+  assert.equal(extensions.calculate('2^3^2'), 512);
+  for (const value of ['1/0', 'process.exit()', 'globalThis.secret', '', '2 2', '(', '5+']) assert.throws(() => extensions.calculate(value));
+  const result = await extensions.executeExtension({ function: { name: 'analyze_text', arguments: JSON.stringify({ text: 'سلام دنیا\n\nHello world' }) } });
+  assert.equal(result.words, 4); assert.equal(result.paragraphs, 2);
+  await assert.rejects(extensions.executeExtension({ function: { name: 'analyze_text', arguments: '{"text":10}' } }), /Invalid/);
+  await assert.rejects(extensions.executeExtension({ function: { name: 'shell_exec', arguments: '{}' } }), /Unregistered/);
+});
+test('JSON and date extensions validate data and never guess invalid dates', async () => {
+  const { extensions } = environment();
+  const call = (name, args) => extensions.executeExtension({ function: { name, arguments: JSON.stringify(args) } });
+  assert.equal((await call('inspect_json', { json: '[1,2]' })).count, 2);
+  assert.equal((await call('inspect_json', { json: '{bad}' })).valid, false);
+  assert.equal((await call('date_interval', { start: '2024-02-28', end: '2024-03-01' })).days, 2);
+  await assert.rejects(call('date_interval', { start: '2025-02-30', end: '2025-03-01' }), /Invalid/);
+});
+test('Executable manifests cannot install unknown code or grant permissions', async () => {
+  const { prompts, globals, extensions } = environment();
+  const fetchManifest = manifest => load('../src/lib/packs.ts', { './prompts': prompts, './extensions': extensions }, { ...globals, fetch: async () => ({ ok: true, headers: { get: () => null }, arrayBuffer: async () => new TextEncoder().encode(JSON.stringify(manifest)).buffer }) });
+  const valid = { id: 'calculator', version: '1.0', tool: 'calculate', runtime: 'nova-builtin', permissions: [] };
+  await fetchManifest(valid).downloadExtension('calculator', '/packs/calculator.json', () => {});
+  assert.equal(extensions.installedExtensions()[0], 'calculator');
+  for (const change of [{ permissions: ['terminal'] }, { runtime: 'javascript' }, { tool: 'shell_exec' }, { version: 'unknown' }]) await assert.rejects(fetchManifest({ ...valid, ...change }).downloadExtension('calculator', '/packs/calculator.json', () => {}), /Invalid/);
+  assert.equal(extensions.installedExtensions().length, 1);
 });
