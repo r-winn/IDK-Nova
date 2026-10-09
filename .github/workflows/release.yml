@@ -40,7 +40,7 @@ jobs:
           Set-Content -Path src-tauri/tauri.signing.conf.json -Value $config
       - name: Build signed Windows installers
         if: env.SIGNING_ENABLED == 'true'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -54,7 +54,7 @@ jobs:
           args: --config src-tauri/tauri.signing.conf.json -- --locked
       - name: Build unsigned community installers
         if: env.SIGNING_ENABLED != 'true'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -98,7 +98,7 @@ jobs:
       - name: Run native recovery tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib checkpoint_tests
       - name: Build universal macOS app and DMG
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
