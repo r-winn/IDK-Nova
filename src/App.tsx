@@ -86,11 +86,15 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import { AgentToolCall, discoverModels, runAgentCompletion, streamCompletion, testModel } from "./lib/ai";
 import { NovaAgentCore } from "./agent/core";
+import { AgentControl } from "./agent/control";
+import { IntelligenceCenter } from "./components/IntelligenceCenter";
+import { memoryContext, routeRequest, selectedContext } from "./lib/intelligence";
 import { providerTools } from "./agent/catalog";
 import { NOVA_WORK_SYSTEM } from "./agent/instructions";
 import type { NovaToolCall } from "./agent/protocol";
 import {
   loadConfig,
+  hydrateProviderCredentials,
   loadManagedConfig,
   loadValue,
   restoreChatAttachments,
@@ -123,6 +127,7 @@ import {
   isDesktopApp,
 } from "./lib/updater";
 import { BrandMark } from "./components/BrandMark";
+import { redactSecrets } from './lib/secrets';
 import { ThemeSelector } from "./components/ThemeSelector";
 
 const PdfViewer = lazy(() => import("./components/PdfViewer"));
@@ -138,6 +143,7 @@ const settingMeta = {
     "Manage the models available to Nova.",
   ],
   data: ["Data & memory", "Control optional storage and long-term context."],
+  intelligence: ["Intelligence", "Manage memory, model routing, activity and tools."],
   updates: ["Software update", "Keep Nova secure and up to date."],
   about: ["About Nova", "Version, licensing and deployment details."],
 } as const;
@@ -446,6 +452,8 @@ export default function App() {
   const [agentApproval, setAgentApproval] = useState<AgentApproval>(null);
   const [agentInput, setAgentInput] = useState<AgentInput>(null);
   const [agentStatus, setAgentStatus] = useState("");
+  const [agentPaused, setAgentPaused] = useState(false);
+  const agentControlRef = useRef(new AgentControl());
   const [agentTimeline, setAgentTimeline] = useState<string[]>([]);
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbar>(null);
@@ -466,6 +474,7 @@ export default function App() {
   const [localModelImport, setLocalModelImport] = useState<{ phase: string; message: string; processed: number; total: number; percent: number; error: string } | null>(null);
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
+  const [credentialsLoading, setCredentialsLoading] = useState(isDesktopApp());
   const [draftConfig, setDraftConfig] = useState<Config>(config);
   const [systemDark, setSystemDark] = useState(
     () => matchMedia("(prefers-color-scheme: dark)").matches,
@@ -813,14 +822,21 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => {
-    loadManagedConfig().then((managed) => {
-      if (!managed) return;
+    const credentialError = (event: Event) => setToast(String((event as CustomEvent).detail));
+    window.addEventListener('nova-credential-error', credentialError);
+    hydrateProviderCredentials(loadConfig()).then(async restored => {
+      const managed = await loadManagedConfig();
       setConfig((current) => {
-        const next = mergeImportedConfig(current, managed);
+        const hydrated = { ...current, providers: current.providers.map(provider => {
+          const stored = restored.providers.find(item => item.id === provider.id && item.baseUrl === provider.baseUrl);
+          return stored && !provider.apiKey ? { ...provider, apiKey: stored.apiKey, apiKeyStored: stored.apiKeyStored } : provider;
+        }) };
+        const next = managed ? mergeImportedConfig(hydrated, managed) : hydrated;
         saveConfig(next);
         return next;
       });
-    });
+    }).catch(() => setToast('Could not load API keys from the system vault. Unlock it, then restart Nova.')).finally(() => setCredentialsLoading(false));
+    return () => window.removeEventListener('nova-credential-error', credentialError);
   }, []);
 
   const prepareAttachment = (file: File): Promise<Attachment> =>
@@ -908,7 +924,7 @@ export default function App() {
       } catch { /* use the safe local candidate */ }
       try { storedChats = (JSON.parse(portable.chatsJson) as Chat[]).filter((item) => item && typeof item.id === "number").map((item) => ({ ...item, workspaceId: storedProject.id, messages: Array.isArray(item.messages) ? item.messages.map((message) => ({ ...message, generating: false })) : [] })); } catch { /* empty portable history */ }
       const project = storedProject;
-      setWorkspaces((current) => existing ? current.map((item) => item.id === existing.id ? { ...item, fileCount: project.fileCount, truncated: scan.truncated } : item) : [...current, project]);
+      setWorkspaces((current) => existing ? current.map((item) => item.id === existing.id ? { ...item, memoryNotes: project.memoryNotes ?? item.memoryNotes, fileCount: project.fileCount, truncated: scan.truncated } : item) : [...current, project]);
       if (storedChats.length) setChats((current) => [...storedChats.filter((portableChat) => !current.some((item) => item.id === portableChat.id)), ...current]);
       setOpenWorkspaceId(project.id);
       setOpenFolderId(null);
@@ -1394,6 +1410,7 @@ export default function App() {
     }
   };
   const sendTemporaryChat = async () => {
+    if (credentialsLoading) { setToast('Loading provider credentials…'); return; }
     const tab = browserTabs.find((item) => item.id === activeBrowserTabId);
     if (!tab || tab.kind !== "temporary" || tab.busy || !tab.draft?.trim()) return;
     if (!activeProvider || !config.activeModel) {
@@ -1569,6 +1586,7 @@ export default function App() {
     recognition.start();
   };
   const send = async (edited?: { content: string; history: Message[]; attachments?: Attachment[] }) => {
+    if (credentialsLoading) { setToast('Loading provider credentials…'); return; }
     if (!activeProvider || !config.activeModel) {
       setToast("Connect and select a model before sending a message");
       setDraftConfig(config);
@@ -1587,6 +1605,14 @@ export default function App() {
       quote: edited ? undefined : replyQuote || undefined,
     };
     const generationKind: Message["generationKind"] = isImageGenerationRequest(outgoingText) ? "image" : "text";
+    let requestConfig: Config;
+    try {
+      requestConfig = routeRequest(config, outgoingText, outgoingFiles.some(file => file.type.startsWith("image/"))).config;
+    } catch (error) { setToast(error instanceof Error ? error.message : String(error)); return; }
+    const requestHistory = selectedContext(chat, history);
+    const managedMemory = memoryContext(chat);
+    agentControlRef.current = new AgentControl();
+    setAgentPaused(false);
     stickToBottomRef.current = true;
     setShowJumpToBottom(false);
     const title = history.length
@@ -1619,7 +1645,7 @@ export default function App() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      let workspaceContext = "";
+      let workspaceContext = managedMemory;
       const project = workspaces.find((item) => item.id === chat.workspaceId);
       if (project && isDesktopApp()) {
         const scan = await invoke<WorkspaceScan>("scan_workspace", { rootPath: project.rootPath });
@@ -1746,8 +1772,28 @@ export default function App() {
           setAgentTimeline((items) => [...items.filter((item) => item !== label), label].slice(-5));
         };
         const core = new NovaAgentCore(active, project, user.content, reportAgentStatus, requestAgentApproval);
-        const executeAgentTool = async (rawCall: AgentToolCall) => core.execute(rawCall, async (call: NovaToolCall) => {
+        let checkpointCreated = false;
+        const executeAgentTool = async (rawCall: AgentToolCall) => {
+          const pausedAtBoundary = agentControlRef.current.paused;
+          if (pausedAtBoundary) { core.task.event('task', 'paused', 'Task paused at a tool boundary'); setAgentStatus('Paused · resume to continue'); }
+          await agentControlRef.current.checkpoint(controller.signal);
+          if (pausedAtBoundary) core.task.event('task', 'running', 'Task resumed');
+          return core.execute(rawCall, async (call: NovaToolCall) => {
           const args = call.arguments as Record<string, any>;
+          if (call.toolName === "fs_checkpoint") { const result = await invoke<Record<string, unknown>>("checkpoint_workspace", { rootPath: project.rootPath }); checkpointCreated = true; return result; }
+          if (!checkpointCreated && ['fs_write', 'fs_apply_patch', 'fs_mkdir', 'fs_move', 'fs_copy', 'fs_delete'].includes(call.toolName)) {
+            reportAgentStatus('Creating a recovery checkpoint…');
+            const result = await invoke<Record<string, unknown>>("checkpoint_workspace", { rootPath: project.rootPath });
+            checkpointCreated = true;
+            core.task.event('result', 'running', 'Recovery checkpoint created', JSON.stringify(result.checkpoint));
+          }
+          if (call.toolName === "task_plan") {
+            if (!Array.isArray(args.steps) || !args.steps.length || args.steps.some((step: unknown) => typeof step !== "string")) throw new Error("Plan steps must be non-empty text items");
+            const steps = args.steps.slice(0, 12).map((step: string) => step.slice(0, 300));
+            core.task.event("plan", "planning", "Task plan", steps.join("\n"));
+            setAgentTimeline(steps);
+            return { ok: true, steps };
+          }
           if (call.toolName === "fs_read_range") return { ok: true, path: args.path, content: await invoke<string>("read_workspace_range", { rootPath: project.rootPath, relativePath: args.path, startLine: Number(args.start_line), endLine: Number(args.end_line) }) };
           if (call.toolName === "fs_search") return { ok: true, matches: await invoke<WorkspaceMatch[]>("search_workspace", { rootPath: project.rootPath, query: String(args.query || "") }) };
           if (call.toolName === "fs_apply_patch") return await invoke<Record<string, unknown>>("patch_workspace_file", { rootPath: project.rootPath, relativePath: args.path, oldText: args.old_text, newText: args.new_text });
@@ -1770,12 +1816,14 @@ export default function App() {
           const result = await executeLegacyAgentTool(legacyCall, true);
           return result && typeof result === "object" ? result as Record<string, unknown> : { ok: true, result };
         });
+        };
         try {
           const actionRequested = /(باز\s*کن|جستجو|سرچ|کلیک|اضافه\s*کن|سبد|وارد\s*شو|لاگین|بساز|ایجاد\s*کن|ویرایش\s*کن|تغییر\s*بده|اجرا\s*کن|open|search|click|add|cart|login|sign\s*in|create|write|edit|run|launch)/i.test(user.content);
-          await runAgentCompletion(config, [...history, user], `${workspaceContext}\n\n${NOVA_WORK_SYSTEM}`, providerTools, executeAgentTool, () => undefined, appendToken, controller.signal, edited ? undefined : chat.responseMemory, rememberResponse, actionRequested);
+          await runAgentCompletion(requestConfig, [...requestHistory, user], `${workspaceContext}\n\n${managedMemory}\n\n${NOVA_WORK_SYSTEM}`, providerTools, executeAgentTool, () => undefined, appendToken, controller.signal, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, actionRequested, chat.workspaceId);
           core.complete();
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
+          if (controller.signal.aborted) { core.cancel(); throw agentError; }
           if (detail.includes("__NOVA_PERMISSION_DENIED__")) {
             core.cancel();
             setChats((items) => items.map((item) => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, content: "Permission was not granted. The requested action was cancelled." } : message) } : item));
@@ -1790,9 +1838,9 @@ export default function App() {
           core.fail(detail);
           if (!/400|tools|tool_choice|tool call/i.test(detail)) throw agentError;
           setToast("This provider does not support Agent tools yet · using normal Work chat");
-          await streamCompletion(config, [...history, user], appendToken, controller.signal, workspaceContext, edited ? undefined : chat.responseMemory, rememberResponse);
+          await streamCompletion(requestConfig, [...requestHistory, user], appendToken, controller.signal, `${workspaceContext}\n${managedMemory}`, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, chat.workspaceId);
         }
-      } else await streamCompletion(config, [...history, user], appendToken, controller.signal, workspaceContext, edited ? undefined : chat.responseMemory, rememberResponse);
+      } else await streamCompletion(requestConfig, [...requestHistory, user], appendToken, controller.signal, workspaceContext, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, chat.workspaceId);
     } catch (error) {
       if (controller.signal.aborted) {
         setChats((items) => items.map((item) => item.id === active ? {
@@ -1810,7 +1858,7 @@ export default function App() {
                   index === item.messages.length - 1
                     ? {
                         ...message,
-                        content: `I couldn’t connect to ${config.activeModel || "the selected model"}. Check Settings and make sure the provider is running.\n\n${error instanceof Error ? error.message : "Unknown error"}`,
+                        content: `I couldn’t connect to ${config.activeModel || "the selected model"}. Check Settings and make sure the provider is running.\n\n${redactSecrets(error instanceof Error ? error.message : "Unknown error")}`,
                       }
                     : message,
                 ),
@@ -1830,6 +1878,7 @@ export default function App() {
       inputResolverRef.current = null;
       setAgentInput(null);
       setAgentStatus("");
+      setAgentPaused(false);
       setBusy(false);
     }
   };
@@ -2605,6 +2654,7 @@ export default function App() {
                       {message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : (
                         <div className="agent-progress-wrap">
                           <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{chat.workspaceId && agentStatus && <span>{agentStatus}</span>}</div>
+                          {chat.workspaceId && busy && <div className="agent-run-controls"><button onClick={() => { if (agentPaused) agentControlRef.current.resume(); else agentControlRef.current.pause(); setAgentPaused(!agentPaused); }}>{agentPaused ? "Resume task" : "Pause after current action"}</button><button onClick={stopResponse}>Stop</button>{agentPaused && <small>Paused at the next tool boundary</small>}</div>}
                           {chat.workspaceId && agentTimeline.length > 1 && <div className="agent-timeline" aria-label="Task activity">{agentTimeline.slice(-3).map((item, step) => <span key={`${item}-${step}`} className={step === agentTimeline.slice(-3).length - 1 ? "active" : "done"}>{step === agentTimeline.slice(-3).length - 1 ? <i /> : <Check />}{item}</span>)}</div>}
                         </div>
                       )}
@@ -2845,6 +2895,7 @@ export default function App() {
                     ["general", SlidersHorizontal, "General"],
                     ["models", Bot, "Models"],
                     ["data", Database, "Data & memory"],
+                    ["intelligence", Workflow, "Intelligence"],
                     ["updates", Download, "Updates"],
                     ["about", Info, "About"],
                   ] as const
@@ -2892,6 +2943,7 @@ export default function App() {
                 </button>
               </header>
               <div className="settings-scroll settings-tab-transition" key={settingsTab}>
+                {settingsTab === "intelligence" && <IntelligenceCenter config={draftConfig} chat={chat} projects={workspaces} running={busy} onProjectMemory={(scope, notes) => setWorkspaces(items => items.map(project => project.id === scope ? { ...project, memoryNotes: notes } : project))} />}
                 {settingsTab === "general" && (
                   <>
                     <section className="settings-section compact-section">
@@ -3082,7 +3134,7 @@ export default function App() {
                       <section className="provider-connections">
                         {draftConfig.providers.map((provider) => <div className="provider-connection-row" key={provider.id}>
                           <div className="provider-connection-copy"><b>{provider.name}</b><code title={provider.baseUrl}>{provider.baseUrl}</code><small>{provider.models.length} model{provider.models.length === 1 ? "" : "s"}</small></div>
-                          <label><span>API key <small>{provider.apiKey ? "Configured" : "Required only if this provider uses authentication"}</small></span><input type="password" value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value } : item) }))} /></label>
+                          <label><span>API key <small>{provider.apiKey ? "Configured" : "Required only if this provider uses authentication"}</small></span><input type="password" disabled={credentialsLoading} value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value, apiKeyStored: false } : item) }))} /><small>{isDesktopApp() ? 'Saved in the operating-system credential vault.' : 'Stored in this browser. Use the desktop app for native credential protection.'}</small></label>
                         </div>)}
                         <label className="include-provider-keys"><input type="checkbox" checked={includeProviderKeys} onChange={(event) => setIncludeProviderKeys(event.target.checked)} /><span><b>Include API keys when exporting</b><small>Off by default. Enable only for a configuration file you will store and transfer securely.</small></span></label>
                       </section>

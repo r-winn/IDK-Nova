@@ -1,5 +1,7 @@
 import type { Attachment, Chat, Config } from '../types';
 import { defaultConfig, defaultProvider } from '../types';
+import { invoke } from '@tauri-apps/api/core';
+import { registerSecrets } from './secrets';
 export function loadValue<T>(key: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(key) || '') as T; } catch { return fallback; } }
 const ATTACHMENT_DB = 'idk-nova-memory';
 const ATTACHMENT_STORE = 'attachments';
@@ -58,7 +60,34 @@ export function loadConfig(): Config {
   const provider = { id: 'migrated-provider', name: stored.name || 'Local provider', baseUrl: stored.baseUrl || defaultProvider.baseUrl, apiKey: stored.apiKey || '', models: stored.model ? [stored.model] : [] };
   return { ...defaultConfig, providers: [provider], activeProviderId: provider.id, activeModel: stored.model || '', temperature: stored.temperature ?? 0.5 };
 }
-export function saveConfig(config: Config) { localStorage.setItem('idk-nova-config', JSON.stringify(config)); }
+let credentialQueue: Promise<void> = Promise.resolve();
+const credentialAccount = (provider: Config['providers'][number]) => `${provider.id}:${provider.baseUrl.replace(/\/+$/, '')}`;
+export async function hydrateProviderCredentials(config: Config): Promise<Config> {
+  if (!('__TAURI_INTERNALS__' in window)) return config;
+  const providers = [];
+  for (const provider of config.providers) {
+    if (!provider.apiKey && provider.apiKeyStored) {
+      const apiKey = await invoke<string | null>('read_provider_credential', { account: credentialAccount(provider) });
+      providers.push({ ...provider, apiKey: apiKey || '', apiKeyStored: Boolean(apiKey) });
+    } else providers.push(provider);
+  }
+  registerSecrets(providers.map(provider => provider.apiKey));
+  return { ...config, providers };
+}
+export function saveConfig(config: Config) {
+  registerSecrets(config.providers.map(provider => provider.apiKey));
+  if (!('__TAURI_INTERNALS__' in window)) { localStorage.setItem('idk-nova-config', JSON.stringify(config)); return; }
+  const snapshot = structuredClone(config);
+  credentialQueue = credentialQueue.catch(() => {}).then(async () => {
+    for (const provider of snapshot.providers) {
+      if (!provider.apiKey && provider.apiKeyStored) continue; // Still loading: preserve the existing vault entry.
+      await invoke('write_provider_credential', { account: credentialAccount(provider), secret: provider.apiKey });
+    }
+    localStorage.setItem('idk-nova-config', JSON.stringify({ ...snapshot, providers: snapshot.providers.map(provider => ({ ...provider, apiKey: '', apiKeyStored: Boolean(provider.apiKey || provider.apiKeyStored) })) }));
+    localStorage.removeItem('nova-chat-config'); // Remove the migrated legacy credential copy only after vault writes succeed.
+  });
+  void credentialQueue.catch(() => window.dispatchEvent(new CustomEvent('nova-credential-error', { detail: 'Could not save credentials securely. Settings were not persisted; unlock the system vault and save again.' })));
+}
 
 export async function loadManagedConfig(): Promise<Partial<Config> | null> {
   try { const response = await fetch(`${import.meta.env.BASE_URL}idk-nova.config.json`, { cache: 'no-store' }); return response.ok ? await response.json() : null; } catch { return null; }

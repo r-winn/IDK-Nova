@@ -13,12 +13,20 @@ const compactFingerprint = (value: unknown) => {
   return `${source.length}:${(hash >>> 0).toString(16)}`;
 };
 
+const withoutTiming = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutTiming);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key]) => !['durationMs', 'callId', 'updatedAt', 'checkedAt'].includes(key)).map(([key, item]) => [key, withoutTiming(item)]));
+  return value;
+};
+
 /** Stops only demonstrably stalled loops; it does not impose a turn budget. */
 export class AgentLoopWatchdog {
   private recent: string[] = [];
 
   observe(call: WatchdogToolCall, result: unknown) {
-    const signature = compactFingerprint({ name: call.function.name, arguments: call.function.arguments, result });
+    let args: unknown = call.function.arguments;
+    try { args = JSON.parse(call.function.arguments); } catch { /* Invalid arguments are still fingerprinted. */ }
+    const signature = compactFingerprint({ name: call.function.name, arguments: args, result: withoutTiming(result) });
     this.recent.push(signature);
     if (this.recent.length > 12) this.recent.shift();
     const repeats = (patternSize: number, times: number) => {

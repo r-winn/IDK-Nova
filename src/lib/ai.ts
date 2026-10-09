@@ -2,6 +2,7 @@ import type { Config, Message, Provider, ResponseMemory } from '../types';
 import { getActiveProvider } from '../types';
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http';
 import { AgentLoopWatchdog } from '../agent/loop-watchdog';
+import { UsageTracker } from './usage';
 
 const isDesktop = () => '__TAURI_INTERNALS__' in window;
 const request: typeof fetch = (input, init) =>
@@ -21,7 +22,7 @@ const endpoint = (provider: Provider, path: string) => {
 };
 
 const conversationInput = (messages: Message[]) => {
-  const recent = messages.slice(-40);
+  const recent = messages;
   let remainingImages = 8;
   const imageAllowance = new Map<number, number>();
   for (let index = recent.length - 1; index >= 0 && remainingImages > 0; index -= 1) {
@@ -56,6 +57,7 @@ const isUnsupportedResponsesError = (status: number) => [404, 405, 501].includes
 const unsupportedResponsesProviders = new Set<string>();
 const statelessResponsesProviders = new Set<string>();
 const temperaturelessResponsesProviders = new Set<string>();
+const usageOptionlessProviders = new Set<string>();
 const responsesProviderKey = (provider: Provider) => `${provider.id}:${provider.baseUrl.replace(/\/$/, '')}`;
 const isStaleResponseError = (status: number, detail: string) => [400, 404].includes(status) && /previous.{0,30}response|response.{0,30}(not found|expired|missing)/i.test(detail);
 const requiresStatelessResponses = (status: number, detail: string) => status === 400 && /(store.{0,30}(not supported|unsupported|must be false)|previous_response_id.{0,30}(not supported|unsupported)|each response request is independent)/i.test(detail);
@@ -63,17 +65,19 @@ const rejectsTemperature = (status: number, detail: string) => status === 400 &&
 const responseMemoryMatches = (memory: ResponseMemory | undefined, provider: Provider, model: string) =>
   Boolean(memory?.previousResponseId && memory.providerId === provider.id && memory.model === model);
 
-const readResponseStream = async (response: Response, onToken: (token: string) => void) => {
+const readResponseStream = async (response: Response, onToken: (token: string) => void, reportUsage: (usage: unknown) => void) => {
   if (!response.body) throw new Error('The provider did not return a response stream');
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let responseId = '';
   let streamError = '';
+  let usage: unknown;
   const handle = (raw: string) => {
     if (!raw || raw === '[DONE]') return;
     try {
       const event = JSON.parse(raw);
+      if (event.response?.usage) usage = event.response.usage;
       responseId = event.response?.id || event.id || responseId;
       if (event.type === 'response.output_text.delta' && typeof event.delta === 'string') onToken(event.delta);
       else if (event.type === 'response.refusal.delta' && typeof event.delta === 'string') onToken(event.delta);
@@ -95,6 +99,7 @@ const readResponseStream = async (response: Response, onToken: (token: string) =
     const data = buffer.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('');
     handle(data);
   }
+  reportUsage(usage);
   if (streamError) throw new Error(streamError);
   return responseId;
 };
@@ -130,7 +135,15 @@ export async function testModel(provider: Provider, model: string): Promise<numb
   return Math.round(performance.now() - started);
 }
 
-export async function streamCompletion(config: Config, messages: Message[], onToken: (token: string) => void, signal?: AbortSignal, systemContext?: string, memory?: ResponseMemory, onMemory?: (memory?: ResponseMemory) => void) {
+export async function streamCompletion(config: Config, messages: Message[], onToken: (token: string) => void, signal?: AbortSignal, systemContext?: string, memory?: ResponseMemory, onMemory?: (memory?: ResponseMemory) => void, workId?: string) {
+  const tracker = new UsageTracker(config, workId);
+  try {
+    await streamCompletionImpl(config, messages, token => { tracker.text(token); onToken(token); }, signal, systemContext, memory, onMemory, usage => tracker.report(usage));
+    tracker.finish('complete');
+  } catch (error) { tracker.finish(signal?.aborted ? 'stopped' : 'failed'); throw error; }
+}
+
+async function streamCompletionImpl(config: Config, messages: Message[], onToken: (token: string) => void, signal: AbortSignal | undefined, systemContext: string | undefined, memory: ResponseMemory | undefined, onMemory: ((memory?: ResponseMemory) => void) | undefined, reportUsage: (usage: unknown) => void) {
   const provider = getActiveProvider(config);
   if (!provider) throw new Error('Add a provider in Settings first');
   if (!config.activeModel) throw new Error('Select a model first');
@@ -152,24 +165,25 @@ export async function streamCompletion(config: Config, messages: Message[], onTo
       }),
       signal,
     });
-    let responseRequest = await createResponse(chained && !stateless, !stateless);
-    if (!responseRequest.ok) {
+    let useChain = chained && !stateless;
+    let responseRequest = await createResponse(useChain, !stateless);
+    for (let negotiation = 0; !responseRequest.ok && negotiation < 4; negotiation++) {
       const detail = await responseRequest.text();
-      if (requiresStatelessResponses(responseRequest.status, detail)) {
+      if (!stateless && requiresStatelessResponses(responseRequest.status, detail)) {
         statelessResponsesProviders.add(providerKey);
         stateless = true;
-        responseRequest = await createResponse(false, false);
+        useChain = false;
       }
-      else if (rejectsTemperature(responseRequest.status, detail)) {
+      else if (!temperaturelessResponsesProviders.has(providerKey) && rejectsTemperature(responseRequest.status, detail)) {
         temperaturelessResponsesProviders.add(providerKey);
-        responseRequest = await createResponse(chained && !stateless, !stateless);
       }
-      else if (chained && isStaleResponseError(responseRequest.status, detail)) responseRequest = await createResponse(false, true);
-      else if (isUnsupportedResponsesError(responseRequest.status)) unsupportedResponsesProviders.add(providerKey);
+      else if (useChain && isStaleResponseError(responseRequest.status, detail)) useChain = false;
+      else if (isUnsupportedResponsesError(responseRequest.status)) { unsupportedResponsesProviders.add(providerKey); break; }
       else throw new Error(`Provider returned ${responseRequest.status}: ${detail}`);
+      responseRequest = await createResponse(useChain, !stateless);
     }
     if (responseRequest.ok) {
-      const responseId = await readResponseStream(responseRequest, onToken);
+      const responseId = await readResponseStream(responseRequest, onToken, reportUsage);
       if (!stateless && !responseId) throw new Error('The Responses API did not return a response id');
       if (stateless) onMemory?.(undefined);
       else onMemory?.({ providerId: provider.id, model: config.activeModel, previousResponseId: responseId });
@@ -181,11 +195,29 @@ export async function streamCompletion(config: Config, messages: Message[], onTo
   onMemory?.(undefined);
   const content = conversationInput(messages);
   const providerMessages = systemContext ? [{ role: 'system', content: systemContext }, ...content] : content;
-  const response = await request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: { ...headers(provider), Accept: 'text/event-stream' }, body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, messages: providerMessages }), signal });
+  const chatRequest = () => request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: { ...headers(provider), Accept: 'text/event-stream' }, body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, stream_options: usageOptionlessProviders.has(providerKey) ? undefined : { include_usage: true }, messages: providerMessages }), signal });
+  let response = await chatRequest();
+  if (!response.ok) {
+    const detail = await response.text();
+    if (response.status === 400 && /stream_options|include_usage/i.test(detail) && !usageOptionlessProviders.has(providerKey)) {
+      usageOptionlessProviders.add(providerKey); response = await chatRequest();
+    } else throw new Error(`Provider returned ${response.status}: ${detail}`);
+  }
   if (!response.ok) throw new Error(`Provider returned ${response.status}: ${await response.text()}`);
   if (!response.body) throw new Error('The provider did not return a response stream');
   const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = '';
-  while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { const raw = line.replace(/^data:\s*/, '').trim(); if (!raw || raw === '[DONE]') continue; try { onToken(JSON.parse(raw).choices?.[0]?.delta?.content || ''); } catch { /* partial SSE */ } } }
+  let usage: unknown;
+  let streamError = '';
+  const handle = (line: string) => {
+    if (!line.startsWith('data:')) return;
+    const raw = line.slice(5).trim();
+    if (!raw || raw === '[DONE]') return;
+    try { const event = JSON.parse(raw); if (event.usage) usage = event.usage; if (event.error) streamError = event.error.message || 'The provider stream failed'; onToken(event.choices?.[0]?.delta?.content || ''); } catch { /* ignore malformed SSE payload */ }
+  };
+  while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; lines.forEach(handle); }
+  if (buffer.trim()) handle(buffer);
+  reportUsage(usage);
+  if (streamError) throw new Error(streamError);
 }
 
 export type AgentTool = { type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } };
@@ -198,7 +230,7 @@ const compactScreenFingerprint = (dataUrl: string) => {
   return `${dataUrl.length}:${(hash >>> 0).toString(16)}`;
 };
 
-export async function runAgentCompletion(
+async function runAgentCompletionImpl(
   config: Config,
   messages: Message[],
   systemContext: string,
@@ -210,6 +242,7 @@ export async function runAgentCompletion(
   memory?: ResponseMemory,
   onMemory?: (memory?: ResponseMemory) => void,
   requireTool = false,
+  reportUsage: (usage: unknown) => void = () => {},
 ) {
   const provider = getActiveProvider(config);
   if (!provider || !config.activeModel) throw new Error('Connect an agent-capable model first');
@@ -257,6 +290,7 @@ export async function runAgentCompletion(
       throw new Error(`Agent provider returned ${response.status}: ${detail}`);
     }
     const payload = await response.json();
+    reportUsage(payload.usage);
     if (!stateless) previousResponseId = payload.id || previousResponseId;
     if (stateless && Array.isArray(payload.output)) statelessContext.push(...payload.output);
     const calls = (Array.isArray(payload.output) ? payload.output : []).filter((item: any) => item?.type === 'function_call');
@@ -312,6 +346,7 @@ export async function runAgentCompletion(
       throw new Error(`Agent provider returned ${response.status}: ${detail}`);
     }
     const payload = await response.json();
+    reportUsage(payload.usage);
     const assistant = payload.choices?.[0]?.message;
     if (!assistant) throw new Error('Agent provider returned an invalid completion');
     conversation.push({ role: 'assistant', content: assistant.content ?? null, ...(assistant.tool_calls ? { tool_calls: assistant.tool_calls } : {}) });
@@ -343,4 +378,12 @@ export async function runAgentCompletion(
     });
     turn += 1;
   }
+}
+
+export async function runAgentCompletion(config: Config, messages: Message[], systemContext: string, tools: AgentTool[], execute: (call: AgentToolCall) => Promise<unknown>, onStep: (label: string) => void, onToken: (token: string) => void, signal?: AbortSignal, memory?: ResponseMemory, onMemory?: (memory?: ResponseMemory) => void, requireTool = false, workId?: string) {
+  const tracker = new UsageTracker(config, workId);
+  try {
+    await runAgentCompletionImpl(config, messages, systemContext, tools, execute, onStep, token => { tracker.text(token); onToken(token); }, signal, memory, onMemory, requireTool, usage => tracker.report(usage));
+    tracker.finish('complete');
+  } catch (error) { tracker.finish(signal?.aborted ? 'stopped' : 'failed'); throw error; }
 }

@@ -67,6 +67,33 @@ export type AgentTask = {
   events: TaskEvent[];
 };
 
+export function validateArguments(value: unknown, schema: Record<string, any>, path = 'arguments'): void {
+  const fail = (detail: string): never => { throw new Error(`Invalid ${path}: ${detail}`); };
+  if (schema.type === 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) fail('expected an object');
+    const object = value as Record<string, unknown>;
+    for (const name of schema.required || []) if (!(name in object)) fail(`missing ${name}`);
+    for (const [name, item] of Object.entries(object)) {
+      const property = schema.properties?.[name];
+      if (!property && schema.additionalProperties === false) fail(`unknown property ${name}`);
+      if (property) validateArguments(item, property, `${path}.${name}`);
+    }
+  } else if (schema.type === 'array') {
+    if (!Array.isArray(value)) fail('expected an array');
+    const items = value as unknown[];
+    if (schema.minItems !== undefined && items.length < schema.minItems) fail('too few items');
+    if (schema.maxItems !== undefined && items.length > schema.maxItems) fail('too many items');
+    if (schema.items) items.forEach((item, index) => validateArguments(item, schema.items, `${path}[${index}]`));
+  } else if (schema.type === 'string' && typeof value !== 'string') fail('expected text');
+  else if (schema.type === 'boolean' && typeof value !== 'boolean') fail('expected a boolean');
+  else if (schema.type === 'number' || schema.type === 'integer') {
+    if (typeof value !== 'number' || !Number.isFinite(value) || (schema.type === 'integer' && !Number.isInteger(value))) fail('expected a valid number');
+    if (schema.minimum !== undefined && (value as number) < schema.minimum) fail('below minimum');
+    if (schema.maximum !== undefined && (value as number) > schema.maximum) fail('above maximum');
+  }
+  if (schema.enum && !schema.enum.includes(value)) fail('not an allowed value');
+}
+
 export const parseToolCall = (call: AgentToolCall, definition: NovaToolDefinition, workingDirectory: string): NovaToolCall => {
   let args: Record<string, unknown>;
   try {
@@ -76,6 +103,7 @@ export const parseToolCall = (call: AgentToolCall, definition: NovaToolDefinitio
   } catch {
     throw new Error("Tool arguments are not valid JSON");
   }
+  validateArguments(args, definition.function.parameters);
   return {
     id: call.id,
     toolName: definition.function.name,

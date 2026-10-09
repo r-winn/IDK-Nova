@@ -9,6 +9,7 @@ type Approval = (copy: ReturnType<typeof approvalCopy>) => Promise<boolean>;
 
 export class NovaAgentCore {
   readonly task: AgentTaskStore;
+  private planned = false;
 
   constructor(
     chatId: number,
@@ -25,6 +26,7 @@ export class NovaAgentCore {
     const definition = toolDefinition(raw.function.name);
     if (!definition) throw new Error(`Unknown Nova tool: ${raw.function.name}`);
     const call = parseToolCall(raw, definition, this.project.rootPath);
+    if (call.toolName !== 'task_plan' && call.effect !== 'read' && !this.planned) throw new Error('Publish task_plan before making changes or taking external actions.');
     const decision = evaluateToolPolicy(call, this.project);
     if (!decision.allowed) {
       this.task.event("error", "failed", decision.reason || "Tool blocked by policy", undefined, call.id, call.toolName);
@@ -39,10 +41,13 @@ export class NovaAgentCore {
       }
     }
     this.onStatus(definition.nova.label);
-    this.task.event("tool", "running", definition.nova.label, undefined, call.id, call.toolName);
+    const source = [call.arguments.path, call.arguments.url, call.arguments.query].filter(value => typeof value === "string").join(" · ");
+    this.task.event("tool", "running", definition.nova.label, source || undefined, call.id, call.toolName);
     const started = performance.now();
     try {
       const data = await handler(call);
+      if (data.ok === false) throw new Error(String(data.error || data.stderr || "The tool reported an unsuccessful result"));
+      if (call.toolName === 'task_plan') this.planned = true;
       const image = typeof data.__novaImage === "string" ? data.__novaImage : undefined;
       const structuredData = Object.fromEntries(Object.entries(data).filter(([key]) => key !== "__novaImage"));
       const result: NovaToolResult = { callId: call.id, status: "success", structuredData, changedFiles: Array.isArray(data.changedFiles) ? data.changedFiles as string[] : undefined, durationMs: Math.round(performance.now() - started), __novaImage: image };

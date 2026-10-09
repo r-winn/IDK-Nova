@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+mod credentials;
+use credentials::{read_provider_credential, write_provider_credential};
 use futures_util::StreamExt;
 use std::{fs, io::{BufRead, BufReader, Cursor, Read, Write}, net::{TcpListener, TcpStream}, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
 use tauri::Manager;
@@ -110,10 +112,18 @@ async fn start_preview_server(root_path: String, relative_path: String, preferre
 fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
     let parent = path.parent().ok_or_else(|| "Invalid data path".to_string())?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    let temporary = parent.join(format!(".{}.tmp", path.file_name().and_then(|value| value.to_str()).unwrap_or("workspace")));
-    fs::write(&temporary, contents).map_err(|error| error.to_string())?;
-    if path.exists() { fs::remove_file(path).map_err(|error| error.to_string())?; }
-    fs::rename(&temporary, path).map_err(|error| error.to_string())
+    let stamp = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_err(|error| error.to_string())?.as_nanos();
+    let temporary = parent.join(format!(".{}.{}.{stamp}.tmp", path.file_name().and_then(|value| value.to_str()).unwrap_or("workspace"), std::process::id()));
+    let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(|error| error.to_string())?;
+    let result = (|| {
+        file.write_all(contents).map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+        drop(file);
+        // Rename replaces a file on both supported platforms; never delete the old file first.
+        fs::rename(&temporary, path).map_err(|error| error.to_string())
+    })();
+    if result.is_err() { let _ = fs::remove_file(&temporary); }
+    result
 }
 
 fn desktop_control_error(error: impl std::fmt::Display) -> String {
@@ -461,7 +471,7 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_nam
         let ollama = ollama_executable().ok_or_else(|| "OLLAMA_NOT_INSTALLED: Install Ollama before importing a GGUF model".to_string())?;
         send_import_status(&on_event, "starting", "Starting the local Ollama runtime", 69);
         ensure_ollama_runtime(&ollama)?;
-        let mut command = Command::new(ollama);
+        let mut command = Command::new(&ollama);
         command.args(["create", &safe_name, "-f"]).arg(&model_file).stdout(Stdio::null()).stderr(Stdio::piped());
         #[cfg(windows)]
         {
@@ -735,8 +745,8 @@ fn walk_workspace(root: &Path, current: &Path, depth: usize, output: &mut Vec<Wo
         if output.len() >= 2500 { *truncated = true; break; }
         let name = child.file_name().to_string_lossy().to_string();
         if ignored_name(&name) || name.starts_with('.') { continue; }
+        if child.file_type().map(|kind| kind.is_symlink()).unwrap_or(true) { continue; }
         let Ok(metadata) = child.metadata() else { continue };
-        if metadata.file_type().is_symlink() { continue; }
         let path = child.path();
         let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
         output.push(WorkspaceEntry {
@@ -757,6 +767,101 @@ async fn scan_workspace(root_path: String) -> Result<WorkspaceScan, String> {
         let mut entries = Vec::new(); let mut truncated = false;
         walk_workspace(&root, &root, 0, &mut entries, &mut truncated);
         Ok(WorkspaceScan { entries, truncated })
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn checkpoint_workspace(root_path: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        create_checkpoint(&root)
+    }).await.map_err(|error| error.to_string())?
+}
+
+fn create_checkpoint(root: &Path) -> Result<serde_json::Value, String> {
+        let mut entries = Vec::new(); let mut truncated = false;
+        walk_workspace(&root, &root, 0, &mut entries, &mut truncated);
+        if truncated { return Err("Project exceeds checkpoint scan limits; checkpoint was not created".into()); }
+        let files: Vec<_> = entries.iter().filter(|entry| entry.kind == "file").collect();
+        let total: u64 = files.iter().map(|entry| entry.size).sum();
+        if total > 512 * 1024 * 1024 { return Err("Project files exceed the 512 MB checkpoint limit".into()); }
+        let id = std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_err(|error| error.to_string())?.as_nanos().to_string();
+        let checkpoint = checkpoint_store(root)?.join(&id);
+        fs::create_dir(&checkpoint).map_err(|error| error.to_string())?;
+        for entry in &files {
+            let source = safe_target(&root, &entry.path)?;
+            let destination = checkpoint.join("files").join(&entry.path);
+            if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+            fs::copy(&source, &destination).map_err(|error| format!("Checkpoint failed for {}: {error}", entry.path))?;
+        }
+        let manifest = serde_json::json!({ "id": id, "files": files.iter().map(|entry| &entry.path).collect::<Vec<_>>(), "bytes": total, "exclusions": "Hidden and generated files are excluded, including .git, .nova-work and node_modules" });
+        atomic_write(&checkpoint.join("manifest.json"), serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())?.as_bytes())?;
+        Ok(serde_json::json!({ "ok": true, "checkpoint": manifest }))
+}
+
+fn checkpoint_store(root: &Path) -> Result<PathBuf, String> {
+    let store = nova_data_dir(root)?.join("checkpoints");
+    if fs::symlink_metadata(&store).map(|meta| meta.file_type().is_symlink()).unwrap_or(false) { return Err("Checkpoint storage cannot be a symbolic link".into()); }
+    fs::create_dir_all(&store).map_err(|error| error.to_string())?;
+    fs::canonicalize(store).map_err(|error| error.to_string())
+}
+
+fn checkpoint_manifest(store: &Path, id: &str) -> Result<serde_json::Value, String> {
+    if id.is_empty() || id.len() > 40 || !id.bytes().all(|byte| byte.is_ascii_digit()) { return Err("Invalid checkpoint identifier".into()); }
+    let checkpoint = fs::canonicalize(store.join(id)).map_err(|_| "Checkpoint was not found".to_string())?;
+    if !checkpoint.starts_with(store) { return Err("Checkpoint is outside project storage".into()); }
+    let manifest = safe_target(&checkpoint, "manifest.json")?;
+    if fs::metadata(&manifest).map_err(|error| error.to_string())?.len() > 2_000_000 { return Err("Checkpoint manifest is too large".into()); }
+    let value: serde_json::Value = serde_json::from_slice(&fs::read(manifest).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+    if value["id"].as_str() != Some(id) || !value["files"].is_array() { return Err("Invalid checkpoint manifest".into()); }
+    Ok(value)
+}
+
+#[tauri::command]
+async fn list_workspace_checkpoints(root_path: String) -> Result<Vec<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let store = checkpoint_store(&root)?;
+        let mut items = Vec::new();
+        for item in fs::read_dir(&store).map_err(|error| error.to_string())? {
+            let item = item.map_err(|error| error.to_string())?;
+            if item.file_type().map_err(|error| error.to_string())?.is_symlink() { continue; }
+            if let Ok(manifest) = checkpoint_manifest(&store, &item.file_name().to_string_lossy()) { items.push(manifest); }
+        }
+        items.sort_by(|a, b| b["id"].as_str().unwrap_or("").cmp(a["id"].as_str().unwrap_or("")));
+        Ok(items)
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn restore_workspace_checkpoint(root_path: String, checkpoint_id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let store = checkpoint_store(&root)?;
+        let manifest = checkpoint_manifest(&store, &checkpoint_id)?;
+        let files = manifest["files"].as_array().ok_or("Invalid checkpoint files")?;
+        if files.len() > 6000 { return Err("Checkpoint contains too many files".into()); }
+        let checkpoint = fs::canonicalize(store.join(&checkpoint_id)).map_err(|error| error.to_string())?;
+        let mut operations = Vec::new();
+        let mut bytes = 0u64;
+        for file in files {
+            let path = file.as_str().ok_or("Invalid checkpoint file path")?;
+            let target = safe_write_target(&root, path)?;
+            if target.exists() && !target.is_file() { return Err(format!("Cannot replace directory {path} with a file")); }
+            let source = safe_target(&checkpoint, &format!("files/{path}"))?;
+            if !source.is_file() { return Err(format!("Checkpoint file is missing: {path}")); }
+            bytes = bytes.saturating_add(fs::metadata(&source).map_err(|error| error.to_string())?.len());
+            if bytes > 512 * 1024 * 1024 { return Err("Checkpoint exceeds the 512 MB limit".into()); }
+            operations.push((source, target));
+        }
+        let backup = create_checkpoint(&root)?;
+        let backup_id = backup["checkpoint"]["id"].as_str().ok_or("Recovery backup is incomplete")?;
+        for (source, target) in &operations {
+            if let Some(parent) = target.parent() { fs::create_dir_all(parent).map_err(|error| format!("Restore failed; recovery checkpoint {backup_id}: {error}"))?; }
+            let content = fs::read(source).map_err(|error| format!("Restore failed; recovery checkpoint {backup_id}: {error}"))?;
+            atomic_write(target, &content).map_err(|error| format!("Restore failed; recovery checkpoint {backup_id}: {error}"))?;
+        }
+        Ok(serde_json::json!({ "ok": true, "restoredFiles": operations.len(), "backupId": backup_id }))
     }).await.map_err(|error| error.to_string())?
 }
 
@@ -981,7 +1086,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![import_gguf_model, ollama_status, install_ollama, scan_workspace, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal, install_package, start_preview_server])
+        .invoke_handler(tauri::generate_handler![read_provider_credential, write_provider_credential, import_gguf_model, ollama_status, install_ollama, scan_workspace, checkpoint_workspace, list_workspace_checkpoints, restore_workspace_checkpoint, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal, install_package, start_preview_server])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
@@ -989,4 +1094,54 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running IDK Nova");
+}
+
+#[cfg(test)]
+mod checkpoint_tests {
+    use super::*;
+    struct TestProject(PathBuf);
+    static TEST_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    impl TestProject {
+        fn new() -> Self {
+            let stamp = std::time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+            let sequence = TEST_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!("nova-checkpoint-test-{}-{stamp}-{sequence}", std::process::id()));
+            fs::create_dir(&path).unwrap();
+            Self(fs::canonicalize(path).unwrap())
+        }
+    }
+    impl Drop for TestProject { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); } }
+    #[test]
+    fn checkpoint_restores_content_and_retains_new_files_with_recovery_backup() {
+        let project = TestProject::new();
+        fs::write(project.0.join("original.txt"), "before").unwrap();
+        fs::write(project.0.join(".env"), "excluded").unwrap();
+        let result = create_checkpoint(&project.0).unwrap();
+        let id = result["checkpoint"]["id"].as_str().unwrap();
+        assert_eq!(result["checkpoint"]["files"].as_array().unwrap().len(), 1);
+        fs::write(project.0.join("original.txt"), "after").unwrap();
+        fs::write(project.0.join("new.txt"), "keep me").unwrap();
+        let restored = tauri::async_runtime::block_on(restore_workspace_checkpoint(project.0.to_string_lossy().into(), id.into())).unwrap();
+        assert_eq!(fs::read_to_string(project.0.join("original.txt")).unwrap(), "before");
+        assert_eq!(fs::read_to_string(project.0.join("new.txt")).unwrap(), "keep me");
+        let backup = project.0.join(".nova-work/checkpoints").join(restored["backupId"].as_str().unwrap()).join("files/original.txt");
+        assert_eq!(fs::read_to_string(backup).unwrap(), "after");
+        assert!(checkpoint_manifest(&checkpoint_store(&project.0).unwrap(), "../../escape").is_err());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn scan_excludes_symlinks_and_restore_rejects_link_targets() {
+        let project = TestProject::new();
+        fs::write(project.0.join("original.txt"), "original").unwrap();
+        let result = create_checkpoint(&project.0).unwrap();
+        fs::remove_file(project.0.join("original.txt")).unwrap();
+        fs::write(project.0.join("other.txt"), "untouched").unwrap();
+        std::os::unix::fs::symlink(project.0.join("other.txt"), project.0.join("original.txt")).unwrap();
+        let mut entries = Vec::new(); let mut truncated = false;
+        walk_workspace(&project.0, &project.0, 0, &mut entries, &mut truncated);
+        assert!(!entries.iter().any(|entry| entry.path == "original.txt"));
+        let id = result["checkpoint"]["id"].as_str().unwrap();
+        assert!(tauri::async_runtime::block_on(restore_workspace_checkpoint(project.0.to_string_lossy().into(), id.into())).is_err());
+        assert_eq!(fs::read_to_string(project.0.join("other.txt")).unwrap(), "untouched");
+    }
 }

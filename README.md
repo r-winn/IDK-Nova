@@ -5,8 +5,8 @@
   <p>Chat with local or cloud models, work with real project folders, inspect files, and keep every provider under your control.</p>
 
   [![Latest release](https://img.shields.io/github/v/release/r-winn/IDK-Nova?style=flat-square&label=latest)](https://github.com/r-winn/IDK-Nova/releases/latest)
-  [![Windows](https://img.shields.io/badge/Windows-Download_EXE-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.19.4_x64-setup.exe)
-  [![macOS](https://img.shields.io/badge/macOS-Universal_DMG-171717?style=flat-square&logo=apple)](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.19.4_universal.dmg)
+  [![Windows](https://img.shields.io/badge/Windows-Download_EXE-171717?style=flat-square&logo=windows)](https://github.com/r-winn/IDK-Nova/releases/latest)
+  [![macOS](https://img.shields.io/badge/macOS-Universal_DMG-171717?style=flat-square&logo=apple)](https://github.com/r-winn/IDK-Nova/releases/latest)
   [![Web app](https://img.shields.io/badge/Web-Open%20Nova-171717?style=flat-square)](https://r-winn.github.io/IDK-Nova/)
   [![License](https://img.shields.io/github/license/r-winn/IDK-Nova?style=flat-square)](LICENSE)
 </div>
@@ -35,8 +35,8 @@ Nova is local-first and provider-neutral. It does not ship with a hidden model o
 
 | Platform | Recommended download | Alternative |
 | --- | --- | --- |
-| Windows 10/11 (64-bit) | **[Download Setup.exe](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.19.4_x64-setup.exe)** | [MSI for managed deployment](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.19.4_x64_en-US.msi) |
-| macOS (Apple Silicon + Intel) | **[Download Universal DMG](https://github.com/r-winn/IDK-Nova/releases/latest/download/IDK.Nova_0.19.4_universal.dmg)** | — |
+| Windows 10/11 (64-bit) | **[Choose Setup.exe in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | Choose MSI for managed deployment |
+| macOS (Apple Silicon + Intel) | **[Choose Universal DMG in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | — |
 | Browser | **[Open the web app](https://r-winn.github.io/IDK-Nova/)** | Desktop is required for Nova Work and local GGUF import |
 
 All official binaries are attached to the **[latest GitHub Release](https://github.com/r-winn/IDK-Nova/releases/latest)**. Do not download Nova installers from unofficial mirrors.
@@ -185,10 +185,28 @@ Nova creates a hidden `.nova-work` directory inside a folder after you explicitl
 | **General** | Change the product name, workspace name, logo, accent, and response creativity. |
 | **Models** | Add providers, discover installed models, test connections, and select the active model. |
 | **Data & memory** | Configure PostgreSQL, MySQL, SQLite, or an HTTP data service for future memory integrations. |
+| **Intelligence** | Manage scoped memory, included conversation messages, rule-based model routing, task activity, provider-reported usage, pricing, and desktop Work checkpoints. |
 | **Updates** | Check, securely download, and install signed releases without leaving the desktop app. |
 | **About** | View the installed version, configuration mode, and license. |
 
-## Organizational and white-label deployment
+## Intelligence upgrade (0.20.0)
+
+Open **Settings → Intelligence**. These preferences save immediately, independently of the provider-settings draft:
+
+- **Memory:** add, edit, pin or delete notes for personal chats or a specific Work. Work notes travel in `.nova-work/project.json`; temporary chats do not use long-term notes. Select conversation messages to exclude from the next request and set the recent-message window. The displayed context token count is a text estimate, not billing.
+- **Routing:** optionally assign fast, strong, vision and private models. Classification is rule-based, not a security scanner. Explicitly private requests require a local endpoint when routing is enabled. Review your provider choice before sharing confidential files.
+- **Activity:** inspect plans, tool actions, approvals, sources and errors. Known provider keys and common secret patterns are redacted from new Agent activity records. This is best-effort redaction, not a guarantee that arbitrary sensitive information is detected.
+- **Usage:** view daily/monthly provider-reported tokens and response timings. Unsupported usage stays unavailable. Enter all three model rates in USD per million tokens to enable cost estimates for future responses. Estimates do not include tool fees or tax; they are not your provider invoice.
+- **Recovery:** create and restore desktop Work checkpoints. Restore first backs up the current visible files, overwrites files present in the selected snapshot and retains newer files. Hidden/generated paths are excluded; snapshots have scan and size limits. Restore is unavailable during an active task.
+- **Tools:** inspect the implemented native tool catalog and its permission/risk classifications. This is not yet a marketplace or MCP installer.
+
+Agent changes require a published plan. Nova creates a recovery checkpoint before the first native file mutation in a task. **Pause** takes effect at the next tool boundary; it does not freeze an already-running command. **Stop** aborts the model request and prevents subsequent tool actions; it does not yet terminate all running native child processes.
+
+On **Windows/macOS desktop**, saved provider keys use Credential Manager/Keychain rather than the local configuration JSON. The legacy credential copy is removed only after successful vault writes. macOS may request Keychain access. If saving fails, Nova displays an error and does not persist the settings. The **web app still uses browser storage**; never regard browser storage or exported credential-bearing configurations as a secure vault. Explicitly exported API keys are plaintext and should not be shared publicly.
+
+This is a tested incremental upgrade, **not completion of the entire twelve-part roadmap**. See [implementation status and remaining work](UPGRADE_STATUS.md). Team identity/roles, live voice, encrypted Work storage, marketplace integrations and full browser replay are not claimed as implemented.
+
+## Organizational and white-label deployment guide
 
 Nova can be prepared for a company, team, or client before distribution.
 
