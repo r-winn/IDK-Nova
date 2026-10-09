@@ -11,11 +11,14 @@ export function savedPrompts(): SavedPrompt[] {
 export function validatePrompts(value: unknown): SavedPrompt[] {
   if (!Array.isArray(value) || value.length > 200) throw new Error('A prompt library must contain at most 200 entries.');
   const used = new Set<string>();
+  const ids = new Set<string>();
   const reserved = new Set(NOVA_TOOLS.map(tool => tool.function.name));
   return value.map(item => {
     if (!item || typeof item.name !== 'string' || !item.name.trim() || item.name.length > 100 || typeof item.text !== 'string' || !item.text.trim() || item.text.length > 20000 || typeof item.shortcut !== 'string' || !/^[a-z][a-z0-9_]{1,49}$/.test(item.shortcut) || used.has(item.shortcut) || reserved.has(item.shortcut)) throw new Error('Use unique shortcuts (letters, numbers and underscores), a name and non-empty prompt. Tool names are reserved.');
     used.add(item.shortcut);
-    return { id: typeof item.id === 'string' ? item.id : crypto.randomUUID(), name: item.name, text: item.text, shortcut: item.shortcut, ...(typeof item.pack === 'string' ? { pack: item.pack } : {}) };
+    const id = typeof item.id === 'string' && item.id.length <= 100 && !ids.has(item.id) ? item.id : crypto.randomUUID();
+    ids.add(id);
+    return { id, name: item.name, text: item.text, shortcut: item.shortcut, ...(typeof item.pack === 'string' ? { pack: item.pack } : {}) };
   });
 }
 export function expandPrompts(text: string): string {

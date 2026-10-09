@@ -52,3 +52,13 @@ test('Vault failures preserve previous config, emit an error and never silently 
   assert.equal(events.length, 1); assert.equal(events[0].type, 'nova-credential-error');
   assert.doesNotMatch(events[0].detail, /test-only-secret/);
 });
+test('Autosaving appearance never rewrites unchanged vault credentials', async () => {
+  let writes = 0;
+  const { api, data } = storageWithVault(async (command) => { if (command === 'write_provider_credential') writes++; return 'test-only-secret'; });
+  await api.hydrateProviderCredentials({ providers: [{ ...config.providers[0], apiKey: '', apiKeyStored: true }] });
+  api.saveConfig({ ...config, theme: 'dark' }); await flush();
+  api.saveConfig({ ...config, theme: 'light' }); await flush();
+  assert.equal(writes, 0); assert.equal(JSON.parse(data.get('idk-nova-config')).theme, 'light');
+  api.saveConfig({ providers: [{ ...config.providers[0], apiKey: '' }] }); await flush();
+  assert.equal(writes, 1);
+});

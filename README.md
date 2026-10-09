@@ -20,7 +20,17 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
-### New in 0.22
+### New in 0.23
+
+Settings apply and save automatically; there is no Save/Cancel footer. Intelligence keeps its tab strip and top breathing room while its content scrolls.
+
+Install a curated prompt pack in **Marketplace**, then select one or more from **Plugins** beside the chat attachments. Selected packs appear as removable pills and guide every request in that chat, including temporary side chats. Installation progress counts actual bytes; Remove pack uninstalls its prompts. These are declarative prompt packs, not executable plugins or new system permissions.
+
+**Export config** includes installed pack content, saved prompts, routing/context preferences, model prices and all main settings. Import merges providers instead of removing existing models and remaps routing to matching connections. API keys and personal memory are excluded by default; optional export switches are in Models → API keys & connections. Work files, project memory and chat history remain separate from config export.
+
+The desktop **Live voice** button checks the currently selected model/provider's Realtime token endpoint without opening the microphone. It stays disabled if support cannot be confirmed. Clicking an enabled button opens an in-chat animated voice view with Mute, Stop and Cancel, using that same model. Closing or changing chats stops audio. Web voice remains disabled until a secure token server is configured; no long-lived key is sent through the browser voice transport.
+
+### Work foundations from 0.22
 
 Settings now separates appearance, models, Intelligence, Tools, a personal Prompt library and Marketplace. Intelligence contains response style, memory, routing, activity, usage and recovery. Updates and About sit at the bottom of the sidebar.
 
@@ -28,7 +38,7 @@ In a desktop **Work** chat, use commands such as `@fs_checkpoint`, `@fs_list` or
 
 **Test & diagnose** sends a real model completion request and displays actionable errors. File-change approvals show before/after content. **Intelligence → Recovery** prepares a continuation of interrupted Work in its original chat and can revert the most recent recorded file operation.
 
-Marketplace currently provides bundled **prompt packs**, not executable third-party plugins. Live voice is a **desktop preview** requiring an OpenAI-compatible Realtime provider and model; a text-only model or Chat Completions proxy is insufficient. The native host mints a short-lived token following the [official WebRTC flow](https://developers.openai.com/api/docs/guides/voice-webrtc). Start voice explicitly; End or closing its window stops the microphone. Voice does not use Work tools or automatically save transcripts. No live provider/microphone end-to-end test is claimed.
+Live voice is a **desktop preview** requiring an OpenAI-compatible Realtime provider and model; a text-only model or Chat Completions proxy is insufficient. The native host mints a short-lived token following the [official WebRTC flow](https://developers.openai.com/api/docs/guides/voice-webrtc). Clicking Live voice starts microphone access; Stop or Cancel ends it. Voice does not use Work tools or automatically save transcripts. No live provider/microphone end-to-end test is claimed.
 
 See [implementation status and remaining limitations](UPGRADE_STATUS.md) before relying on advanced workflows. Unified search, complete portable ZIP export, global quick-window shortcuts, guided onboarding and executable plugin installation are not completed by this release.
 

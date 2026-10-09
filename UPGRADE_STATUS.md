@@ -40,6 +40,14 @@ This incremental upgrade is not a completed implementation of the twelve-part pr
 - Desktop live voice preview uses native ephemeral-token minting and WebRTC, explicit microphone start, mute/end, audio playback retry and cleanup. It requires a provider with `/realtime/client_secrets` and `/realtime/calls` plus an accessible Realtime model. It does not inherit Work tools or save voice history. Web voice requires a secure token service. A real paid-provider call and physical microphone tests on Windows/macOS are still required.
 - Verification: frontend regression suite, native reviewed-write/patch/undo tests, macOS debug compilation and local Settings UI inspection. Installer CI must still pass on both platforms before public release.
 
+## 0.23.0 — settings, voice and portable prompt packs
+
+- Settings share the application state and save automatically with debounced writes plus a close-time flush. Unchanged credentials are not rewritten to the native vault. Save/Cancel footer removed.
+- Intelligence tabs keep their initial top spacing while content scrolls.
+- Marketplace streams bundled pack files and reports measured bytes, validates manifests, and supports removal. Packs are selectable in each main or temporary side-chat composer and supply instructions to that request. They remain text-only and grant no permissions.
+- Versioned config bundles carry installed prompt content, personal prompts, routing/context settings, model pricing, branding and main preferences. Imported provider IDs are remapped by endpoint, existing models are preserved, and invalid extensions fail before mutation. API keys and personal notes require explicit opt-in; project data is not included.
+- Live voice checks the selected model using native token negotiation without microphone access. The same selected model powers the in-chat voice screen with animated orb, mute, stop and cancel. Closing/changing chats releases microphone and peer resources. Web voice still needs a secure token service. A successful token check does not guarantee WebRTC network connectivity; physical microphone/paid-provider end-to-end tests are pending.
+
 ## Still required before claiming the requested roadmap is complete
 
 1. Reliable agent: complete provenance presentation, native child-process cancellation, durable task resume/recovery and end-to-end verification.

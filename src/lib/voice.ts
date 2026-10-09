@@ -2,6 +2,12 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Provider } from '../types';
 import { redactSecrets } from './secrets';
 
+export async function checkVoiceSupport(provider: Provider, model: string): Promise<boolean> {
+  if (!('__TAURI_INTERNALS__' in window) || !model || !navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) return false;
+  // Token negotiation does not request microphone permission or transmit audio.
+  try { return Boolean(await invoke<string>('create_voice_token', { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model })); } catch { return false; }
+}
+
 export class VoiceSession {
   private peer?: RTCPeerConnection;
   private microphone?: MediaStream;
@@ -11,7 +17,7 @@ export class VoiceSession {
   private abort = new AbortController();
   private timeout?: ReturnType<typeof setTimeout>;
   constructor(private status: (value: string, ended?: boolean) => void, private transcript: (role: 'user' | 'assistant', text: string) => void) {}
-  async start(provider: Provider, model: string) {
+  async start(provider: Provider, model: string, instructions = '') {
     if (!('__TAURI_INTERNALS__' in window)) throw new Error('Live voice currently requires the desktop app; the web app needs a secure token server.');
     if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) throw new Error('This system webview does not support microphone/WebRTC.');
     const base = provider.baseUrl.replace(/\/+$/, '');
@@ -33,6 +39,9 @@ export class VoiceSession {
     };
     for (const track of stream.getTracks()) peer.addTrack(track, stream);
     const channel = this.channel = peer.createDataChannel('oai-events');
+    channel.onopen = () => {
+      if (instructions && !this.stopped) channel.send(JSON.stringify({ type: 'session.update', session: { type: 'realtime', instructions } }));
+    };
     channel.onmessage = ({ data }) => {
       if (this.stopped) return;
       let event: any; try { event = JSON.parse(data); } catch { return; }

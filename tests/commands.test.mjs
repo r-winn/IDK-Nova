@@ -86,3 +86,11 @@ test('Voice rejects remote HTTP and closes the microphone, channel and peer on e
   await session.start({ baseUrl: 'https://voice.invalid/v1' }, 'test'); session.stop();
   assert.equal(stopped, 1); assert.equal(peerClosed, 1); assert.equal(channelClosed, 1); assert.equal(audio.srcObject, null);
 });
+test('Live voice availability is negotiated for the selected model without microphone access', async () => {
+  let microphoneCalls = 0; const models = [];
+  const api = load('../src/lib/voice.ts', { '@tauri-apps/api/core': { invoke: async (_name, args) => { models.push(args.model); if (args.model === 'text-only') throw new Error('Unsupported'); return 'temporary-token'; } }, './secrets': {} }, { window: { __TAURI_INTERNALS__: {}, RTCPeerConnection: class {} }, navigator: { mediaDevices: { getUserMedia() { microphoneCalls++; } } } });
+  const provider = { baseUrl: 'https://voice.invalid/v1', apiKey: 'test-only' };
+  assert.equal(await api.checkVoiceSupport(provider, 'text-only'), false);
+  assert.equal(await api.checkVoiceSupport(provider, 'company-realtime-alias'), true);
+  assert.deepEqual(models, ['text-only', 'company-realtime-alias']); assert.equal(microphoneCalls, 0);
+});

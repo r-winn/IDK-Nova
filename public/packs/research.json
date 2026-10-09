@@ -1,0 +1,1 @@
+{"id":"research","version":"1.0","permissions":[],"prompts":[{"name":"Research brief","shortcut":"research_brief","text":"Prepare a research brief for the topic below. Distinguish verified sources from assumptions. If web tools are unavailable, say so and do not fabricate citations."}]}

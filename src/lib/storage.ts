@@ -61,6 +61,7 @@ export function loadConfig(): Config {
   return { ...defaultConfig, providers: [provider], activeProviderId: provider.id, activeModel: stored.model || '', temperature: stored.temperature ?? 0.5 };
 }
 let credentialQueue: Promise<void> = Promise.resolve();
+const savedCredentialValues = new Map<string, string>();
 const credentialAccount = (provider: Config['providers'][number]) => `${provider.id}:${provider.baseUrl.replace(/\/+$/, '')}`;
 export async function hydrateProviderCredentials(config: Config): Promise<Config> {
   if (!('__TAURI_INTERNALS__' in window)) return config;
@@ -69,6 +70,7 @@ export async function hydrateProviderCredentials(config: Config): Promise<Config
     if (!provider.apiKey && provider.apiKeyStored) {
       try {
         const apiKey = await invoke<string | null>('read_provider_credential', { account: credentialAccount(provider) });
+        savedCredentialValues.set(credentialAccount(provider), apiKey || '');
         providers.push({ ...provider, apiKey: apiKey || '', apiKeyStored: Boolean(apiKey) });
       } catch {
         providers.push(provider); // Preserve locked entries; never delete or replace them.
@@ -86,12 +88,15 @@ export function saveConfig(config: Config) {
   credentialQueue = credentialQueue.catch(() => {}).then(async () => {
     for (const provider of snapshot.providers) {
       if (!provider.apiKey && provider.apiKeyStored) continue; // Still loading: preserve the existing vault entry.
-      await invoke('write_provider_credential', { account: credentialAccount(provider), secret: provider.apiKey });
+      const account = credentialAccount(provider);
+      if (savedCredentialValues.get(account) === provider.apiKey || (!provider.apiKey && !savedCredentialValues.has(account))) continue;
+      await invoke('write_provider_credential', { account, secret: provider.apiKey });
+      savedCredentialValues.set(account, provider.apiKey);
     }
     localStorage.setItem('idk-nova-config', JSON.stringify({ ...snapshot, providers: snapshot.providers.map(provider => ({ ...provider, apiKey: '', apiKeyStored: Boolean(provider.apiKey || provider.apiKeyStored) })) }));
     localStorage.removeItem('nova-chat-config'); // Remove the migrated legacy credential copy only after vault writes succeed.
   });
-  void credentialQueue.catch(() => window.dispatchEvent(new CustomEvent('nova-credential-error', { detail: 'Could not save credentials securely. Settings were not persisted; unlock the system vault and save again.' })));
+  void credentialQueue.catch(() => window.dispatchEvent(new CustomEvent('nova-credential-error', { detail: 'Could not save credentials securely. Settings were not persisted; unlock the system vault, then close Settings to retry.' })));
 }
 
 export async function loadManagedConfig(): Promise<Partial<Config> | null> {

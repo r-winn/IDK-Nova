@@ -1,7 +1,7 @@
 export type Attachment = { name: string; type: string; url: string };
 export type Message = { role: 'user' | 'assistant'; content: string; attachments?: Attachment[]; liked?: boolean; quote?: string; generating?: boolean; durationMs?: number; generationKind?: 'text' | 'image' };
 export type ResponseMemory = { providerId: string; model: string; previousResponseId: string };
-export type Chat = { id: number; title: string; time: string; messages: Message[]; archived?: boolean; folderId?: string; workspaceId?: string; temporary?: boolean; responseMemory?: ResponseMemory };
+export type Chat = { id: number; title: string; time: string; messages: Message[]; archived?: boolean; folderId?: string; workspaceId?: string; temporary?: boolean; responseMemory?: ResponseMemory; selectedPacks?: string[] };
 export type ChatFolder = { id: string; name: string; color: string; icon: 'folder' | 'work' | 'code' | 'sparkles' | 'book' | 'heart' | 'star' | 'rocket' | 'lab' | 'study' };
 export type WorkProject = { id: string; name: string; rootPath: string; createdAt: number; fileCount: number; truncated?: boolean; agentAccess?: 'ask' | 'safe' | 'auto'; localOnly?: boolean; memoryNotes?: { id: string; scope: string; text: string; pinned: boolean }[] };
 export type Provider = { id: string; name: string; baseUrl: string; apiKey: string; apiKeyStored?: boolean; models: string[] };

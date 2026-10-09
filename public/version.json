@@ -1,6 +1,6 @@
 {
-  "version": "0.22.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.22.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.22.0/IDK.Nova_0.22.0_x64-setup.exe",
-  "notes": ["Unified Intelligence settings and bottom-anchored About/Updates", "Verified @tool commands with normal Work permissions", "Inline connection diagnostics with real model tests", "Before/after file approval and last-change undo", "Interrupted-task continuation with state reinspection", "Personal prompt library and bundled prompt-pack Marketplace", "Local-model-only Work policy", "Desktop Realtime voice preview; compatible provider required", "See UPGRADE_STATUS.md for unimplemented features and verification limits"]
+  "version": "0.23.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.23.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.23.0/IDK.Nova_0.23.0_x64-setup.exe",
+  "notes": ["Automatic settings saving without Save/Cancel", "Intelligence tabs keep their spacing while scrolling", "Select installed prompt packs from each chat composer", "Measured pack installation progress and removal", "Portable config includes packs, prompts, routing and prices", "Selected-model desktop Realtime voice with mute, stop and cancel", "Secrets and personal memory excluded from config by default", "See UPGRADE_STATUS.md for verification limits"]
 }

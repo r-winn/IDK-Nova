@@ -91,10 +91,14 @@ import { AgentControl } from "./agent/control";
 import { IntelligenceCenter } from "./components/IntelligenceCenter";
 import { toolCommands, commandInstructions } from './agent/commands';
 import { PromptLibrary } from './components/PromptLibrary';
+import { PackPicker } from './components/PackPicker';
+import { packContext } from './lib/packs';
+import { configPreferences, exportConfigBundle, importConfigBundle, validateConfigBundle } from './lib/config-bundle';
 import { expandPrompts } from './lib/prompts';
-import { enforceWorkPrivacy } from './lib/intelligence';
+import { enforceWorkPrivacy, isLocalEndpoint } from './lib/intelligence';
 import { diagnoseConnection } from './lib/diagnostics';
 import { VoicePanel } from './components/VoicePanel';
+import { useVoiceAvailability } from './components/useVoiceAvailability';
 import { ResponseSettings, StorageSettings } from './components/IntelligenceSettings';
 import { recoverInterruptedTasks, recoveryPrompt } from './agent/task-store';
 import { ToolsCatalog } from "./components/ToolsCatalog";
@@ -278,6 +282,7 @@ type BrowserTab = {
   previewContent?: string;
   artifactView?: "edit" | "preview";
   messages?: Message[];
+  selectedPacks?: string[];
   draft?: string;
   busy?: boolean;
   imageUrl?: string;
@@ -489,13 +494,23 @@ export default function App() {
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
   const [credentialsLoading, setCredentialsLoading] = useState(isDesktopApp());
-  const [draftConfig, setDraftConfig] = useState<Config>(config);
+  // Settings use the same state as the app: closing never discards a change.
+  const draftConfig = config;
+  const setDraftConfig = setConfig;
+  const settingsSaveTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    if (credentialsLoading) return;
+    settingsSaveTimer.current = setTimeout(() => saveConfig(config), 300);
+    return () => clearTimeout(settingsSaveTimer.current);
+  }, [config, credentialsLoading]);
   const [systemDark, setSystemDark] = useState(
     () => matchMedia("(prefers-color-scheme: dark)").matches,
   );
   const [syncingId, setSyncingId] = useState("");
   const [manualModel, setManualModel] = useState("");
   const [includeProviderKeys, setIncludeProviderKeys] = useState(false);
+  const [includeConfigMemory, setIncludeConfigMemory] = useState(false);
+  const [configImportRevision, setConfigImportRevision] = useState(0);
   const [modelSetupView, setModelSetupView] = useState<"list" | "connections" | "choose" | "api" | "local">("list");
   const [newProvider, setNewProvider] = useState<Provider>({ id: "", name: "", baseUrl: "", apiKey: "", models: [] });
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
@@ -534,6 +549,9 @@ export default function App() {
   const chatWorkspace = workspaces.find((workspace) => workspace.id === chat?.workspaceId);
   const watchedWorkspace = chatWorkspace || workspaces.find((workspace) => workspace.id === openWorkspaceId);
   const activeProvider = getActiveProvider(config);
+  const voiceAvailability = useVoiceAvailability(activeProvider, config.activeModel, credentialsLoading);
+  const voicePrivacyBlocked = Boolean(chatWorkspace?.localOnly && activeProvider && !isLocalEndpoint(activeProvider.baseUrl));
+  useEffect(() => { setVoiceOpen(false); }, [active, config.activeProviderId, config.activeModel]);
   const activeBrowserTab = browserTabs.find((tab) => tab.id === activeBrowserTabId) || browserTabs[0];
   const workspaceArtifacts = useMemo(() => chats.flatMap((sourceChat) => sourceChat.messages.flatMap((message, messageIndex) => {
     if (message.role !== "assistant") return [];
@@ -1434,7 +1452,7 @@ export default function App() {
       setSettingsOpen(true);
       return;
     }
-    const user: Message = { role: "user", content: tab.draft.trim() };
+    const user: Message = { role: "user", content: expandPrompts(tab.draft.trim()) };
     const generationKind: Message["generationKind"] = isImageGenerationRequest(user.content) ? "image" : "text";
     const conversation = [...(tab.messages || []), user];
     const startedAt = Date.now();
@@ -1453,7 +1471,7 @@ export default function App() {
         const last = messages.length - 1;
         messages[last] = { ...messages[last], content: messages[last].content + token };
         return { ...item, messages };
-      })), controller.signal);
+      })), controller.signal, packContext(tab.selectedPacks || []));
     } catch (error) {
       setBrowserTabs((tabs) => tabs.map((item) => {
         if (item.id !== tab.id) return item;
@@ -1629,7 +1647,7 @@ export default function App() {
       enforceWorkPrivacy(workspaces.find(project => project.id === chat.workspaceId), requestConfig);
     } catch (error) { setToast(error instanceof Error ? error.message : String(error)); return; }
     const requestHistory = selectedContext(chat, history);
-    const managedMemory = memoryContext(chat);
+    const managedMemory = [memoryContext(chat), packContext(chat.selectedPacks || [])].filter(Boolean).join('\n\n');
     agentControlRef.current = new AgentControl();
     setAgentPaused(false);
     stickToBottomRef.current = true;
@@ -1971,6 +1989,8 @@ export default function App() {
   };
   const closeSettings = () => {
     if (settingsClosing) return;
+    clearTimeout(settingsSaveTimer.current);
+    if (!credentialsLoading) saveConfig(config);
     setSettingsClosing(true);
     window.setTimeout(() => {
       setSettingsOpen(false);
@@ -2221,16 +2241,19 @@ export default function App() {
   const importConfig = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (file.size > 5_000_000) { setToast('Configuration exceeds 5 MB'); event.target.value = ''; return; }
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const value = JSON.parse(String(reader.result));
-        setDraftConfig((current) => {
-          const next = mergeImportedConfig(current, value);
-          setConfig(next);
-          saveConfig(next);
-          return next;
-        });
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid config');
+        const bundle = validateConfigBundle(value.novaBundle);
+        const preferences = configPreferences(value);
+        const next = mergeImportedConfig(config, preferences);
+        importConfigBundle(bundle, { ...config, ...preferences }, next);
+        setConfig(next);
+        saveConfig(next);
+        setConfigImportRevision(current => current + 1);
         setToast("Configuration merged · your existing models were kept");
       } catch {
         setToast("Invalid configuration file");
@@ -2245,14 +2268,7 @@ export default function App() {
       return;
     }
     configExportRef.current = Date.now();
-    const safe = {
-      ...draftConfig,
-      providers: draftConfig.providers.map((provider) => ({
-        ...provider,
-        apiKey: includeProviderKeys ? provider.apiKey : "",
-      })),
-      database: { ...draftConfig.database, url: "" },
-    };
+    const safe = exportConfigBundle(draftConfig, includeProviderKeys, includeConfigMemory);
     const link = document.createElement("a");
     link.href = URL.createObjectURL(
       new Blob([JSON.stringify(safe, null, 2)], { type: "application/json" }),
@@ -2260,7 +2276,7 @@ export default function App() {
     link.download = "idk-nova.config.json";
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    setToast(includeProviderKeys ? "Configuration with provider credentials downloaded" : "Safe configuration downloaded without API keys");
+    setToast(includeProviderKeys ? "Config, prompt packs and routing downloaded with provider keys" : "Config, prompt packs and routing downloaded without API keys");
   };
   const uploadLogo = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2276,13 +2292,6 @@ export default function App() {
       }));
     reader.readAsDataURL(file);
     event.target.value = "";
-  };
-  const saveSettings = () => {
-    const next = draftConfig.providers.length ? draftConfig : { ...draftConfig, activeProviderId: "", activeModel: "" };
-    setConfig(next);
-    saveConfig(next);
-    closeSettings();
-    setToast("Settings saved");
   };
   const activeFolder = folders.find((folder) => folder.id === openFolderId);
   const activeWorkspace = workspaces.find((workspace) => workspace.id === openWorkspaceId);
@@ -2866,9 +2875,10 @@ export default function App() {
                 >
                   <ImageIcon />
                 </button>}
+                {!editingMessage && <PackPicker selected={chat.selectedPacks || []} disabled={busy} onChange={selectedPacks => setChats(items => items.map(item => item.id === chat.id ? { ...item, selectedPacks, responseMemory: undefined } : item))} />}
               </div>
               <div>
-                {!editingMessage && <button disabled={busy || !activeProvider} title="Live voice conversation" aria-label="Live voice conversation" onClick={() => setVoiceOpen(true)}><AudioLines /></button>}
+                {!editingMessage && <button disabled={busy || voicePrivacyBlocked || !voiceAvailability.available} title={voicePrivacyBlocked ? 'This Work allows local models only' : voiceAvailability.reason} aria-label="Live voice conversation" onClick={() => setVoiceOpen(true)}><AudioLines /></button>}
                 {editingMessage && <button className="edit-cancel" onClick={cancelMessageEdit}>Cancel</button>}
                 {!editingMessage && <button
                   disabled={!config.activeModel}
@@ -2902,9 +2912,8 @@ export default function App() {
             information.
           </p>
         </div>
+        {voiceOpen && <VoicePanel config={config} instructions={packContext(chat.selectedPacks || [])} onClose={() => setVoiceOpen(false)} />}
       </main>
-
-      {voiceOpen && <VoicePanel config={config} onClose={() => setVoiceOpen(false)} />}
       {settingsOpen && (
         <div
           className={`settings-backdrop ${settingsClosing ? "closing" : ""}`}
@@ -2978,8 +2987,8 @@ export default function App() {
                   <X />
                 </button>
               </header>
-              <div className="settings-scroll settings-tab-transition" key={settingsTab}>
-                {(settingsTab === 'prompts' || settingsTab === 'marketplace') && <PromptLibrary marketplace={settingsTab === 'marketplace'} onUse={value => { setText(current => `${current}${current ? '\n\n' : ''}${value}`); closeSettings(); }} />}
+              <div className={`settings-scroll settings-tab-transition ${settingsTab === 'intelligence' ? 'intelligence-scroll' : ''}`} key={`${settingsTab}-${configImportRevision}`}>
+                {(settingsTab === 'prompts' || settingsTab === 'marketplace') && <PromptLibrary key={configImportRevision} marketplace={settingsTab === 'marketplace'} onUse={value => { setText(current => `${current}${current ? '\n\n' : ''}${value}`); closeSettings(); }} />}
                 {settingsTab === "tools" && <ToolsCatalog onInsertCommand={command => { if (!chat.workspaceId || !isDesktopApp()) { setToast('Open a desktop Work chat to use tool commands'); return; } setText(current => `${current}${current ? ' ' : ''}${command} `); closeSettings(); }} />}
                 {settingsTab === "intelligence" && <IntelligenceCenter onPrivacy={(id, localOnly) => setWorkspaces(items => items.map(project => project.id === id ? { ...project, localOnly } : project))} config={draftConfig} onResume={task => { const original = chats.find(item => item.id === task.chatId && item.workspaceId === task.workspaceId); if (!original) { setToast("The original Work chat is no longer available"); return; } setActive(original.id); setOpenWorkspaceId(task.workspaceId); setText(recoveryPrompt(task)); closeSettings(); }} chat={chat} projects={workspaces} responsePanel={<ResponseSettings config={draftConfig} onChange={setDraftConfig} />} storagePanel={<StorageSettings config={draftConfig} onChange={setDraftConfig} />} running={busy} onProjectMemory={(scope, notes) => setWorkspaces(items => items.map(project => project.id === scope ? { ...project, memoryNotes: notes } : project))} />}
                 {settingsTab === "general" && (
@@ -3145,6 +3154,7 @@ export default function App() {
                           <label><span>API key <small>{provider.apiKey ? "Configured" : "Required only if this provider uses authentication"}</small></span><input type="password" disabled={credentialsLoading} value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value, apiKeyStored: false } : item) }))} /><small>{isDesktopApp() ? 'Saved in the operating-system credential vault.' : 'Stored in this browser. Use the desktop app for native credential protection.'}</small></label>
                         </div>)}
                         <label className="include-provider-keys"><input type="checkbox" checked={includeProviderKeys} onChange={(event) => setIncludeProviderKeys(event.target.checked)} /><span><b>Include API keys when exporting</b><small>Off by default. Enable only for a configuration file you will store and transfer securely.</small></span></label>
+                        <label className="include-provider-keys"><input type="checkbox" checked={includeConfigMemory} onChange={(event) => setIncludeConfigMemory(event.target.checked)} /><span><b>Include personal memory in config</b><small>Optional private notes. Installed prompt packs, saved prompts, routing and model prices are always included. Work files and chat history use Work export, not config.</small></span></label>
                       </section>
                     </div>}
                     {modelSetupView === "choose" && <div className="model-setup-view">
@@ -3328,19 +3338,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <footer>
-                <div>
-                  <button
-                    className="secondary"
-                    onClick={closeSettings}
-                  >
-                    Cancel
-                  </button>
-                  <button className="save-button" onClick={saveSettings}>
-                    Save changes
-                  </button>
-                </div>
-              </footer>
             </section>
           </div>
         </div>
@@ -3579,6 +3576,7 @@ export default function App() {
                       <div>
                         <button disabled title="Attachments are not kept in temporary chat"><Paperclip /></button>
                         <button disabled title="Images are not kept in temporary chat"><ImageIcon /></button>
+                        <PackPicker selected={activeBrowserTab.selectedPacks || []} disabled={Boolean(activeBrowserTab.busy)} onChange={selectedPacks => updateWorkspaceTab(activeBrowserTab.id, { selectedPacks })} />
                       </div>
                       <div>
                         <button disabled title="Voice input"><Mic /></button>

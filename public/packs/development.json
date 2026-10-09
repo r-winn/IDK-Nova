@@ -1,0 +1,1 @@
+{"id":"development","version":"1.0","permissions":[],"prompts":[{"name":"Review project","shortcut":"review_project","text":"Review this Work project using read-only tools. Cite file paths and line numbers for concrete issues. Do not change files without my request."}]}
