@@ -189,7 +189,7 @@ Nova creates a hidden `.nova-work` directory inside a folder after you explicitl
 | **Updates** | Check, securely download, and install signed releases without leaving the desktop app. |
 | **About** | View the installed version, configuration mode, and license. |
 
-## Intelligence upgrade (0.21.0)
+## Intelligence upgrade (0.21.1)
 
 Settings now use a compact segmented navigation and theme-aware form controls. Tools & capabilities has its own menu, searchable by name or description and filterable by risk. It lists the 25 built-in tools; it does not install third-party plugins.
 

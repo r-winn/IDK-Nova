@@ -67,8 +67,13 @@ export async function hydrateProviderCredentials(config: Config): Promise<Config
   const providers = [];
   for (const provider of config.providers) {
     if (!provider.apiKey && provider.apiKeyStored) {
-      const apiKey = await invoke<string | null>('read_provider_credential', { account: credentialAccount(provider) });
-      providers.push({ ...provider, apiKey: apiKey || '', apiKeyStored: Boolean(apiKey) });
+      try {
+        const apiKey = await invoke<string | null>('read_provider_credential', { account: credentialAccount(provider) });
+        providers.push({ ...provider, apiKey: apiKey || '', apiKeyStored: Boolean(apiKey) });
+      } catch {
+        providers.push(provider); // Preserve locked entries; never delete or replace them.
+        window.dispatchEvent(new CustomEvent('nova-credential-error', { detail: 'A saved API key is unavailable. Nova is still usable; enter the provider key in Settings → Models for this session. Existing Keychain data has not been removed.' }));
+      }
     } else providers.push(provider);
   }
   registerSecrets(providers.map(provider => provider.apiKey));

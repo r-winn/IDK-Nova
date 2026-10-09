@@ -791,6 +791,15 @@ main {
 .rich-content { display: contents; }
 .intelligence-center { max-width: 760px; margin: 0 auto; }
 .intelligence-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 5px; margin-bottom: 24px; background: var(--hover); border-radius: 12px; }
+.intelligence-tabs { position: sticky; top: -32px; z-index: 15; background: var(--surface); box-shadow: 0 6px 14px var(--surface); }
+.themed-select { position: relative; width: 100%; margin: 7px 0; }
+.settings-scroll .themed-select > button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--hover); color: var(--text); font: inherit; font-size: 12px; text-align: left; }
+.themed-select > button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.themed-select svg { width: 15px; height: 15px; flex: none; }
+.themed-select-options { position: absolute; top: calc(100% + 5px); left: 0; right: 0; z-index: 30; max-height: 240px; overflow: auto; padding: 5px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); animation: settings-tab-in 160ms ease; }
+.settings-scroll .themed-select-options button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: transparent; color: var(--text); border: 0; border-radius: 8px; padding: 11px; text-align: left; font: inherit; font-size: 12px; }
+.settings-scroll .themed-select-options button.highlighted { background: var(--hover); }
+.settings-scroll .themed-select button:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
 .intelligence-tabs button, .agent-run-controls button { display: flex; align-items: center; gap: 6px; border: 0; background: var(--hover); color: var(--muted); border-radius: 9px; padding: 8px 11px; font-size: 10px; }
 .intelligence-tabs svg { width: 14px; height: 14px; }
 .intelligence-tabs button { flex: 1; justify-content: center; white-space: nowrap; min-height: 36px; background: transparent; font-size: 11px; padding: 8px; }

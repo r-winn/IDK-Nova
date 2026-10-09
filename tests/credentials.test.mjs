@@ -16,6 +16,20 @@ function storageWithVault(invoke) {
 }
 const config = { providers: [{ id: 'company', baseUrl: 'https://example.com/v1', apiKey: 'test-only-secret', models: ['test'] }] };
 const flush = () => new Promise(resolve => setImmediate(resolve));
+test('A locked provider does not block other providers or remove its stored-key marker', async () => {
+  const { api, events } = storageWithVault(async (_command, args) => {
+    if (args.account.startsWith('locked:')) throw new Error('access denied');
+    return 'available-key';
+  });
+  const restored = await api.hydrateProviderCredentials({ providers: [
+    { id: 'locked', baseUrl: 'https://locked.example/v1', apiKey: '', apiKeyStored: true },
+    { id: 'available', baseUrl: 'https://available.example/v1', apiKey: '', apiKeyStored: true },
+  ] });
+  assert.equal(restored.providers[0].apiKeyStored, true);
+  assert.equal(restored.providers[0].apiKey, '');
+  assert.equal(restored.providers[1].apiKey, 'available-key');
+  assert.equal(events.length, 1);
+});
 test('Desktop config strips plaintext only after successful vault save and hydrates on restart', async () => {
   const secrets = new Map();
   const { api, data } = storageWithVault(async (command, args) => {
