@@ -47,6 +47,31 @@ test('Explicit memory export/import preserves Work notes without crossing their 
   bundle.importConfigBundle(bundle.validateConfigBundle(exported.novaBundle), config, config);
   assert.equal(JSON.parse(data.get('nova-memory-notes')).length, 2);
 });
+test('Selective export omits unselected sections and import keeps destination preferences', () => {
+  const { data, bundle, packs } = environment();
+  data.set('nova-prompts-v1', JSON.stringify([{ id: 'p', name: 'Email', shortcut: 'mail', text: 'Draft an email', pack: 'writing' }, { id: 'q', name: 'Mine', shortcut: 'mine', text: 'Personal instruction' }]));
+  data.set('nova-intelligence', '{"enabled":false,"contextMessages":40,"routes":{}}');
+  data.set('nova-prices-v1', '{"existing":{"input":2}}');
+  const selected = { appearance: false, providers: false, prompts: false, packs: true, intelligence: false, prices: false };
+  const exported = bundle.exportConfigBundle(config, true, false, selected);
+  assert.equal(exported.providers, undefined);
+  assert.equal(exported.branding, undefined);
+  assert.equal(exported.novaBundle.intelligence, undefined);
+  assert.equal(exported.novaBundle.prices, undefined);
+  assert.equal(exported.novaBundle.prompts.length, 1);
+  const before = data.get('nova-intelligence');
+  bundle.importConfigBundle(bundle.validateConfigBundle(exported.novaBundle), config, config);
+  assert.equal(data.get('nova-intelligence'), before);
+  assert.equal(data.get('nova-prices-v1'), '{"existing":{"input":2}}');
+  assert.equal(JSON.parse(data.get('nova-prompts-v1')).length, 2);
+  const use = packs.preparePackUse(['writing', 'missing']);
+  assert.equal(use.usedPacks.length, 1);
+  assert.match(use.context, /Draft an email/);
+  data.set('nova-prompts-v1', '[]');
+  assert.equal(use.usedPacks[0].name, 'Professional writing');
+  assert.match(use.context, /Draft an email/);
+  assert.equal(packs.preparePackUse(['writing']).context, '');
+});
 test('Invalid bundle fails validation before mutation; legacy configs stay compatible', () => {
   const { bundle, data } = environment();
   assert.equal(bundle.validateConfigBundle(undefined), undefined);

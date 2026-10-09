@@ -26,7 +26,7 @@ Settings apply and save automatically; there is no Save/Cancel footer. Intellige
 
 Install a curated prompt pack in **Marketplace**, then select one or more from **Plugins** beside the chat attachments. Selected packs appear as removable pills and guide every request in that chat, including temporary side chats. Installation progress counts actual bytes; Remove pack uninstalls its prompts. These are declarative prompt packs, not executable plugins or new system permissions.
 
-**Export config** includes installed pack content, saved prompts, routing/context preferences, model prices and all main settings. Import merges providers instead of removing existing models and remaps routing to matching connections. API keys and personal memory are excluded by default; optional export switches are in Models → API keys & connections. Work files, project memory and chat history remain separate from config export.
+**Export config** opens a checklist: choose appearance, providers/models, personal prompts, installed packs, routing/context preferences, model prices and optional personal memory. API keys are excluded by default; including them creates a plaintext credential-bearing file. Routing and prices require the provider list so connections can be remapped correctly. Import merges providers instead of removing existing models and leaves omitted sections unchanged. Work files, project memory and chat history remain separate from config export. A small pack indicator beneath sent messages records the instructions supplied with that request; it is not a guarantee that a model followed them perfectly.
 
 The desktop **Live voice** button checks the currently selected model/provider's Realtime token endpoint without opening the microphone. It stays disabled if support cannot be confirmed. Clicking an enabled button opens an in-chat animated voice view with Mute, Stop and Cancel, using that same model. Closing or changing chats stops audio. Web voice remains disabled until a secure token server is configured; no long-lived key is sent through the browser voice transport.
 
@@ -242,7 +242,7 @@ Nova can be prepared for a company, team, or client before distribution.
 4. Add a transparent PNG, SVG, or WebP logo as a data URL, or import the configuration through **Settings → Import config**.
 5. Build and distribute the resulting Windows installer.
 
-Users can also configure one installation and choose **Export config** to create a reusable file for other installations. API keys and database credentials are intentionally removed from exported files.
+Users can also configure one installation and choose **Export config** to create a reusable file for other installations. API keys are excluded unless explicitly selected; database credentials are always removed.
 
 Example:
 

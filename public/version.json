@@ -1,6 +1,6 @@
 {
-  "version": "0.23.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.23.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.23.0/IDK.Nova_0.23.0_x64-setup.exe",
-  "notes": ["Automatic settings saving without Save/Cancel", "Intelligence tabs keep their spacing while scrolling", "Select installed prompt packs from each chat composer", "Measured pack installation progress and removal", "Portable config includes packs, prompts, routing and prices", "Selected-model desktop Realtime voice with mute, stop and cancel", "Secrets and personal memory excluded from config by default", "See UPGRADE_STATUS.md for verification limits"]
+  "version": "0.23.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.23.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.23.1/IDK.Nova_0.23.1_x64-setup.exe",
+  "notes": ["Theme-matched marketplace install and remove buttons", "Choose configuration sections in an export checklist", "API keys and personal memory remain opt-in", "Plugin menu closes after selection or outside click", "Sent messages record the prompt packs supplied to the model", "Deleting the last conversation starts a normal chat", "Animated Intelligence sections and spaced recovery actions", "Neutral model-name placeholder"]
 }

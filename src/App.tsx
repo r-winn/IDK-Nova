@@ -53,6 +53,7 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  Puzzle,
   RefreshCw,
   Reply,
   Rocket,
@@ -92,8 +93,10 @@ import { IntelligenceCenter } from "./components/IntelligenceCenter";
 import { toolCommands, commandInstructions } from './agent/commands';
 import { PromptLibrary } from './components/PromptLibrary';
 import { PackPicker } from './components/PackPicker';
-import { packContext } from './lib/packs';
-import { configPreferences, exportConfigBundle, importConfigBundle, validateConfigBundle } from './lib/config-bundle';
+import { packContext, preparePackUse } from './lib/packs';
+import { configPreferences, exportConfigBundle, importConfigBundle, validateConfigBundle, type ExportSections } from './lib/config-bundle';
+import { ConfigExportDialog } from './components/ConfigExportDialog';
+import { chatsAfterDeletion } from './lib/chat-deletion';
 import { expandPrompts } from './lib/prompts';
 import { enforceWorkPrivacy, isLocalEndpoint } from './lib/intelligence';
 import { diagnoseConnection } from './lib/diagnostics';
@@ -508,8 +511,7 @@ export default function App() {
   );
   const [syncingId, setSyncingId] = useState("");
   const [manualModel, setManualModel] = useState("");
-  const [includeProviderKeys, setIncludeProviderKeys] = useState(false);
-  const [includeConfigMemory, setIncludeConfigMemory] = useState(false);
+  const [configExportOpen, setConfigExportOpen] = useState(false);
   const [configImportRevision, setConfigImportRevision] = useState(0);
   const [modelSetupView, setModelSetupView] = useState<"list" | "connections" | "choose" | "api" | "local">("list");
   const [newProvider, setNewProvider] = useState<Provider>({ id: "", name: "", baseUrl: "", apiKey: "", models: [] });
@@ -1067,21 +1069,14 @@ export default function App() {
   const confirmChatDialog = () => {
     if (!chatDialog) return;
     if (chatDialog.mode === "delete") {
-      const deleted = chats.find((item) => item.id === chatDialog.id);
-      let next = chats.filter((item) => item.id !== chatDialog.id);
+      const next = chatsAfterDeletion(chats, chatDialog.id, active, Date.now());
       workspaceSessionsRef.current.delete(chatDialog.id);
-      if (active === chatDialog.id && deleted?.workspaceId) {
-        let replacement = next.find((item) => !item.archived && item.workspaceId === deleted.workspaceId);
-        if (!replacement) {
-          replacement = { id: Date.now(), title: "New work chat", time: "Today", messages: [], workspaceId: deleted.workspaceId };
-          next = [replacement, ...next];
-        }
-        setOpenWorkspaceId(deleted.workspaceId);
-        setActive(replacement.id);
-      } else if (active === chatDialog.id) {
-        setActive(next[0]?.id || starterChats[0].id);
+      if (next.resetNavigation) {
+        setOpenFolderId(null);
       }
-      setChats(next.length ? next : starterChats);
+      if (next.workspaceId !== undefined) setOpenWorkspaceId(next.workspaceId);
+      setActive(next.active);
+      setChats(next.chats);
       setToast("Conversation deleted");
     } else if (chatDialog.value.trim()) {
       setChats((items) =>
@@ -1452,7 +1447,8 @@ export default function App() {
       setSettingsOpen(true);
       return;
     }
-    const user: Message = { role: "user", content: expandPrompts(tab.draft.trim()) };
+    const packUse = preparePackUse(tab.selectedPacks || []);
+    const user: Message = { role: "user", content: expandPrompts(tab.draft.trim()), usedPacks: packUse.usedPacks };
     const generationKind: Message["generationKind"] = isImageGenerationRequest(user.content) ? "image" : "text";
     const conversation = [...(tab.messages || []), user];
     const startedAt = Date.now();
@@ -1471,7 +1467,7 @@ export default function App() {
         const last = messages.length - 1;
         messages[last] = { ...messages[last], content: messages[last].content + token };
         return { ...item, messages };
-      })), controller.signal, packContext(tab.selectedPacks || []));
+      })), controller.signal, packUse.context);
     } catch (error) {
       setBrowserTabs((tabs) => tabs.map((item) => {
         if (item.id !== tab.id) return item;
@@ -1634,9 +1630,11 @@ export default function App() {
       setToast('Tool commands require a desktop Work chat. Open a Work project first.');
       return;
     }
+    const packUse = preparePackUse(chat.selectedPacks || []);
     const user: Message = {
       role: "user",
       content: outgoingText,
+      usedPacks: packUse.usedPacks,
       attachments: outgoingFiles,
       quote: edited ? undefined : replyQuote || undefined,
     };
@@ -1647,7 +1645,7 @@ export default function App() {
       enforceWorkPrivacy(workspaces.find(project => project.id === chat.workspaceId), requestConfig);
     } catch (error) { setToast(error instanceof Error ? error.message : String(error)); return; }
     const requestHistory = selectedContext(chat, history);
-    const managedMemory = [memoryContext(chat), packContext(chat.selectedPacks || [])].filter(Boolean).join('\n\n');
+    const managedMemory = [memoryContext(chat), packUse.context].filter(Boolean).join('\n\n');
     agentControlRef.current = new AgentControl();
     setAgentPaused(false);
     stickToBottomRef.current = true;
@@ -1989,6 +1987,7 @@ export default function App() {
   };
   const closeSettings = () => {
     if (settingsClosing) return;
+    setConfigExportOpen(false);
     clearTimeout(settingsSaveTimer.current);
     if (!credentialsLoading) saveConfig(config);
     setSettingsClosing(true);
@@ -2262,13 +2261,15 @@ export default function App() {
     reader.readAsText(file);
     event.target.value = "";
   };
-  const exportConfig = () => {
+  const exportConfig = (sections: ExportSections, includeProviderKeys: boolean, includeConfigMemory: boolean) => {
     if (Date.now() - configExportRef.current < 1000) {
       setToast("Configuration download already started");
       return;
     }
     configExportRef.current = Date.now();
-    const safe = exportConfigBundle(draftConfig, includeProviderKeys, includeConfigMemory);
+    let safe: ReturnType<typeof exportConfigBundle>;
+    try { safe = exportConfigBundle(draftConfig, includeProviderKeys, includeConfigMemory, sections); }
+    catch { setToast("Configuration could not be exported. Check your saved prompts and memory."); return; }
     const link = document.createElement("a");
     link.href = URL.createObjectURL(
       new Blob([JSON.stringify(safe, null, 2)], { type: "application/json" }),
@@ -2276,7 +2277,8 @@ export default function App() {
     link.download = "idk-nova.config.json";
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    setToast(includeProviderKeys ? "Config, prompt packs and routing downloaded with provider keys" : "Config, prompt packs and routing downloaded without API keys");
+    setConfigExportOpen(false);
+    setToast(includeProviderKeys ? "Selected configuration downloaded with API keys · keep it private" : "Selected configuration downloaded without API keys");
   };
   const uploadLogo = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2698,8 +2700,9 @@ export default function App() {
                         </div>
                       )}
                     </div>
-                    {message.role === "user" && message.content && <div className="message-actions user-message-actions">
-                      <button onClick={() => copy(message.content)}><Copy />Copy</button>
+                    {message.role === "user" && (message.content || message.usedPacks?.length) && <div className="message-actions user-message-actions">
+                      {!!message.usedPacks?.length && <span className="message-pack-marker" title={message.usedPacks.map(pack => `${pack.name} · ${pack.version}`).join('\n')}><Puzzle /><span>{message.usedPacks.map(pack => pack.name).join(' · ')}</span></span>}
+                      {message.content && <button onClick={() => copy(message.content)}><Copy />Copy</button>}
                       {index === lastUserMessageIndex && <button disabled={busy} onClick={() => beginMessageEdit(index, message)}><Pencil />Edit</button>}
                     </div>}
                     {message.role === "assistant" && message.content && (
@@ -2960,7 +2963,7 @@ export default function App() {
                   <Upload />
                   Import config
                 </button>
-                <button onClick={exportConfig}>
+                <button onClick={() => setConfigExportOpen(true)}>
                   <Download />
                   Export config
                 </button>
@@ -3153,8 +3156,6 @@ export default function App() {
                           <div className="provider-connection-copy"><b>{provider.name}</b><code title={provider.baseUrl}>{provider.baseUrl}</code><small>{provider.models.length} model{provider.models.length === 1 ? "" : "s"}</small></div>
                           <label><span>API key <small>{provider.apiKey ? "Configured" : "Required only if this provider uses authentication"}</small></span><input type="password" disabled={credentialsLoading} value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value, apiKeyStored: false } : item) }))} /><small>{isDesktopApp() ? 'Saved in the operating-system credential vault.' : 'Stored in this browser. Use the desktop app for native credential protection.'}</small></label>
                         </div>)}
-                        <label className="include-provider-keys"><input type="checkbox" checked={includeProviderKeys} onChange={(event) => setIncludeProviderKeys(event.target.checked)} /><span><b>Include API keys when exporting</b><small>Off by default. Enable only for a configuration file you will store and transfer securely.</small></span></label>
-                        <label className="include-provider-keys"><input type="checkbox" checked={includeConfigMemory} onChange={(event) => setIncludeConfigMemory(event.target.checked)} /><span><b>Include personal memory in config</b><small>Optional private notes. Installed prompt packs, saved prompts, routing and model prices are always included. Work files and chat history use Work export, not config.</small></span></label>
                       </section>
                     </div>}
                     {modelSetupView === "choose" && <div className="model-setup-view">
@@ -3172,7 +3173,7 @@ export default function App() {
                         <label>Connection name<input autoFocus value={newProvider.name} placeholder="Company AI" onChange={(event) => setNewProvider((current) => ({ ...current, name: event.target.value }))} /></label>
                         <label>Base URL<input value={newProvider.baseUrl} placeholder="https://api.example.com/v1" onChange={(event) => setNewProvider((current) => ({ ...current, baseUrl: event.target.value }))} /></label>
                         <label>API key <small className="optional">Optional for local servers</small><input type="password" value={newProvider.apiKey} placeholder="Paste API key" onChange={(event) => setNewProvider((current) => ({ ...current, apiKey: event.target.value }))} /></label>
-                        <label>Model ID <small className="optional">Leave empty to discover automatically</small><input value={manualModel} placeholder="goldiran-auto" onChange={(event) => setManualModel(event.target.value)} /></label>
+                        <label>Model ID <small className="optional">Leave empty to discover automatically</small><input value={manualModel} placeholder="Model name" onChange={(event) => setManualModel(event.target.value)} /></label>
                         <button className="primary-button connect-model-button" disabled={!newProvider.baseUrl.trim() || syncingId === newProvider.id} onClick={addApiModel}><RefreshCw className={syncingId === newProvider.id ? "spinning" : ""} />{syncingId === newProvider.id ? "Testing connection…" : "Test & add model"}</button>
                       </div>
                     </div>}
@@ -3545,7 +3546,7 @@ export default function App() {
                       {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
                         <div className="content" dir={textDirection(message.content)}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : <span className="typing"><i /><i /><i /></span>}</div>
-                        {message.role === "user" && message.content && <div className="message-actions user-message-actions"><button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
+                        {message.role === "user" && message.content && <div className="message-actions user-message-actions">{!!message.usedPacks?.length && <span className="message-pack-marker" title={message.usedPacks.map(pack => `${pack.name} · ${pack.version}`).join('\n')}><Puzzle /><span>{message.usedPacks.map(pack => pack.name).join(' · ')}</span></span>}<button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                         {message.role === "assistant" && message.content && <div className="message-actions">
                           <button disabled={message.generating} onClick={() => copy(message.content)}><Copy />Copy</button>
                           <button disabled={message.generating} className={message.liked ? "selected" : ""} onClick={() => setBrowserTabs((tabs) => tabs.map((tab) => tab.id === activeBrowserTab.id ? { ...tab, messages: (tab.messages || []).map((item, itemIndex) => itemIndex === index ? { ...item, liked: !item.liked } : item) } : tab))}>
@@ -3672,6 +3673,7 @@ export default function App() {
           </div>
         </div>
       )}
+      {configExportOpen && <ConfigExportDialog onClose={() => setConfigExportOpen(false)} onExport={exportConfig} />}
       {chatDialog && (
         <div
           className="confirm-backdrop"

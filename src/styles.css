@@ -2183,8 +2183,12 @@ body.resizing-browser iframe { pointer-events: none; }
 .prompt-library-row > span { flex: 1; min-width: 0; }
 .prompt-library-row b, .prompt-library-row small, .prompt-library-row code { display: block; overflow-wrap: anywhere; }
 .prompt-library-row code { font-size: 12px; margin-top: 5px; opacity: .7; }
-.marketplace-pack > svg { width: 24px; height: 24px; opacity: .6; }
-.marketplace-pack > button { margin-top: 12px; }
+.marketplace-pack > svg { display: inline-block; width: 20px; height: 20px; vertical-align: middle; margin-right: 9px; color: var(--muted); }
+.marketplace-pack > h3 { display: inline; vertical-align: middle; }
+.marketplace-pack > button.secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 550; line-height: 1.3; margin-top: 14px; background: var(--hover); color: var(--text); border: 1px solid var(--line); transition: background .18s, border-color .18s; }
+.marketplace-pack > button.secondary svg { width: 15px; height: 15px; flex: 0 0 15px; }
+.marketplace-pack > button.secondary:hover:not(:disabled) { background: var(--surface); border-color: var(--muted); }
+.marketplace-pack > button.secondary:disabled { opacity: .5; cursor: wait; }
 .settings-sidebar-actions button {
   height: 34px;
   font-size: 10px;
@@ -3813,3 +3817,27 @@ body.resizing-browser iframe { pointer-events: none; }
 .usage-records { max-height: 420px; overflow: auto; }
 .intelligence-error { color: #dc5555; overflow-wrap: anywhere; }
 .checkpoint-confirm button { margin-right: 8px; }
+.intelligence-tab-content { animation: chat-mode-enter .38s cubic-bezier(.4, 0, .2, 1) both; }
+.intelligence-tab-content .settings-section > .primary-button + .secondary { margin: 12px 0 12px 12px; }
+.message-pack-marker { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 240px; color: var(--muted); font-size: 10px; }
+.message-pack-marker svg { width: 12px; height: 12px; flex-shrink: 0; }
+.message-pack-marker span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.config-export-backdrop { position: fixed; inset: 0; z-index: 380; display: grid; place-items: center; padding: 20px; background: #0006; backdrop-filter: blur(6px); }
+.config-export-dialog { display: flex; flex-direction: column; width: min(520px, 100%); max-height: calc(100dvh - 40px); overflow: hidden; background: var(--surface); color: var(--text); border-radius: 22px; box-shadow: 0 24px 80px #0003; padding: 24px; animation: chat-mode-enter .25s ease both; }
+.config-export-dialog header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.config-export-dialog h2 { margin: 0; font-size: 18px; }
+.config-export-dialog p { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.config-export-choices { display: grid; gap: 4px; margin: 12px -8px; min-height: 0; overflow-y: auto; }
+.config-export-dialog > header, .config-export-note, .config-export-dialog > footer { flex-shrink: 0; }
+.config-export-choices label { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 10px; cursor: pointer; }
+.config-export-choices label:hover { background: var(--hover); }
+.config-export-choices input { accent-color: var(--brand); width: 16px; height: 16px; flex-shrink: 0; }
+.config-export-choices span { display: grid; gap: 4px; }
+.config-export-choices b { font-size: 13px; font-weight: 550; }
+.config-export-choices small { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.config-export-choices .sensitive-export b { color: #d7813b; }
+.config-export-choices label:has(input:disabled) { opacity: .5; cursor: default; }
+.config-export-dialog footer { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 18px; }
+.config-export-dialog footer button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 10px 16px; border-radius: 10px; }
+.config-export-dialog footer svg { width: 16px; height: 16px; }
+@media (prefers-reduced-motion: reduce) { .intelligence-tab-content, .config-export-dialog { animation: none; } }

@@ -5,7 +5,9 @@ import { savedPrompts, validatePrompts, type SavedPrompt } from './prompts';
 import { PACKS_CHANGED } from './packs';
 import type { MemoryNote } from './intelligence';
 
-type Bundle = { schema: 1; prompts: SavedPrompt[]; intelligence: IntelligenceSettings; prices: Record<string, ModelPrice>; personalMemory?: MemoryNote[] };
+type Bundle = { schema: 1; prompts?: SavedPrompt[]; intelligence?: IntelligenceSettings; prices?: Record<string, ModelPrice>; personalMemory?: MemoryNote[] };
+export type ExportSections = { appearance: boolean; providers: boolean; prompts: boolean; packs: boolean; intelligence: boolean; prices: boolean };
+export const defaultExportSections: ExportSections = { appearance: true, providers: true, prompts: true, packs: true, intelligence: true, prices: true };
 export function configPreferences(value: unknown): Partial<Config> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid config.');
   const raw = value as Partial<Config>;
@@ -42,29 +44,32 @@ export function configPreferences(value: unknown): Partial<Config> {
   }
   return result;
 }
-export function exportConfigBundle(config: Config, includeKeys = false, includeMemory = false) {
+export function exportConfigBundle(config: Config, includeKeys = false, includeMemory = false, sections: ExportSections = defaultExportSections) {
   const personalMemory: MemoryNote[] = includeMemory ? JSON.parse(localStorage.getItem('nova-memory-notes') || '[]').filter((note: MemoryNote) => note.scope === 'personal') : [];
   return {
-    ...config,
-    providers: config.providers.map(provider => ({ ...provider, apiKey: includeKeys ? provider.apiKey : '', apiKeyStored: false })),
-    database: { ...config.database, url: '' },
-    novaBundle: { schema: 1, prompts: savedPrompts(), intelligence: intelligenceSettings(), prices: modelPrices(), ...(includeMemory ? { personalMemory } : {}) } satisfies Bundle,
+    ...(sections.appearance ? { theme: config.theme, temperature: config.temperature, branding: config.branding, database: { ...config.database, url: '' } } : {}),
+    ...(sections.providers ? { activeProviderId: config.activeProviderId, activeModel: config.activeModel, providers: config.providers.map(provider => ({ ...provider, apiKey: includeKeys ? provider.apiKey : '', apiKeyStored: false })) } : {}),
+    novaBundle: { schema: 1,
+      ...(sections.prompts || sections.packs ? { prompts: savedPrompts().filter(prompt => prompt.pack ? sections.packs : sections.prompts) } : {}),
+      ...(sections.intelligence ? { intelligence: intelligenceSettings() } : {}),
+      ...(sections.prices ? { prices: modelPrices() } : {}),
+      ...(includeMemory ? { personalMemory } : {}) } satisfies Bundle,
   };
 }
 export function validateConfigBundle(value: unknown): Bundle | undefined {
   if (value === undefined) return; // Older config files are still supported.
   if (!value || typeof value !== 'object') throw new Error('Invalid configuration bundle.');
   const bundle = value as Bundle;
-  if (bundle.schema !== 1 || !bundle.intelligence || typeof bundle.intelligence.enabled !== 'boolean' || !Number.isInteger(bundle.intelligence.contextMessages) || bundle.intelligence.contextMessages < 2 || bundle.intelligence.contextMessages > 200) throw new Error('Invalid Intelligence settings.');
+  if (bundle.schema !== 1 || (bundle.intelligence !== undefined && (!bundle.intelligence || typeof bundle.intelligence.enabled !== 'boolean' || !Number.isInteger(bundle.intelligence.contextMessages) || bundle.intelligence.contextMessages < 2 || bundle.intelligence.contextMessages > 200))) throw new Error('Invalid Intelligence settings.');
   const routes: IntelligenceSettings['routes'] = {};
   for (const role of ['fast', 'strong', 'vision', 'private'] as const) {
-    const route = bundle.intelligence.routes?.[role];
+    const route = bundle.intelligence?.routes?.[role];
     if (route !== undefined && (typeof route !== 'string' || route.length > 500)) throw new Error('Invalid model route.');
     if (route) routes[role] = route;
   }
-  if (!bundle.prices || typeof bundle.prices !== 'object' || Array.isArray(bundle.prices) || Object.keys(bundle.prices).length > 2000) throw new Error('Invalid model prices.');
+  if (bundle.prices !== undefined && (!bundle.prices || typeof bundle.prices !== 'object' || Array.isArray(bundle.prices) || Object.keys(bundle.prices).length > 2000)) throw new Error('Invalid model prices.');
   const prices: Record<string, ModelPrice> = {};
-  for (const [key, price] of Object.entries(bundle.prices)) {
+  for (const [key, price] of Object.entries(bundle.prices || {})) {
     if (key.length > 500 || !price || typeof price !== 'object') throw new Error('Invalid model price.');
     const entry: ModelPrice = {};
     for (const field of ['input', 'output', 'cached'] as const) {
@@ -82,7 +87,7 @@ export function validateConfigBundle(value: unknown): Bundle | undefined {
       return { id: note.id, scope: 'personal', text: note.text, pinned: note.pinned };
     });
   }
-  return { schema: 1, prompts: validatePrompts(bundle.prompts), intelligence: { enabled: bundle.intelligence.enabled, contextMessages: bundle.intelligence.contextMessages, routes }, prices, ...(personalMemory ? { personalMemory } : {}) };
+  return { schema: 1, ...(bundle.prompts !== undefined ? { prompts: validatePrompts(bundle.prompts) } : {}), ...(bundle.intelligence ? { intelligence: { enabled: bundle.intelligence.enabled, contextMessages: bundle.intelligence.contextMessages, routes } } : {}), ...(bundle.prices !== undefined ? { prices } : {}), ...(personalMemory ? { personalMemory } : {}) };
 }
 export function importConfigBundle(bundle: Bundle | undefined, source: Config, merged: Config) {
   if (!bundle) return;
@@ -93,23 +98,23 @@ export function importConfigBundle(bundle: Bundle | undefined, source: Config, m
     return target && provider ? `${target.id}${route.slice(provider.id.length)}` : route;
   };
   const existing = savedPrompts();
-  const shortcuts = new Set(bundle.prompts.map(prompt => prompt.shortcut));
-  const prompts = validatePrompts([...existing.filter(prompt => !shortcuts.has(prompt.shortcut)), ...bundle.prompts]);
-  const intelligence = { ...bundle.intelligence, routes: Object.fromEntries(Object.entries(bundle.intelligence.routes).map(([role, route]) => [role, remap(route!)])) };
-  const prices = { ...modelPrices(), ...Object.fromEntries(Object.entries(bundle.prices).map(([key, price]) => [remap(key), price])) };
+  const shortcuts = new Set((bundle.prompts || []).map(prompt => prompt.shortcut));
+  const prompts = validatePrompts([...existing.filter(prompt => !shortcuts.has(prompt.shortcut)), ...(bundle.prompts || [])]);
+  const intelligence = bundle.intelligence && { ...bundle.intelligence, routes: Object.fromEntries(Object.entries(bundle.intelligence.routes).map(([role, route]) => [role, remap(route!)])) };
+  const prices = bundle.prices && { ...modelPrices(), ...Object.fromEntries(Object.entries(bundle.prices).map(([key, price]) => [remap(key), price])) };
   // Roll back portable settings together if storage is full.
   const keys = ['nova-prompts-v1', 'nova-intelligence', 'nova-prices-v1', 'nova-memory-notes'];
   const before = keys.map(key => localStorage.getItem(key));
   try {
-    localStorage.setItem(keys[0], JSON.stringify(prompts));
-    localStorage.setItem(keys[1], JSON.stringify(intelligence));
-    localStorage.setItem(keys[2], JSON.stringify(prices));
+    if (bundle.prompts !== undefined) localStorage.setItem(keys[0], JSON.stringify(prompts));
+    if (intelligence) localStorage.setItem(keys[1], JSON.stringify(intelligence));
+    if (prices) localStorage.setItem(keys[2], JSON.stringify(prices));
     if (bundle.personalMemory) {
       const notes: MemoryNote[] = JSON.parse(localStorage.getItem(keys[3]) || '[]');
       const ids = new Set(bundle.personalMemory.map(note => note.id));
       localStorage.setItem(keys[3], JSON.stringify([...notes.filter(note => note.scope !== 'personal' || !ids.has(note.id)), ...bundle.personalMemory]));
     }
-    window.dispatchEvent(new Event(PACKS_CHANGED));
+    if (bundle.prompts !== undefined) window.dispatchEvent(new Event(PACKS_CHANGED));
   } catch (error) {
     keys.forEach(key => localStorage.removeItem(key));
     keys.forEach((key, index) => { if (before[index] !== null) localStorage.setItem(key, before[index]!); });

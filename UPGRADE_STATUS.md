@@ -1,5 +1,9 @@
 # Intelligence upgrade 0.21.1 — implementation status
 
+## 0.23.1 polish
+
+Selective configuration export supports independent appearance, model connections, personal prompts, installed prompt packs, Intelligence, prices and optional personal memory. Omitted sections do not overwrite destination settings. Provider keys remain opt-in. Marketplace actions are aligned and themed; plugin pickers dismiss on selection/outside click. Sent messages record the exact pack snapshot whose instructions are supplied to the request, including temporary side chats. This records input provenance, not guaranteed model adherence. Last-conversation deletion starts a fresh normal chat; Work-context deletion remains supported when other conversations exist. Intelligence content transitions preserve its sticky navigation and recovery actions have consistent spacing. Regression coverage adds selective export/import and both deletion paths. Full physical-device end-to-end testing remains separate from frontend checks and CI installer validation.
+
 0.21.1: macOS vault operations suppress optional password prompts and fail closed when the existing item requires authorization. Failed reads preserve stored-key markers and do not block other providers. No Keychain item is deleted to repair permissions. A user may enter a key for the current session; saving can still fail if the system vault is unavailable. The actual rejected-password scenario requires retesting on the affected Mac. Intelligence selectors use theme-aware popovers and its section navigation remains sticky while the settings body scrolls.
 
 UI refresh: removed the redundant settings footer message, separated the tool catalog into its own menu, added capability search and risk filtering, restyled Intelligence tabs and text fields, and fixed checkbox sizing and footer alignment. Search was verified in the local UI.
