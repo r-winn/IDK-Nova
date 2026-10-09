@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 mod credentials;
+mod voice;
+use voice::create_voice_token;
 use credentials::{read_provider_credential, write_provider_credential};
 use futures_util::StreamExt;
 use std::{fs, io::{BufRead, BufReader, Cursor, Read, Write}, net::{TcpListener, TcpStream}, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
@@ -973,13 +975,32 @@ async fn read_workspace_range(root_path: String, relative_path: String, start_li
 }
 
 #[tauri::command]
-async fn patch_workspace_file(root_path: String, relative_path: String, old_text: String, new_text: String) -> Result<serde_json::Value, String> {
+async fn prepare_workspace_change(root_path: String, relative_path: String, content: Option<String>, old_text: Option<String>, new_text: Option<String>) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonical_root(&root_path)?;
+        let target = safe_write_target(&root, &relative_path)?;
+        if !text_file(&target) { return Err("Only text/source files can be reviewed".to_string()); }
+        let before = if target.exists() { Some(fs::read_to_string(&target).map_err(|_| "Cannot read this file as UTF-8".to_string())?) } else { None };
+        let after = if let Some(content) = content { content } else {
+            let old = old_text.ok_or("Missing patch target")?;
+            let current = before.as_deref().ok_or("Patch file does not exist")?;
+            if old.is_empty() || current.matches(&old).count() != 1 { return Err("Patch target must match exactly once".to_string()); }
+            current.replacen(&old, &new_text.ok_or("Missing replacement")?, 1)
+        };
+        if before.as_ref().map_or(0, |value| value.len()) > 200_000 || after.len() > 200_000 { return Err("This change is too large for inline review (200 KB). Split it into smaller patches.".to_string()); }
+        Ok(serde_json::json!({ "before": before, "after": after }))
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn patch_workspace_file(root_path: String, relative_path: String, old_text: String, new_text: String, expected_content: Option<String>) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if old_text.is_empty() { return Err("Patch target cannot be empty".into()); }
         let root = canonical_root(&root_path)?;
         let target = safe_target(&root, &relative_path)?;
         if !target.is_file() || !text_file(&target) { return Err("This file cannot be patched as text".into()); }
         let content = fs::read_to_string(&target).map_err(|_| "This file is not valid UTF-8 text".to_string())?;
+        if expected_content.as_ref().is_some_and(|expected| expected != &content) { return Err("File changed after review. Inspect and review the new version before applying.".to_string()); }
         let occurrences = content.matches(&old_text).count();
         if occurrences != 1 { return Err(format!("Patch target must match exactly once; found {occurrences}")); }
         let snapshot = snapshot_file(&root, &target, &relative_path)?;
@@ -1063,12 +1084,14 @@ async fn undo_workspace_change(root_path: String) -> Result<serde_json::Value, S
 }
 
 #[tauri::command]
-async fn write_workspace_file(root_path: String, relative_path: String, content: String) -> Result<String, String> {
+async fn write_workspace_file(root_path: String, relative_path: String, content: String, expected_content: Option<String>, expect_missing: Option<bool>) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if content.len() > 2_000_000 { return Err("Agent output exceeds the 2 MB file safety limit".into()); }
         let root = canonical_root(&root_path)?;
         let target = safe_write_target(&root, &relative_path)?;
         if !text_file(&target) { return Err("Agent can only write supported text and source-code files".into()); }
+        if expect_missing == Some(true) && target.exists() { return Err("A file appeared after review. Review it before overwriting.".into()); }
+        if let Some(expected) = expected_content { if fs::read_to_string(&target).map_err(|_| "Reviewed file is no longer readable".to_string())? != expected { return Err("File changed after review. Inspect and review the new version before applying.".into()); } }
         if let Some(parent) = target.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
         let existed = target.exists();
         let snapshot = snapshot_file(&root, &target, &relative_path)?;
@@ -1086,7 +1109,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![read_provider_credential, write_provider_credential, import_gguf_model, ollama_status, install_ollama, scan_workspace, checkpoint_workspace, list_workspace_checkpoints, restore_workspace_checkpoint, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal, install_package, start_preview_server])
+        .invoke_handler(tauri::generate_handler![create_voice_token, read_provider_credential, write_provider_credential, import_gguf_model, ollama_status, install_ollama, scan_workspace, checkpoint_workspace, list_workspace_checkpoints, restore_workspace_checkpoint, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, prepare_workspace_change, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal, install_package, start_preview_server])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
@@ -1099,6 +1122,33 @@ pub fn run() {
 #[cfg(test)]
 mod checkpoint_tests {
     use super::*;
+    #[test]
+    fn reviewed_write_rejects_changed_or_newly_created_files() {
+        let project = TestProject::new();
+        fs::write(project.0.join("reviewed.txt"), "before").unwrap();
+        let root = project.0.to_string_lossy().to_string();
+        let preview = tauri::async_runtime::block_on(prepare_workspace_change(root.clone(), "reviewed.txt".into(), Some("after".into()), None, None)).unwrap();
+        assert_eq!(preview["before"], "before");
+        assert_eq!(preview["after"], "after");
+        fs::write(project.0.join("reviewed.txt"), "external edit").unwrap();
+        assert!(tauri::async_runtime::block_on(write_workspace_file(root.clone(), "reviewed.txt".into(), "after".into(), Some("before".into()), Some(false))).is_err());
+        assert_eq!(fs::read_to_string(project.0.join("reviewed.txt")).unwrap(), "external edit");
+        assert!(tauri::async_runtime::block_on(write_workspace_file(root.clone(), "reviewed.txt".into(), "after".into(), None, Some(true))).is_err());
+        tauri::async_runtime::block_on(write_workspace_file(root, "new.txt".into(), "new content".into(), None, Some(true))).unwrap();
+        assert_eq!(fs::read_to_string(project.0.join("new.txt")).unwrap(), "new content");
+    }
+    #[test]
+    fn reviewed_patch_checks_exact_target_and_supports_single_change_undo() {
+        let project = TestProject::new();
+        fs::write(project.0.join("index.html"), "<h1>Before</h1>").unwrap();
+        let root = project.0.to_string_lossy().to_string();
+        let preview = tauri::async_runtime::block_on(prepare_workspace_change(root.clone(), "index.html".into(), None, Some("Before".into()), Some("After".into()))).unwrap();
+        assert_eq!(preview["after"], "<h1>After</h1>");
+        assert!(tauri::async_runtime::block_on(prepare_workspace_change(root.clone(), "index.html".into(), None, Some("absent".into()), Some("After".into()))).is_err());
+        tauri::async_runtime::block_on(patch_workspace_file(root.clone(), "index.html".into(), "Before".into(), "After".into(), Some("<h1>Before</h1>".into()))).unwrap();
+        tauri::async_runtime::block_on(undo_workspace_change(root)).unwrap();
+        assert_eq!(fs::read_to_string(project.0.join("index.html")).unwrap(), "<h1>Before</h1>");
+    }
     struct TestProject(PathBuf);
     static TEST_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     impl TestProject {

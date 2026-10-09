@@ -243,7 +243,18 @@ async function runAgentCompletionImpl(
   onMemory?: (memory?: ResponseMemory) => void,
   requireTool = false,
   reportUsage: (usage: unknown) => void = () => {},
+  requestedTools: string[] = [],
 ) {
+  const pendingTools = new Set(requestedTools.filter(name => tools.some(tool => tool.function.name === name)));
+  let missingToolReplies = 0;
+  const recordRequestedTool = (name: string, result: unknown) => {
+    if (result && typeof result === 'object' && ('error' in result || ('ok' in result && result.ok === false) || ('status' in result && result.status !== 'success'))) return;
+    pendingTools.delete(name);
+  };
+  const missingToolInstruction = () => {
+    if (++missingToolReplies > 2) throw new Error(`Requested tools were not completed: ${[...pendingTools].join(', ')}. No successful execution was verified.`);
+    return `Do not claim the task is complete. These explicitly requested tools have not succeeded: ${[...pendingTools].join(', ')}. Execute them with the appropriate arguments and normal approvals. If required input is missing, use ask_user.`;
+  };
   const provider = getActiveProvider(config);
   if (!provider || !config.activeModel) throw new Error('Connect an agent-capable model first');
   const chained = responseMemoryMatches(memory, provider, config.activeModel);
@@ -261,7 +272,7 @@ async function runAgentCompletionImpl(
     if (signal?.aborted) throw new DOMException('The task was stopped', 'AbortError');
     const response = await request(endpoint(provider, '/responses'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: temperaturelessResponsesProviders.has(providerKey) ? undefined : config.temperature, store: !stateless, tools: responseTools, tool_choice: turn === 0 && requireTool ? 'required' : 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: temperaturelessResponsesProviders.has(providerKey) ? undefined : config.temperature, store: !stateless, tools: responseTools, tool_choice: pendingTools.size || (turn === 0 && requireTool) ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
@@ -295,6 +306,12 @@ async function runAgentCompletionImpl(
     if (stateless && Array.isArray(payload.output)) statelessContext.push(...payload.output);
     const calls = (Array.isArray(payload.output) ? payload.output : []).filter((item: any) => item?.type === 'function_call');
     if (!calls.length) {
+      if (pendingTools.size) {
+        responseInput = [{ role: 'user', content: [{ type: 'input_text', text: missingToolInstruction() }] }];
+        if (stateless) { statelessContext.push(...responseInput); responseInput = statelessContext; }
+        turn += 1;
+        continue;
+      }
       const output = typeof payload.output_text === 'string' ? payload.output_text : (payload.output || []).flatMap((item: any) => item?.content || []).filter((item: any) => item?.type === 'output_text').map((item: any) => item.text || '').join('');
       onToken(output || 'Task complete.');
       if (stateless) onMemory?.(undefined);
@@ -313,6 +330,7 @@ async function runAgentCompletionImpl(
         result = { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
       onStep('thinking');
+      recordRequestedTool(call.function.name, result);
       const resultObject = result && typeof result === 'object' ? result as Record<string, unknown> : null;
       const screenImage = typeof resultObject?.__novaImage === 'string' ? resultObject.__novaImage : null;
       const serializableResult = resultObject ? Object.fromEntries(Object.entries(resultObject).filter(([key]) => key !== '__novaImage')) : result;
@@ -338,7 +356,7 @@ async function runAgentCompletionImpl(
     if (signal?.aborted) throw new DOMException('The task was stopped', 'AbortError');
     const response = await request(endpoint(provider, '/chat/completions'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: false, messages: conversation, tools, tool_choice: turn === 0 && forceFirstTool ? 'required' : 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: false, messages: conversation, tools, tool_choice: forceFirstTool && (pendingTools.size || turn === 0) ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
@@ -351,7 +369,10 @@ async function runAgentCompletionImpl(
     if (!assistant) throw new Error('Agent provider returned an invalid completion');
     conversation.push({ role: 'assistant', content: assistant.content ?? null, ...(assistant.tool_calls ? { tool_calls: assistant.tool_calls } : {}) });
     const calls: AgentToolCall[] = Array.isArray(assistant.tool_calls) ? assistant.tool_calls : [];
-    if (!calls.length) { onToken(assistant.content || 'Task complete.'); return; }
+    if (!calls.length) {
+      if (pendingTools.size) { conversation.push({ role: 'user', content: missingToolInstruction() }); turn += 1; continue; }
+      onToken(assistant.content || 'Task complete.'); return;
+    }
     const screenImages: string[] = [];
     for (const call of calls) {
       onStep(call.function.name);
@@ -362,6 +383,7 @@ async function runAgentCompletionImpl(
         result = { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
       onStep('thinking');
+      recordRequestedTool(call.function.name, result);
       const resultObject = result && typeof result === 'object' ? result as Record<string, unknown> : null;
       const screenImage = typeof resultObject?.__novaImage === 'string' ? resultObject.__novaImage : null;
       const serializableResult = resultObject ? Object.fromEntries(Object.entries(resultObject).filter(([key]) => key !== '__novaImage')) : result;
@@ -380,10 +402,10 @@ async function runAgentCompletionImpl(
   }
 }
 
-export async function runAgentCompletion(config: Config, messages: Message[], systemContext: string, tools: AgentTool[], execute: (call: AgentToolCall) => Promise<unknown>, onStep: (label: string) => void, onToken: (token: string) => void, signal?: AbortSignal, memory?: ResponseMemory, onMemory?: (memory?: ResponseMemory) => void, requireTool = false, workId?: string) {
+export async function runAgentCompletion(config: Config, messages: Message[], systemContext: string, tools: AgentTool[], execute: (call: AgentToolCall) => Promise<unknown>, onStep: (label: string) => void, onToken: (token: string) => void, signal?: AbortSignal, memory?: ResponseMemory, onMemory?: (memory?: ResponseMemory) => void, requireTool = false, workId?: string, requestedTools: string[] = []) {
   const tracker = new UsageTracker(config, workId);
   try {
-    await runAgentCompletionImpl(config, messages, systemContext, tools, execute, onStep, token => { tracker.text(token); onToken(token); }, signal, memory, onMemory, requireTool, usage => tracker.report(usage));
+    await runAgentCompletionImpl(config, messages, systemContext, tools, execute, onStep, token => { tracker.text(token); onToken(token); }, signal, memory, onMemory, requireTool, usage => tracker.report(usage), requestedTools);
     tracker.finish('complete');
   } catch (error) { tracker.finish(signal?.aborted ? 'stopped' : 'failed'); throw error; }
 }

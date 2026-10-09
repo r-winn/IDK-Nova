@@ -28,7 +28,6 @@ import {
   Clock3,
   Code2,
   Copy,
-  Database,
   Download,
   ExternalLink,
   FileText,
@@ -46,6 +45,7 @@ import {
   Menu,
   MessageSquare,
   Mic,
+  AudioLines,
   Minimize2,
   MoreHorizontal,
   PanelLeftClose,
@@ -65,6 +65,7 @@ import {
   Sparkles,
   Star,
   Square,
+  Store,
   Trash2,
   Terminal,
   Upload,
@@ -88,6 +89,14 @@ import { AgentToolCall, discoverModels, runAgentCompletion, streamCompletion, te
 import { NovaAgentCore } from "./agent/core";
 import { AgentControl } from "./agent/control";
 import { IntelligenceCenter } from "./components/IntelligenceCenter";
+import { toolCommands, commandInstructions } from './agent/commands';
+import { PromptLibrary } from './components/PromptLibrary';
+import { expandPrompts } from './lib/prompts';
+import { enforceWorkPrivacy } from './lib/intelligence';
+import { diagnoseConnection } from './lib/diagnostics';
+import { VoicePanel } from './components/VoicePanel';
+import { ResponseSettings, StorageSettings } from './components/IntelligenceSettings';
+import { recoverInterruptedTasks, recoveryPrompt } from './agent/task-store';
 import { ToolsCatalog } from "./components/ToolsCatalog";
 import { memoryContext, routeRequest, selectedContext } from "./lib/intelligence";
 import { providerTools } from "./agent/catalog";
@@ -143,9 +152,10 @@ const settingMeta = {
     "AI models",
     "Manage the models available to Nova.",
   ],
-  data: ["Data & memory", "Control optional storage and long-term context."],
   intelligence: ["Intelligence", "Memory, model routing and Work activity."],
   tools: ["Tools & capabilities", "Explore what Nova Work can do."],
+  prompts: ["Prompt library", "Reusable instructions for your conversations."],
+  marketplace: ["Marketplace", "Install curated prompt packs."],
   updates: ["Software update", "Keep Nova secure and up to date."],
   about: ["About Nova", "Version, licensing and deployment details."],
 } as const;
@@ -252,7 +262,7 @@ type WorkspaceMatch = { path: string; line: number; preview: string };
 type PortableWorkspace = { projectJson: string; chatsJson: string };
 type ChatMenu = { chatId: number; x: number; y: number } | null;
 type SelectionToolbar = { text: string; x: number; y: number } | null;
-type AgentApproval = { title: string; detail: string; risk: "browser" | "file" | "computer" } | null;
+type AgentApproval = { title: string; detail: string; risk: "browser" | "file" | "computer"; preview?: { before: string | null; after: string } } | null;
 type AgentInput = { prompt: string; placeholder: string; value: string } | null;
 type ModelHealth = { state: "online" | "offline"; latency?: number; checkedAt: number; error?: string };
 type BrowserTab = {
@@ -455,6 +465,8 @@ export default function App() {
   const [agentInput, setAgentInput] = useState<AgentInput>(null);
   const [agentStatus, setAgentStatus] = useState("");
   const [agentPaused, setAgentPaused] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  useEffect(() => { const count = recoverInterruptedTasks(); if (count) setToast(`${count} interrupted Work task${count === 1 ? '' : 's'} · review Intelligence → Recovery to continue`); }, []);
   const agentControlRef = useRef(new AgentControl());
   const [agentTimeline, setAgentTimeline] = useState<string[]>([]);
   const [chatMenu, setChatMenu] = useState<ChatMenu>(null);
@@ -693,7 +705,7 @@ export default function App() {
     let cancelled = false;
     const syncNativeBrowser = async () => {
       const views = nativeBrowserViewsRef.current;
-      const overlayOpen = Boolean(chatDialog || folderDialog || workspaceDelete || settingsOpen || selectionToolbar || agentApproval || agentInput);
+      const overlayOpen = Boolean(chatDialog || folderDialog || workspaceDelete || settingsOpen || selectionToolbar || agentApproval || agentInput || voiceOpen);
       for (const [id, entry] of views) {
         if (!browserOpen || overlayOpen || id !== activeBrowserTabId) await entry.webview.hide().catch(() => undefined);
       }
@@ -742,7 +754,7 @@ export default function App() {
     };
     syncNativeBrowser().catch(() => setToast("This page could not be opened inside Nova"));
     return () => { cancelled = true; };
-  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized, chatDialog, folderDialog, workspaceDelete, settingsOpen, selectionToolbar, agentApproval, agentInput]);
+  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized, chatDialog, folderDialog, workspaceDelete, settingsOpen, selectionToolbar, agentApproval, agentInput, voiceOpen]);
   useEffect(() => () => {
     for (const entry of nativeBrowserViewsRef.current.values()) entry.webview.close().catch(() => undefined);
   }, []);
@@ -1596,10 +1608,14 @@ export default function App() {
       setSettingsOpen(true);
       return;
     }
-    const outgoingText = edited?.content.trim() ?? text.trim();
+    const outgoingText = expandPrompts(edited?.content.trim() ?? text.trim());
     const outgoingFiles = edited?.attachments ?? files;
     const history = edited?.history ?? chat?.messages ?? [];
     if ((!outgoingText && !outgoingFiles.length) || busy || !chat) return;
+    if (toolCommands(outgoingText, providerTools.map(tool => tool.function.name)).length && (!chat.workspaceId || !isDesktopApp())) {
+      setToast('Tool commands require a desktop Work chat. Open a Work project first.');
+      return;
+    }
     const user: Message = {
       role: "user",
       content: outgoingText,
@@ -1610,6 +1626,7 @@ export default function App() {
     let requestConfig: Config;
     try {
       requestConfig = routeRequest(config, outgoingText, outgoingFiles.some(file => file.type.startsWith("image/"))).config;
+      enforceWorkPrivacy(workspaces.find(project => project.id === chat.workspaceId), requestConfig);
     } catch (error) { setToast(error instanceof Error ? error.message : String(error)); return; }
     const requestHistory = selectedContext(chat, history);
     const managedMemory = memoryContext(chat);
@@ -1736,7 +1753,7 @@ export default function App() {
           }
           if (call.function.name === "read_file") return { ok: true, path: args.path, content: await invoke<string>("read_workspace_file", { rootPath: project.rootPath, relativePath: args.path }) };
           if (call.function.name === "write_file") {
-            const path = await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath: args.path, content: args.content || "" });
+            const path = await invoke<string>("write_workspace_file", { rootPath: project.rootPath, relativePath: args.path, content: args.content || "", expectedContent: args.__reviewedBefore ?? null, expectMissing: args.__reviewedMissing ?? false });
             return { ok: true, path, backupCreated: true };
           }
           if (call.function.name === "web_search") { navigateBrowser(args.query || "", true); return await observeAfterAction({ ok: true, message: "Search opened in Nova Workspace Browser" }, 1400); }
@@ -1773,7 +1790,14 @@ export default function App() {
           setAgentStatus(label);
           setAgentTimeline((items) => [...items.filter((item) => item !== label), label].slice(-5));
         };
-        const core = new NovaAgentCore(active, project, user.content, reportAgentStatus, requestAgentApproval);
+        const reviewedFiles = new Map<string, { before: string | null; after: string }>();
+        const core = new NovaAgentCore(active, project, user.content, reportAgentStatus, requestAgentApproval, async call => {
+          const args = call.arguments;
+          const preview = await invoke<{ before: string | null; after: string }>('prepare_workspace_change', { rootPath: project.rootPath, relativePath: args.path, content: call.toolName === 'fs_write' ? args.content : null, oldText: call.toolName === 'fs_apply_patch' ? args.old_text : null, newText: call.toolName === 'fs_apply_patch' ? args.new_text : null });
+          const approved = await requestAgentApproval({ title: 'Review file change', detail: String(args.path), risk: 'file', preview });
+          if (approved) reviewedFiles.set(call.id, preview);
+          return approved;
+        });
         let checkpointCreated = false;
         const executeAgentTool = async (rawCall: AgentToolCall) => {
           const pausedAtBoundary = agentControlRef.current.paused;
@@ -1782,6 +1806,8 @@ export default function App() {
           if (pausedAtBoundary) core.task.event('task', 'running', 'Task resumed');
           return core.execute(rawCall, async (call: NovaToolCall) => {
           const args = call.arguments as Record<string, any>;
+          const reviewed = reviewedFiles.get(call.id);
+          if (reviewed) { args.__reviewedBefore = reviewed.before; args.__reviewedMissing = reviewed.before === null; reviewedFiles.delete(call.id); }
           if (call.toolName === "fs_checkpoint") { const result = await invoke<Record<string, unknown>>("checkpoint_workspace", { rootPath: project.rootPath }); checkpointCreated = true; return result; }
           if (!checkpointCreated && ['fs_write', 'fs_apply_patch', 'fs_mkdir', 'fs_move', 'fs_copy', 'fs_delete'].includes(call.toolName)) {
             reportAgentStatus('Creating a recovery checkpoint…');
@@ -1798,7 +1824,7 @@ export default function App() {
           }
           if (call.toolName === "fs_read_range") return { ok: true, path: args.path, content: await invoke<string>("read_workspace_range", { rootPath: project.rootPath, relativePath: args.path, startLine: Number(args.start_line), endLine: Number(args.end_line) }) };
           if (call.toolName === "fs_search") return { ok: true, matches: await invoke<WorkspaceMatch[]>("search_workspace", { rootPath: project.rootPath, query: String(args.query || "") }) };
-          if (call.toolName === "fs_apply_patch") return await invoke<Record<string, unknown>>("patch_workspace_file", { rootPath: project.rootPath, relativePath: args.path, oldText: args.old_text, newText: args.new_text });
+          if (call.toolName === "fs_apply_patch") return await invoke<Record<string, unknown>>("patch_workspace_file", { rootPath: project.rootPath, relativePath: args.path, oldText: args.old_text, newText: args.new_text, expectedContent: args.__reviewedBefore ?? null });
           if (call.toolName === "fs_mkdir") return await invoke<Record<string, unknown>>("create_workspace_directory", { rootPath: project.rootPath, relativePath: args.path });
           if (call.toolName === "fs_move") return await invoke<Record<string, unknown>>("move_workspace_item", { rootPath: project.rootPath, fromPath: args.from, toPath: args.to });
           if (call.toolName === "fs_copy") return await invoke<Record<string, unknown>>("copy_workspace_item", { rootPath: project.rootPath, fromPath: args.from, toPath: args.to });
@@ -1821,7 +1847,8 @@ export default function App() {
         };
         try {
           const actionRequested = /(باز\s*کن|جستجو|سرچ|کلیک|اضافه\s*کن|سبد|وارد\s*شو|لاگین|بساز|ایجاد\s*کن|ویرایش\s*کن|تغییر\s*بده|اجرا\s*کن|open|search|click|add|cart|login|sign\s*in|create|write|edit|run|launch)/i.test(user.content);
-          await runAgentCompletion(requestConfig, [...requestHistory, user], `${workspaceContext}\n\n${managedMemory}\n\n${NOVA_WORK_SYSTEM}`, providerTools, executeAgentTool, () => undefined, appendToken, controller.signal, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, actionRequested, chat.workspaceId);
+          const requestedTools = toolCommands(user.content, providerTools.map(tool => tool.function.name));
+          await runAgentCompletion(requestConfig, [...requestHistory, user], `${workspaceContext}\n\n${managedMemory}\n\n${NOVA_WORK_SYSTEM}\n\n${commandInstructions(requestedTools)}`, providerTools, executeAgentTool, () => undefined, appendToken, controller.signal, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, actionRequested || requestedTools.length > 0, chat.workspaceId, requestedTools);
           core.complete();
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
@@ -1838,6 +1865,7 @@ export default function App() {
             return;
           }
           core.fail(detail);
+          if (toolCommands(user.content, providerTools.map(tool => tool.function.name)).length) throw agentError;
           if (!/400|tools|tool_choice|tool call/i.test(detail)) throw agentError;
           setToast("This provider does not support Agent tools yet · using normal Work chat");
           await streamCompletion(requestConfig, [...requestHistory, user], appendToken, controller.signal, `${workspaceContext}\n${managedMemory}`, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, chat.workspaceId);
@@ -2794,6 +2822,7 @@ export default function App() {
             {agentApproval ? <div className="agent-approval-inline">
               <span className={`approval-icon ${agentApproval.risk}`}><ShieldCheck /></span>
               <span><b>{agentApproval.title}</b><small>{agentApproval.detail}</small></span>
+              {agentApproval.preview && <details className="file-change-preview" open><summary>Before / after · {agentApproval.detail}</summary><div><section><h4>Before</h4><pre dir="auto">{agentApproval.preview.before ?? '(new file)'}</pre></section><section><h4>After</h4><pre dir="auto">{agentApproval.preview.after}</pre></section></div></details>}
               <div><button onClick={() => resolveAgentApproval(false)}>Deny</button><button className="approve" onClick={() => resolveAgentApproval(true)}>Allow once</button></div>
             </div> : agentInput ? <form className="agent-input-inline" onSubmit={(event) => { event.preventDefault(); if (agentInput.value.trim()) resolveAgentInput(agentInput.value.trim()); }}>
               <span><b>Nova needs your input</b><small>{agentInput.prompt}</small></span>
@@ -2839,6 +2868,7 @@ export default function App() {
                 </button>}
               </div>
               <div>
+                {!editingMessage && <button disabled={busy || !activeProvider} title="Live voice conversation" aria-label="Live voice conversation" onClick={() => setVoiceOpen(true)}><AudioLines /></button>}
                 {editingMessage && <button className="edit-cancel" onClick={cancelMessageEdit}>Cancel</button>}
                 {!editingMessage && <button
                   disabled={!config.activeModel}
@@ -2874,6 +2904,7 @@ export default function App() {
         </div>
       </main>
 
+      {voiceOpen && <VoicePanel config={config} onClose={() => setVoiceOpen(false)} />}
       {settingsOpen && (
         <div
           className={`settings-backdrop ${settingsClosing ? "closing" : ""}`}
@@ -2896,11 +2927,10 @@ export default function App() {
                   [
                     ["general", SlidersHorizontal, "General"],
                     ["models", Bot, "Models"],
-                    ["data", Database, "Data & memory"],
                     ["intelligence", Workflow, "Intelligence"],
                     ["tools", FlaskConical, "Tools & capabilities"],
-                    ["updates", Download, "Updates"],
-                    ["about", Info, "About"],
+                    ["prompts", BookOpen, "Prompt library"],
+                    ["marketplace", Store, "Marketplace"],
                   ] as const
                 ).map(([id, Icon, label]) => (
                   <button
@@ -2910,11 +2940,13 @@ export default function App() {
                   >
                     <Icon />
                     <span>{label}</span>
-                    {id === "updates" && updateState === "available" && <i />}
                   </button>
                 ))}
               </nav>
               <div className="settings-sidebar-actions">
+                <nav aria-label="Application information">
+                  {([["updates", Download, "Updates"], ["about", Info, "About"]] as const).map(([id, Icon, label]) => <button key={id} className={settingsTab === id ? "active" : ""} onClick={() => setSettingsTab(id)}><Icon /><span>{label}</span>{id === "updates" && updateState === "available" && <i />}</button>)}
+                </nav>
                 <button onClick={() => configFileRef.current?.click()}>
                   <Upload />
                   Import config
@@ -2947,8 +2979,9 @@ export default function App() {
                 </button>
               </header>
               <div className="settings-scroll settings-tab-transition" key={settingsTab}>
-                {settingsTab === "tools" && <ToolsCatalog />}
-                {settingsTab === "intelligence" && <IntelligenceCenter config={draftConfig} chat={chat} projects={workspaces} running={busy} onProjectMemory={(scope, notes) => setWorkspaces(items => items.map(project => project.id === scope ? { ...project, memoryNotes: notes } : project))} />}
+                {(settingsTab === 'prompts' || settingsTab === 'marketplace') && <PromptLibrary marketplace={settingsTab === 'marketplace'} onUse={value => { setText(current => `${current}${current ? '\n\n' : ''}${value}`); closeSettings(); }} />}
+                {settingsTab === "tools" && <ToolsCatalog onInsertCommand={command => { if (!chat.workspaceId || !isDesktopApp()) { setToast('Open a desktop Work chat to use tool commands'); return; } setText(current => `${current}${current ? ' ' : ''}${command} `); closeSettings(); }} />}
+                {settingsTab === "intelligence" && <IntelligenceCenter onPrivacy={(id, localOnly) => setWorkspaces(items => items.map(project => project.id === id ? { ...project, localOnly } : project))} config={draftConfig} onResume={task => { const original = chats.find(item => item.id === task.chatId && item.workspaceId === task.workspaceId); if (!original) { setToast("The original Work chat is no longer available"); return; } setActive(original.id); setOpenWorkspaceId(task.workspaceId); setText(recoveryPrompt(task)); closeSettings(); }} chat={chat} projects={workspaces} responsePanel={<ResponseSettings config={draftConfig} onChange={setDraftConfig} />} storagePanel={<StorageSettings config={draftConfig} onChange={setDraftConfig} />} running={busy} onProjectMemory={(scope, notes) => setWorkspaces(items => items.map(project => project.id === scope ? { ...project, memoryNotes: notes } : project))} />}
                 {settingsTab === "general" && (
                   <>
                     <section className="settings-section compact-section">
@@ -3067,37 +3100,6 @@ export default function App() {
                         </div>
                       </label>
                     </section>
-                    <section className="settings-section">
-                      <div className="section-copy">
-                        <h3>Response style</h3>
-                        <p>
-                          Choose how creative or predictable model responses
-                          should be.
-                        </p>
-                      </div>
-                      <label className="range-control">
-                        <span>
-                          Creativity <b>{draftConfig.temperature.toFixed(1)}</b>
-                        </span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.1"
-                          value={draftConfig.temperature}
-                          onChange={(e) =>
-                            setDraftConfig((current) => ({
-                              ...current,
-                              temperature: Number(e.target.value),
-                            }))
-                          }
-                        />
-                        <span className="range-labels">
-                          <small>Precise</small>
-                          <small>Creative</small>
-                        </span>
-                      </label>
-                    </section>
                   </>
                 )}
                 {settingsTab === "models" && (
@@ -3120,14 +3122,15 @@ export default function App() {
                           return <div className={`model-library-row ${activeModel ? "active" : ""}`} key={key}>
                             <button className="model-library-main" onClick={() => setDraftConfig((current) => ({ ...current, activeProviderId: provider.id, activeModel: model }))}>
                               <span className={`model-status ${health?.state || "unchecked"}`}><Bot /></span>
-                              <span><b>{model}</b><small>{provider.name} · {health?.state === "online" ? "Connection verified now" : health?.state === "offline" ? "Connection unavailable" : activeModel ? "Selected · not tested this session" : "Not tested this session"}</small></span>
+                              <span><b>{model}</b><small>{provider.name} · {health?.state === "online" ? `Last test passed · ${new Date(health.checkedAt).toLocaleTimeString()}` : health?.state === "offline" ? "Connection unavailable" : activeModel ? "Selected · not tested this session" : "Not tested this session"}</small></span>
                             </button>
                             <div className="model-library-actions">
                               {health?.state === "online" && <span className="verified-label" title={`Live completion test passed ${new Date(health.checkedAt).toLocaleTimeString()}`}><ShieldCheck />{health.latency} ms</span>}
                               {health?.state === "offline" && <span className="verified-label failed" title={health.error || "Connection test failed"}><X />Offline</span>}
-                              <button className="test-button" disabled={testingModel === key} onClick={() => verifyProviderModel(provider, model)}>{testingModel === key ? "Testing…" : "Test"}</button>
+                              <button className="test-button" disabled={testingModel === key} onClick={() => verifyProviderModel(provider, model)}>{testingModel === key ? "Testing…" : "Test & diagnose"}</button>
                               <button className="icon-button subtle danger-icon" aria-label={`Remove ${model}`} onClick={() => removeModel(provider.id, model)}><Trash2 /></button>
                             </div>
+                          {health?.state === 'offline' && <div className="connection-diagnostic" role="status"><b>{diagnoseConnection(health.error || '').title}</b><p>{diagnoseConnection(health.error || '').action}</p><small>{redactSecrets(health.error || '')}</small></div>}
                           </div>;
                         }))}
                         {!draftConfig.providers.some((provider) => provider.models.length) && <div className="models-empty-state"><Bot /><h3>No models added</h3><p>Add an API model or import a GGUF file when you are ready.</p><button className="primary-button" onClick={() => beginModelSetup()}><Plus />Add your first model</button></div>}
@@ -3179,114 +3182,6 @@ export default function App() {
                       {ollamaInstalled && <div className="ollama-ready"><Check /><span><b>Local runtime ready</b><small>Your GGUF file can be imported now.</small></span></div>}
                     </div>}
                   </div>
-                )}
-                {settingsTab === "data" && (
-                  <>
-                    <section className="settings-section">
-                      <div className="toggle-row">
-                        <div className="section-copy">
-                          <h3>Project database</h3>
-                          <p>
-                            Optionally connect storage for long-term memory and
-                            organization data.
-                          </p>
-                        </div>
-                        <button
-                          aria-label="Toggle database"
-                          className={`switch ${draftConfig.database.enabled ? "on" : ""}`}
-                          onClick={() =>
-                            setDraftConfig((current) => ({
-                              ...current,
-                              database: {
-                                ...current.database,
-                                enabled: !current.database.enabled,
-                                kind: current.database.enabled
-                                  ? "none"
-                                  : "postgresql",
-                              },
-                            }))
-                          }
-                        >
-                          <i />
-                        </button>
-                      </div>
-                      {draftConfig.database.enabled && (
-                        <div className="revealed-fields">
-                          <label>
-                            Database type
-                            <select
-                              value={draftConfig.database.kind}
-                              onChange={(e) =>
-                                setDraftConfig((current) => ({
-                                  ...current,
-                                  database: {
-                                    ...current.database,
-                                    kind: e.target
-                                      .value as Config["database"]["kind"],
-                                  },
-                                }))
-                              }
-                            >
-                              <option value="postgresql">PostgreSQL</option>
-                              <option value="mysql">MySQL</option>
-                              <option value="sqlite">SQLite</option>
-                              <option value="http">HTTP API</option>
-                            </select>
-                          </label>
-                          <label>
-                            Connection URL
-                            <input
-                              type="password"
-                              value={draftConfig.database.url}
-                              placeholder="postgresql://user:password@host/database"
-                              onChange={(e) =>
-                                setDraftConfig((current) => ({
-                                  ...current,
-                                  database: {
-                                    ...current.database,
-                                    url: e.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </label>
-                          <div className="toggle-row nested">
-                            <div>
-                              <b>Use for AI memory</b>
-                              <p>
-                                Allow selected models to retrieve saved context.
-                              </p>
-                            </div>
-                            <button
-                              className={`switch ${draftConfig.database.useForMemory ? "on" : ""}`}
-                              onClick={() =>
-                                setDraftConfig((current) => ({
-                                  ...current,
-                                  database: {
-                                    ...current.database,
-                                    useForMemory:
-                                      !current.database.useForMemory,
-                                  },
-                                }))
-                              }
-                            >
-                              <i />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </section>
-                    <div className="security-note">
-                      <ShieldCheck />
-                      <div>
-                        <b>Your credentials stay on this device</b>
-                        <p>
-                          Secrets are excluded from exported configuration
-                          files.
-                        </p>
-                      </div>
-                    </div>
-                  </>
                 )}
                 {settingsTab === "updates" && (
                   <div className="center-panel update-center">

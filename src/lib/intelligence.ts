@@ -11,6 +11,14 @@ export const memoryNotes = (): MemoryNote[] => {
   return [...notes.filter(note => !projects.some(project => project.id === note.scope && project.memoryNotes !== undefined)), ...projects.flatMap(project => (project.memoryNotes || []).map(note => ({ ...note, scope: project.id })))];
 };
 export const contextEstimate = (messages: Message[]) => Math.ceil(messages.reduce((total, item) => total + Array.from(item.content).length, 0) / 3);
+export function isLocalEndpoint(baseUrl: string): boolean {
+  try { const url = new URL(baseUrl); return ['http:', 'https:'].includes(url.protocol) && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname); } catch { return false; }
+}
+export function enforceWorkPrivacy(project: WorkProject | undefined, config: Config) {
+  if (!project?.localOnly) return;
+  const provider = config.providers.find(item => item.id === config.activeProviderId);
+  if (!provider || !isLocalEndpoint(provider.baseUrl)) throw new Error('This Work is local-model only. Choose a model on localhost before sending; project data was not sent.');
+}
 export function routeRequest(config: Config, text: string, image: boolean): { config: Config; reason: string } {
   const settings = intelligenceSettings();
   if (!settings.enabled) return { config, reason: 'Manual model selection' };
@@ -22,7 +30,7 @@ export function routeRequest(config: Config, text: string, image: boolean): { co
     if (role === 'private') throw new Error('Choose a private local model in Intelligence → Routing before sending a private request.');
     return { config, reason: 'Default model; no matching route configured' };
   }
-  if (role === 'private' && !/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/i.test(provider.baseUrl)) throw new Error('The private route must use a local endpoint.');
+  if (role === 'private' && !isLocalEndpoint(provider.baseUrl)) throw new Error('The private route must use a local endpoint.');
   return { config: { ...config, activeProviderId: provider.id, activeModel: model }, reason: `${role} route → ${model}` };
 }
 export function selectedContext(chat: Chat, history: Message[]) {

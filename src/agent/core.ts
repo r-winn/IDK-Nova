@@ -17,6 +17,7 @@ export class NovaAgentCore {
     goal: string,
     private onStatus: (label: string) => void,
     private requestApproval: Approval,
+    private reviewFileChange?: (call: NovaToolCall) => Promise<boolean>,
   ) {
     this.task = new AgentTaskStore(chatId, project.id, goal);
     this.task.event("task", "planning", "Analyzing the goal and available project context");
@@ -35,7 +36,9 @@ export class NovaAgentCore {
     if (decision.approval) {
       this.onStatus("Waiting for your approval…");
       this.task.event("permission", "waiting_permission", definition.nova.label, approvalCopy(call).detail, call.id, call.toolName);
-      if (!await this.requestApproval(approvalCopy(call))) {
+      const approved = this.reviewFileChange && ['fs_write', 'fs_apply_patch'].includes(call.toolName)
+        ? await this.reviewFileChange(call) : await this.requestApproval(approvalCopy(call));
+      if (!approved) {
         this.task.event("permission", "cancelled", "Permission was not granted", undefined, call.id, call.toolName);
         throw new Error("__NOVA_PERMISSION_DENIED__");
       }

@@ -3,7 +3,7 @@ import type { AgentToolCall } from "../lib/ai";
 export type ToolEffect = "read" | "write" | "external";
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type PermissionScope = "filesystem" | "terminal" | "browser" | "computer" | "user-input";
-export type TaskState = "created" | "planning" | "waiting_permission" | "running" | "waiting_user" | "paused" | "failed" | "completed" | "cancelled";
+export type TaskState = "created" | "planning" | "waiting_permission" | "running" | "waiting_user" | "paused" | "interrupted" | "failed" | "completed" | "cancelled";
 
 export type NovaToolDefinition = {
   type: "function";

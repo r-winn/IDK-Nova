@@ -125,10 +125,14 @@ jobs:
     needs: [windows, macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Verify installers and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets > assets.json
           node -e 'const a=require("./assets.json").assets; for(const suffix of ["-setup.exe", ".msi", ".dmg", "latest.json"]) if(!a.some(x=>x.name.endsWith(suffix))) throw new Error("Missing release asset: "+suffix);'
+          if [[ -f "docs/releases/$GITHUB_REF_NAME.md" ]]; then
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file "docs/releases/$GITHUB_REF_NAME.md"
+          fi
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

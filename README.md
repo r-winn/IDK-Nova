@@ -20,6 +20,18 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
+### New in 0.22
+
+Settings now separates appearance, models, Intelligence, Tools, a personal Prompt library and Marketplace. Intelligence contains response style, memory, routing, activity, usage and recovery. Updates and About sit at the bottom of the sidebar.
+
+In a desktop **Work** chat, use commands such as `@fs_checkpoint`, `@fs_list` or `@fs_apply_patch` followed by the task details. Commands require tool-capable models and retain normal approval rules. Tools offers copy and insert buttons. Prompt shortcuts use the same `@name` notation, with tool names reserved.
+
+**Test & diagnose** sends a real model completion request and displays actionable errors. File-change approvals show before/after content. **Intelligence → Recovery** prepares a continuation of interrupted Work in its original chat and can revert the most recent recorded file operation.
+
+Marketplace currently provides bundled **prompt packs**, not executable third-party plugins. Live voice is a **desktop preview** requiring an OpenAI-compatible Realtime provider and model; a text-only model or Chat Completions proxy is insufficient. The native host mints a short-lived token following the [official WebRTC flow](https://developers.openai.com/api/docs/guides/voice-webrtc). Start voice explicitly; End or closing its window stops the microphone. Voice does not use Work tools or automatically save transcripts. No live provider/microphone end-to-end test is claimed.
+
+See [implementation status and remaining limitations](UPGRADE_STATUS.md) before relying on advanced workflows. Unified search, complete portable ZIP export, global quick-window shortcuts, guided onboarding and executable plugin installation are not completed by this release.
+
 > [!IMPORTANT]
 > IDK Nova connects directly to the providers you configure. Verify important AI output, review Work actions before approval, and send sensitive information only to providers you trust.
 

@@ -1,6 +1,6 @@
 {
-  "version": "0.21.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.21.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.21.1/IDK.Nova_0.21.1_x64-setup.exe",
-  "notes": ["Fixed desktop release tests and publish only after both Windows and macOS builds pass", "Simplified built-in tool groups and clearer model-routing labels", "Native provider credential vault for macOS and Windows", "Agent plans, cooperative pause/resume and automatic file checkpoints", "Real provider usage and configurable cost estimates", "Improved Responses proxy negotiation and no-progress detection", "This release does not complete the full twelve-part roadmap; see UPGRADE_STATUS.md"]
+  "version": "0.22.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.22.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.22.0/IDK.Nova_0.22.0_x64-setup.exe",
+  "notes": ["Unified Intelligence settings and bottom-anchored About/Updates", "Verified @tool commands with normal Work permissions", "Inline connection diagnostics with real model tests", "Before/after file approval and last-change undo", "Interrupted-task continuation with state reinspection", "Personal prompt library and bundled prompt-pack Marketplace", "Local-model-only Work policy", "Desktop Realtime voice preview; compatible provider required", "See UPGRADE_STATUS.md for unimplemented features and verification limits"]
 }

@@ -7,7 +7,7 @@ import ts from 'typescript';
 function load(file, dependencies = {}) {
   const module = { exports: {} };
   const source = ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(source, { exports: module.exports, module, require: name => { if (!(name in dependencies)) throw new Error(`Unexpected dependency ${name}`); return dependencies[name]; }, DOMException, performance });
+  vm.runInNewContext(source, { exports: module.exports, module, require: name => { if (!(name in dependencies)) throw new Error(`Unexpected dependency ${name}`); return dependencies[name]; }, DOMException, performance, URL });
   return module.exports;
 }
 test('Pause retains the same task; resume releases it, and stop rejects a paused task', async () => {

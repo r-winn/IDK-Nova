@@ -28,6 +28,18 @@ This incremental upgrade is not a completed implementation of the twelve-part pr
 - Responses compatibility negotiation handles multiple unsupported options; streaming usage options have a compatibility fallback.
 - KaTeX and source-map-js updated to patched releases after dependency advisory checks. Installer publication for 0.20.0 was cancelled before producing a public release.
 
+## 0.22.0 — implemented and verified scope
+
+- Response style is in Intelligence; memory and reserved storage settings have one home. About and Updates are anchored at the bottom of Settings.
+- Registered `@tool_name` commands run through the normal desktop Work runtime and approval policy. Both Responses and Chat Completions enforce requested tool execution and reject unverified completion; normal chats do not silently pretend to execute tools.
+- Model tests show inline authentication, access, quota, server, request and ambiguous-network guidance. A passing test is labelled with its actual timestamp, not continuous connectivity.
+- File write/patch approval includes before/after text. Reviewed content is checked again before writing; concurrent edits cause a new review rather than silent replacement. Full-access Work follows its existing no-approval policy. Recovery includes confirmed undo of the last recorded file operation, not arbitrary historical per-file rollback.
+- Interrupted tasks retain their goal and recorded events. Recovery prepares an explicit continuation in the original chat; the user must send it. This is state reinspection and continuation, **not** a restored process, browser session, or exact durable runtime replay.
+- Personal prompt library with validated import/export and `@shortcut` expansion. A separate Marketplace installs/uninstalls three bundled declarative prompt packs with source/version/permission labels. This is **not** an executable third-party plugin marketplace or MCP installer.
+- A local-model-only Work policy fails closed before chat/project context is sent to a remote model. It does not sandbox browser/terminal networking.
+- Desktop live voice preview uses native ephemeral-token minting and WebRTC, explicit microphone start, mute/end, audio playback retry and cleanup. It requires a provider with `/realtime/client_secrets` and `/realtime/calls` plus an accessible Realtime model. It does not inherit Work tools or save voice history. Web voice requires a secure token service. A real paid-provider call and physical microphone tests on Windows/macOS are still required.
+- Verification: frontend regression suite, native reviewed-write/patch/undo tests, macOS debug compilation and local Settings UI inspection. Installer CI must still pass on both platforms before public release.
+
 ## Still required before claiming the requested roadmap is complete
 
 1. Reliable agent: complete provenance presentation, native child-process cancellation, durable task resume/recovery and end-to-end verification.
