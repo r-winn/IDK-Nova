@@ -51,7 +51,7 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
-          args: --config src-tauri/tauri.signing.conf.json
+          args: --config src-tauri/tauri.signing.conf.json -- --locked
       - name: Build unsigned community installers
         if: env.SIGNING_ENABLED != 'true'
         uses: tauri-apps/tauri-action@v0
@@ -61,6 +61,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: IDK Nova ${{ github.ref_name }}
           releaseBody: Community build. Download Setup.exe for the guided installer, or MSI for managed deployment. This release is not code-signed yet and Windows SmartScreen may show a warning.
+          args: -- --locked
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
@@ -108,7 +109,7 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
-          args: --target universal-apple-darwin --bundles app,dmg
+          args: --target universal-apple-darwin --bundles app,dmg -- --locked
       - name: Keep detached updater signatures out of public downloads
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
