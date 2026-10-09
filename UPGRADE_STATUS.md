@@ -1,6 +1,8 @@
-# Intelligence upgrade 0.20.4 — implementation status
+# Intelligence upgrade 0.21.0 — implementation status
 
-0.20.4 aligns the JavaScript HTTP, updater, process and opener plugins with their native dependencies. A regression test compares all installed Tauri frontend plugin versions with Cargo.lock; installer builds also use the locked Cargo dependencies.
+UI refresh: removed the redundant settings footer message, separated the tool catalog into its own menu, added capability search and risk filtering, restyled Intelligence tabs and text fields, and fixed checkbox sizing and footer alignment. Search was verified in the local UI.
+
+0.21.0 aligns the JavaScript HTTP, updater, process and opener plugins with their native dependencies. A regression test compares all installed Tauri frontend plugin versions with Cargo.lock; installer builds also use the locked Cargo dependencies.
 
 Release repair: native tests now use the explicit Cargo manifest on both platforms. Installers stay in a draft until both platforms pass and expected assets exist. Settings tool groups and routing labels have been simplified. Local validation: 12 JavaScript tests, 2 native recovery tests, production UI build, and dependency audit. UI smoke checks cover model-test failure visibility and Intelligence navigation; full desktop end-to-end verification is still required.
 

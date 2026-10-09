@@ -790,19 +790,34 @@ main {
 }
 .rich-content { display: contents; }
 .intelligence-center { max-width: 760px; margin: 0 auto; }
-.intelligence-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; padding-bottom: 18px; }
+.intelligence-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 5px; margin-bottom: 24px; background: var(--hover); border-radius: 12px; }
 .intelligence-tabs button, .agent-run-controls button { display: flex; align-items: center; gap: 6px; border: 0; background: var(--hover); color: var(--muted); border-radius: 9px; padding: 8px 11px; font-size: 10px; }
 .intelligence-tabs svg { width: 14px; height: 14px; }
-.intelligence-tabs button.active { background: var(--selected); color: var(--text); }
-.tool-group { padding: 15px 0; border-bottom: 1px solid var(--line); }
-.tool-group > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; font-size: 12px; }
-.tool-group > summary span { color: var(--muted); font-size: 11px; }
-.tool-group > summary::after { content: '›'; color: var(--muted); font-size: 18px; transition: transform 180ms ease; }
-.tool-group[open] > summary::after { transform: rotate(90deg); }
-.tool-group > summary span { margin-left: auto; }
-@media (max-width: 540px) { .intelligence-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.tool-group .task-record { margin-left: 12px; }
-.tool-group code { font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+.intelligence-tabs button { flex: 1; justify-content: center; white-space: nowrap; min-height: 36px; background: transparent; font-size: 11px; padding: 8px; }
+.intelligence-tabs button.active { background: var(--surface); color: var(--text); box-shadow: var(--soft-shadow); }
+.settings-panel > footer > div { margin-left: auto; }
+.settings-scroll .intelligence-center .settings-section > small { display: block; margin-top: 12px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.settings-scroll .intelligence-center textarea { background: color-mix(in srgb, var(--bg) 72%, var(--surface)); border: 1px solid var(--line); border-radius: 12px; padding: 12px; color: var(--text); font: inherit; font-size: 12px; line-height: 1.6; outline: none; }
+.settings-scroll .intelligence-center textarea:focus { border-color: var(--line-strong); box-shadow: 0 0 0 3px var(--hover); }
+.settings-scroll .intelligence-center input[type="checkbox"] { width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--brand); box-shadow: none; flex: none; }
+.settings-scroll .intelligence-center .include-provider-keys { display: flex; align-items: center; gap: 9px; }
+.settings-scroll .intelligence-center select option { background: var(--surface); color: var(--text); }
+.tools-filters { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 12px; align-items: center; margin: 20px 0 12px; }
+.settings-scroll .tools-filters .tool-search { display: flex; align-items: center; gap: 8px; margin: 0; background: var(--hover); border-radius: 12px; padding: 0 12px; }
+.tool-search svg { width: 16px; flex: none; }
+.settings-scroll .tools-filters .tool-search input:not([type="color"]):not([type="range"]) { margin: 0; background: transparent; border: 0; padding: 0; box-shadow: none; }
+.settings-scroll .tools-filters select { margin: 0; }
+.settings-description, .tools-count { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.tool-entry { border-bottom: 1px solid var(--line); }
+.tool-entry summary { display: flex; align-items: center; gap: 10px; padding: 13px 0; cursor: pointer; font-size: 12px; }
+.tool-entry summary > svg { width: 14px; height: 14px; flex: none; color: var(--muted); transition: transform 180ms ease; }
+.tool-entry[open] summary > svg { transform: rotate(90deg); }
+.tool-entry summary span { flex: 1; min-width: 0; }
+.tool-entry > div { padding: 0 24px 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.tool-entry code { font-size: 10px; }
+.tool-risk { font-size: 10px; color: var(--muted); }
+.tool-risk.high { color: #c97534; }
+@media (max-width: 540px) { .tools-filters { grid-template-columns: 1fr; } .intelligence-tabs button { flex: none; } }
 .intelligence-tabs button:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
 .intelligence-center .settings-section > p { color: var(--muted); font-size: 11px; line-height: 1.6; }
 .intelligence-center textarea { width: 100%; min-height: 72px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: transparent; color: var(--text); }

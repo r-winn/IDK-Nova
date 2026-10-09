@@ -88,6 +88,7 @@ import { AgentToolCall, discoverModels, runAgentCompletion, streamCompletion, te
 import { NovaAgentCore } from "./agent/core";
 import { AgentControl } from "./agent/control";
 import { IntelligenceCenter } from "./components/IntelligenceCenter";
+import { ToolsCatalog } from "./components/ToolsCatalog";
 import { memoryContext, routeRequest, selectedContext } from "./lib/intelligence";
 import { providerTools } from "./agent/catalog";
 import { NOVA_WORK_SYSTEM } from "./agent/instructions";
@@ -143,7 +144,8 @@ const settingMeta = {
     "Manage the models available to Nova.",
   ],
   data: ["Data & memory", "Control optional storage and long-term context."],
-  intelligence: ["Intelligence", "Manage memory, model routing, activity and tools."],
+  intelligence: ["Intelligence", "Memory, model routing and Work activity."],
+  tools: ["Tools & capabilities", "Explore what Nova Work can do."],
   updates: ["Software update", "Keep Nova secure and up to date."],
   about: ["About Nova", "Version, licensing and deployment details."],
 } as const;
@@ -2896,6 +2898,7 @@ export default function App() {
                     ["models", Bot, "Models"],
                     ["data", Database, "Data & memory"],
                     ["intelligence", Workflow, "Intelligence"],
+                    ["tools", FlaskConical, "Tools & capabilities"],
                     ["updates", Download, "Updates"],
                     ["about", Info, "About"],
                   ] as const
@@ -2944,6 +2947,7 @@ export default function App() {
                 </button>
               </header>
               <div className="settings-scroll settings-tab-transition" key={settingsTab}>
+                {settingsTab === "tools" && <ToolsCatalog />}
                 {settingsTab === "intelligence" && <IntelligenceCenter config={draftConfig} chat={chat} projects={workspaces} running={busy} onProjectMemory={(scope, notes) => setWorkspaces(items => items.map(project => project.id === scope ? { ...project, memoryNotes: notes } : project))} />}
                 {settingsTab === "general" && (
                   <>
@@ -3430,7 +3434,6 @@ export default function App() {
                 )}
               </div>
               <footer>
-                <span>Changes are saved locally on this device.</span>
                 <div>
                   <button
                     className="secondary"
