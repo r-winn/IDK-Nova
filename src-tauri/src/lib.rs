@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use futures_util::StreamExt;
-use std::{fs, io::{Cursor, Read, Write}, net::{TcpListener, TcpStream}, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
+use std::{fs, io::{BufRead, BufReader, Cursor, Read, Write}, net::{TcpListener, TcpStream}, path::{Component, Path, PathBuf}, process::{Command, Stdio}, time::UNIX_EPOCH};
 use tauri::Manager;
 use tauri::ipc::Channel;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -387,9 +387,54 @@ fn ensure_ollama_runtime(ollama: &Path) -> Result<(), String> {
     Err("Ollama is installed, but its local service did not start on 127.0.0.1:11434".into())
 }
 
+#[derive(Clone, Serialize)]
+#[serde(tag = "event", content = "data", rename_all = "camelCase")]
+enum LocalModelImportEvent {
+    Status { phase: String, message: String, percent: u8 },
+    Progress { phase: String, message: String, processed: u64, total: u64, percent: u8 },
+}
+
+fn send_import_status(channel: &Channel<LocalModelImportEvent>, phase: &str, message: &str, percent: u8) {
+    let _ = channel.send(LocalModelImportEvent::Status { phase: phase.into(), message: message.into(), percent });
+}
+
+fn copy_model_with_progress(source: &Path, destination: &Path, channel: &Channel<LocalModelImportEvent>) -> Result<(), String> {
+    if source.canonicalize().ok().as_ref() == destination.canonicalize().ok().as_ref() && destination.is_file() {
+        let total = fs::metadata(source).map(|metadata| metadata.len()).unwrap_or(0);
+        let _ = channel.send(LocalModelImportEvent::Progress { phase: "copying".into(), message: "Model file already stored in Nova".into(), processed: total, total, percent: 62 });
+        return Ok(());
+    }
+    let total = fs::metadata(source).map_err(|error| format!("Could not inspect the selected model: {error}"))?.len();
+    let temporary = destination.with_extension("gguf.nova-partial");
+    let mut input = fs::File::open(source).map_err(|error| format!("Could not open the selected model: {error}"))?;
+    let mut output = fs::File::create(&temporary).map_err(|error| format!("Could not create Nova's private model copy: {error}"))?;
+    let mut buffer = vec![0u8; 4 * 1024 * 1024];
+    let mut processed = 0u64;
+    loop {
+        let count = input.read(&mut buffer).map_err(|error| format!("Could not read the selected model: {error}"))?;
+        if count == 0 { break; }
+        if let Err(error) = output.write_all(&buffer[..count]) {
+            let _ = fs::remove_file(&temporary);
+            return Err(format!("Could not copy the model into Nova. Check available disk space: {error}"));
+        }
+        processed += count as u64;
+        let percent = if total == 0 { 8 } else { 5 + ((processed.saturating_mul(57) / total).min(57) as u8) };
+        let _ = channel.send(LocalModelImportEvent::Progress { phase: "copying".into(), message: "Copying the GGUF file into Nova".into(), processed, total, percent });
+    }
+    output.sync_all().map_err(|error| format!("Could not finish writing the model: {error}"))?;
+    if destination.exists() { fs::remove_file(destination).map_err(|error| format!("Could not replace the previous private model copy: {error}"))?; }
+    fs::rename(&temporary, destination).map_err(|error| format!("Could not finalize the private model copy: {error}"))
+}
+
+fn parse_ollama_percent(value: &str) -> Option<u8> {
+    let marker = value.rfind('%')?;
+    value[..marker].split(|character: char| !character.is_ascii_digit()).filter(|part| !part.is_empty()).last()?.parse::<u8>().ok().map(|percent| percent.min(100))
+}
+
 #[tauri::command]
-async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_name: String) -> Result<String, String> {
+async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_name: String, on_event: Channel<LocalModelImportEvent>) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        send_import_status(&on_event, "validating", "Checking the selected GGUF file", 2);
         let source = PathBuf::from(&source_path);
         if source.extension().and_then(|value| value.to_str()).map(|value| value.eq_ignore_ascii_case("gguf")) != Some(true) {
             return Err("Choose a valid .gguf model file".into());
@@ -408,26 +453,52 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_nam
         fs::create_dir_all(&models_dir).map_err(|error| format!("Could not create the private model folder: {error}"))?;
         let file_name = source.file_name().ok_or("Invalid model filename")?;
         let stored_model = models_dir.join(file_name);
-        if source != stored_model {
-            fs::copy(&source, &stored_model).map_err(|error| format!("Could not copy the model into Nova: {error}"))?;
-        }
+        copy_model_with_progress(&source, &stored_model, &on_event)?;
+        send_import_status(&on_event, "preparing", "Preparing the Ollama model definition", 66);
         let model_file = models_dir.join(format!("{safe_name}.Modelfile"));
         let normalized = stored_model.to_string_lossy().replace('\\', "/").replace('"', "\\\"");
         fs::write(&model_file, format!("FROM \"{normalized}\"\n")).map_err(|error| format!("Could not prepare the local model: {error}"))?;
         let ollama = ollama_executable().ok_or_else(|| "OLLAMA_NOT_INSTALLED: Install Ollama before importing a GGUF model".to_string())?;
+        send_import_status(&on_event, "starting", "Starting the local Ollama runtime", 69);
         ensure_ollama_runtime(&ollama)?;
         let mut command = Command::new(ollama);
-        command.args(["create", &safe_name, "-f"]).arg(&model_file);
+        command.args(["create", &safe_name, "-f"]).arg(&model_file).stdout(Stdio::null()).stderr(Stdio::piped());
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x08000000);
         }
-        let output = command.output().map_err(|_| "Ollama was not found. Install and start Ollama, then try again.".to_string())?;
-        if !output.status.success() {
-            let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        send_import_status(&on_event, "registering", "Registering the model with Ollama", 72);
+        let mut child = command.spawn().map_err(|error| format!("Ollama could not start the model import: {error}"))?;
+        let stderr = child.stderr.take().ok_or_else(|| "Ollama did not expose import progress".to_string())?;
+        let mut reader = BufReader::new(stderr);
+        let mut chunk = Vec::new();
+        let mut details = String::new();
+        loop {
+            chunk.clear();
+            let count = reader.read_until(b'\r', &mut chunk).map_err(|error| format!("Could not read Ollama import progress: {error}"))?;
+            if count == 0 { break; }
+            let line = String::from_utf8_lossy(&chunk).trim().to_string();
+            if !line.is_empty() {
+                details.push_str(&line); details.push('\n');
+                if let Some(progress) = parse_ollama_percent(&line) {
+                    let percent = 72 + ((progress as u16 * 24 / 100) as u8);
+                    let _ = on_event.send(LocalModelImportEvent::Progress { phase: "registering".into(), message: "Importing model layers into Ollama".into(), processed: progress as u64, total: 100, percent });
+                }
+            }
+        }
+        let status = child.wait().map_err(|error| format!("Could not finish the Ollama import: {error}"))?;
+        if !status.success() {
+            let detail = details.lines().rev().find(|line| !line.trim().is_empty()).unwrap_or("").trim().to_string();
             return Err(if detail.is_empty() { "Ollama could not import this GGUF file".into() } else { detail });
         }
+        send_import_status(&on_event, "verifying", "Verifying the imported model with Ollama", 98);
+        let verification = Command::new(&ollama).args(["show", &safe_name]).output().map_err(|error| format!("The model was imported, but verification could not start: {error}"))?;
+        if !verification.status.success() {
+            let detail = String::from_utf8_lossy(&verification.stderr).trim().to_string();
+            return Err(if detail.is_empty() { "Ollama did not recognize the imported model".into() } else { detail });
+        }
+        send_import_status(&on_event, "ready", "Local model imported and verified", 100);
         Ok(safe_name)
     }).await.map_err(|error| error.to_string())?
 }

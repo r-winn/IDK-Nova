@@ -463,6 +463,7 @@ export default function App() {
   const [ollamaInstalled, setOllamaInstalled] = useState<boolean | null>(null);
   const [pendingGgufPath, setPendingGgufPath] = useState("");
   const [ollamaInstall, setOllamaInstall] = useState<{ phase: string; message: string; downloaded: number; total: number; error: string } | null>(null);
+  const [localModelImport, setLocalModelImport] = useState<{ phase: string; message: string; processed: number; total: number; percent: number; error: string } | null>(null);
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
   const [draftConfig, setDraftConfig] = useState<Config>(config);
@@ -1996,10 +1997,21 @@ export default function App() {
   };
   const finishLocalModelImport = async (selected: string) => {
     setImportingLocalModel(true);
+    setLocalModelImport({ phase: "starting", message: "Preparing the model import", processed: 0, total: 0, percent: 1, error: "" });
+    const channel = new Channel<{ event: "status" | "progress"; data: { phase: string; message: string; processed?: number; total?: number; percent: number } }>();
+    channel.onmessage = (event) => setLocalModelImport((current) => ({
+      phase: event.data.phase,
+      message: event.data.message,
+      processed: event.data.processed ?? current?.processed ?? 0,
+      total: event.data.total ?? current?.total ?? 0,
+      percent: event.data.percent,
+      error: "",
+    }));
     try {
       const model = await invoke<string>("import_gguf_model", {
         sourcePath: selected,
         modelName: "",
+        onEvent: channel,
       });
       const existing = draftConfig.providers.find((provider) =>
         /localhost:11434|127\.0\.0\.1:11434/.test(provider.baseUrl),
@@ -2010,7 +2022,6 @@ export default function App() {
         baseUrl: "http://127.0.0.1:11434/v1",
         models: [...new Set([...(existing?.models || []), model])],
       };
-      const latency = await testModel(verifiedProvider, model);
       const providers = existing
         ? draftConfig.providers.map((provider) =>
             provider.id === existing.id
@@ -2027,13 +2038,22 @@ export default function App() {
       setDraftConfig(nextConfig);
       setConfig(nextConfig);
       saveConfig(nextConfig);
-      setModelHealth((current) => ({ ...current, [`${providerId}:${model}`]: { state: "online", latency, checkedAt: Date.now() } }));
+      let latency = 0;
+      try {
+        setLocalModelImport((current) => ({ ...(current || { processed: 0, total: 0, error: "" }), phase: "testing", message: "Running a live completion test", percent: 99, error: "" }));
+        latency = await testModel(verifiedProvider, model);
+        setModelHealth((current) => ({ ...current, [`${providerId}:${model}`]: { state: "online", latency, checkedAt: Date.now() } }));
+      } catch (testError) {
+        const detail = testError instanceof Error ? testError.message : String(testError);
+        setModelHealth((current) => ({ ...current, [`${providerId}:${model}`]: { state: "offline", checkedAt: Date.now(), error: detail } }));
+        setLocalModelImport({ phase: "ready", message: "Model imported; the live response test needs attention", processed: 0, total: 0, percent: 100, error: detail });
+      }
       setModelSetupView("list");
-      setToast(`${model} imported, verified, and ready · ${latency} ms`);
+      setToast(latency ? `${model} imported, verified, and ready · ${latency} ms` : `${model} was imported. Use Test after checking that the model fits in available memory.`);
     } catch (error) {
-      setToast(
-        error instanceof Error ? error.message : "Local model import failed",
-      );
+      const detail = error instanceof Error ? error.message : String(error || "Local model import failed");
+      setLocalModelImport((current) => ({ ...(current || { phase: "error", message: "Import failed", processed: 0, total: 0, percent: 0, error: "" }), phase: "error", message: "Local model import failed", error: detail }));
+      setToast(detail);
     } finally {
       setImportingLocalModel(false);
     }
@@ -3090,6 +3110,10 @@ export default function App() {
                       <button className="setup-back" onClick={() => setModelSetupView("choose")}><ChevronRight />Choose another method</button>
                       <div className="setup-title"><h2>Import a local model</h2><p>Choose a GGUF file. Nova keeps a private copy and configures the local runtime for you.</p></div>
                       <button className="local-drop" disabled={importingLocalModel} onClick={importLocalModel}><HardDriveUpload /><span><b>{importingLocalModel ? "Importing and verifying…" : "Choose a GGUF file"}</b><small>Desktop app only · the original file is not modified</small></span></button>
+                      {localModelImport && <div className={`local-import-progress ${localModelImport.phase === "error" ? "failed" : ""}`}>
+                        <div><span><b>{localModelImport.message}</b><small>{localModelImport.phase === "copying" && localModelImport.total > 0 ? `${(localModelImport.processed / 1073741824).toFixed(2)} / ${(localModelImport.total / 1073741824).toFixed(2)} GB` : localModelImport.phase === "error" ? localModelImport.error : localModelImport.phase === "ready" ? "The model is stored privately in Nova." : "Please keep Nova open until this finishes."}</small></span><strong>{localModelImport.percent}%</strong></div>
+                        <i><span style={{ width: `${Math.max(1, Math.min(100, localModelImport.percent))}%` }} /></i>
+                      </div>}
                       {isDesktopApp() && ollamaInstalled === false && <div className="ollama-installer">
                         <div className="ollama-installer-head"><Info /><span><b>Ollama is required</b><small>Nova downloads the correct runtime for {navigator.platform.toLowerCase().includes("mac") ? "macOS" : "Windows"}.</small></span></div>
                         {ollamaInstall && ollamaInstall.phase !== "missing" && <div className="ollama-install-progress"><div><span>{ollamaInstall.message}</span><b>{ollamaInstall.total > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} / ${(ollamaInstall.total / 1048576).toFixed(1)} MB · ${Math.min(100, Math.round(ollamaInstall.downloaded / ollamaInstall.total * 100))}%` : ollamaInstall.downloaded > 0 ? `${(ollamaInstall.downloaded / 1048576).toFixed(1)} MB` : ollamaInstall.phase === "installing" ? "Installing…" : ""}</b></div><i><span style={{ width: `${ollamaInstall.total > 0 ? Math.min(100, ollamaInstall.downloaded / ollamaInstall.total * 100) : ollamaInstall.phase === "installing" ? 100 : 5}%` }} /></i>{ollamaInstall.error && <p>{ollamaInstall.error}</p>}</div>}

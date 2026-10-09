@@ -111,7 +111,8 @@ export async function discoverModels(provider: Provider): Promise<string[]> {
 export async function testModel(provider: Provider, model: string): Promise<number> {
   const started = performance.now();
   const providerKey = responsesProviderKey(provider);
-  if (!unsupportedResponsesProviders.has(providerKey)) {
+  const localOllama = /^https?:\/\/(?:localhost|127\.0\.0\.1):11434(?:\/|$)/i.test(provider.baseUrl);
+  if (!localOllama && !unsupportedResponsesProviders.has(providerKey)) {
     const response = await request(endpoint(provider, '/responses'), { method: 'POST', headers: headers(provider), body: JSON.stringify({ model, input: 'Reply with OK', max_output_tokens: 8, store: false }) });
     if (response.ok) {
       const payload = await response.json();

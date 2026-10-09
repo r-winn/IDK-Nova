@@ -1883,6 +1883,18 @@ body.resizing-browser iframe { pointer-events: none; }
 .ollama-install-progress p { margin: 8px 0 0; color: var(--danger); font-size: 9px; }
 .ollama-ready { margin-top: 12px; padding: 11px; border-radius: 11px; background: color-mix(in srgb, #3da878 9%, var(--hover)); }
 .ollama-ready > svg { color: #2f9165; }
+.local-import-progress { margin-top: 12px; padding: 12px 13px; border-radius: 12px; background: color-mix(in srgb, var(--brand) 7%, var(--hover)); }
+.local-import-progress > div { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.local-import-progress > div > span { min-width: 0; display: grid; gap: 4px; }
+.local-import-progress b { color: var(--text); font-size: 9px; font-weight: 600; }
+.local-import-progress small { overflow: hidden; color: var(--muted); font-size: 8px; line-height: 1.45; text-overflow: ellipsis; }
+.local-import-progress strong { flex: none; color: var(--text); font-size: 10px; font-variant-numeric: tabular-nums; }
+.local-import-progress > i { height: 5px; margin-top: 9px; overflow: hidden; border-radius: 999px; background: var(--line); display: block; }
+.local-import-progress > i span { height: 100%; border-radius: inherit; background: color-mix(in srgb, var(--brand) 70%, var(--text)); display: block; transition: width .24s ease-out; }
+.local-import-progress.failed { background: color-mix(in srgb, var(--danger) 8%, var(--hover)); }
+.local-import-progress.failed small,
+.local-import-progress.failed strong { color: var(--danger); }
+.local-import-progress.failed > i span { background: var(--danger); }
 .workspace-delete-dialog > p b { color: var(--text); }
 .workspace-delete-safety { width: 100%; margin: 4px 0 18px; padding: 11px; border-radius: 11px; background: color-mix(in srgb, #3ea477 9%, var(--hover)); color: var(--muted); display: flex; align-items: flex-start; gap: 9px; text-align: left; }
 .workspace-delete-safety > svg { width: 17px; color: #368d69; }
