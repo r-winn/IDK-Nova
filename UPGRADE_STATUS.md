@@ -1,4 +1,6 @@
-# Intelligence upgrade 0.20.1 — implementation status
+# Intelligence upgrade 0.20.2 — implementation status
+
+Release repair: native tests now use the explicit Cargo manifest on both platforms. Installers stay in a draft until both platforms pass and expected assets exist. Settings tool groups and routing labels have been simplified. Local validation: 12 JavaScript tests, 2 native recovery tests, production UI build, and dependency audit. UI smoke checks cover model-test failure visibility and Intelligence navigation; full desktop end-to-end verification is still required.
 
 This incremental upgrade is not a completed implementation of the twelve-part product roadmap. Do not describe it as feature-complete or production-verified on all operating systems.
 

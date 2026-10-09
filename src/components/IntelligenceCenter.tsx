@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pin, Plus, Trash2, ShieldCheck, Workflow, BookOpen } from 'lucide-react';
+import { Pin, Plus, Trash2, Workflow, BookOpen, Activity, Wrench, ChartNoAxesCombined, History } from 'lucide-react';
 import type { Chat, Config, WorkProject } from '../types';
 import { contextEstimate, intelligenceSettings, memoryNotes, type MemoryNote, type RouteRole } from '../lib/intelligence';
 import { loadValue } from '../lib/storage';
@@ -7,6 +7,23 @@ import { NOVA_TOOLS } from '../agent/catalog';
 import type { AgentTask } from '../agent/protocol';
 import { UsagePanel } from './UsagePanel';
 import { CheckpointsPanel } from './CheckpointsPanel';
+
+const sections = [
+  { id: 'memory', title: 'Memory', icon: BookOpen },
+  { id: 'routing', title: 'Model routing', icon: Workflow },
+  { id: 'activity', title: 'Activity', icon: Activity },
+  { id: 'tools', title: 'Built-in tools', icon: Wrench },
+  { id: 'usage', title: 'Usage & cost', icon: ChartNoAxesCombined },
+  { id: 'recovery', title: 'Recovery', icon: History },
+] as const;
+const toolGroups = [
+  { scope: 'filesystem', title: 'Project files & planning' },
+  { scope: 'terminal', title: 'Terminal' },
+  { scope: 'browser', title: 'Browser' },
+  { scope: 'computer', title: 'Desktop control' },
+  { scope: 'user-input', title: 'User input' },
+] as const;
+const routeLabels: Record<RouteRole, string> = { fast: 'Simple questions', strong: 'Analysis & coding', vision: 'Images & vision', private: 'Private requests (local only)' };
 
 export function IntelligenceCenter({ config, chat, projects, onProjectMemory, running }: { config: Config; chat: Chat; projects: WorkProject[]; onProjectMemory: (scope: string, notes: MemoryNote[]) => void; running: boolean }) {
   const [tab, setTab] = useState<'memory' | 'routing' | 'activity' | 'tools' | 'usage' | 'recovery'>('memory');
@@ -20,7 +37,7 @@ export function IntelligenceCenter({ config, chat, projects, onProjectMemory, ru
   const saveSettings = (value: typeof settings) => { setSettings(value); localStorage.setItem('nova-intelligence', JSON.stringify(value)); };
   const models = config.providers.flatMap(provider => provider.models.map(model => ({ value: `${provider.id}::${model}`, label: `${provider.name} · ${model}` })));
   return <div className="intelligence-center">
-    <nav className="intelligence-tabs">{(['memory', 'routing', 'activity', 'tools', 'usage', 'recovery'] as const).map(value => <button key={value} className={tab === value ? 'active' : ''} onClick={() => setTab(value)}>{value === 'memory' ? <BookOpen /> : value === 'routing' ? <Workflow /> : <ShieldCheck />}{value[0].toUpperCase() + value.slice(1)}</button>)}</nav>
+    <nav className="intelligence-tabs" aria-label="Intelligence sections">{sections.map(({ id, title, icon: Icon }) => <button key={id} aria-current={tab === id ? 'page' : undefined} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon />{title}</button>)}</nav>
     {tab === 'usage' && <UsagePanel config={config} />}
     {tab === 'recovery' && <CheckpointsPanel projects={projects} running={running} />}
     {tab === 'memory' && <>
@@ -32,8 +49,8 @@ export function IntelligenceCenter({ config, chat, projects, onProjectMemory, ru
         <div className="context-message-list">{chat.messages.map((message, index) => <label key={index}><input type="checkbox" checked={!excluded.includes(index)} onChange={() => { const next = excluded.includes(index) ? excluded.filter(item => item !== index) : [...excluded, index]; setExcluded(next); localStorage.setItem(`nova-context-excluded-${chat.id}`, JSON.stringify(next)); }} /><span><b>{message.role}</b><small>{message.content.slice(0, 160)}</small></span></label>)}</div>
       </section>
     </>}
-    {tab === 'routing' && <section className="settings-section"><h3>Automatic model routing</h3><p>Choose a model for each kind of request. Private requests require a local endpoint.</p><label className="include-provider-keys"><input type="checkbox" checked={settings.enabled} onChange={event => saveSettings({ ...settings, enabled: event.target.checked })} />Enable routing</label>{(['fast', 'strong', 'vision', 'private'] as RouteRole[]).map(role => <label key={role}>{role}<select value={settings.routes[role] || ''} onChange={event => saveSettings({ ...settings, routes: { ...settings.routes, [role]: event.target.value } })}><option value="">Use selected model</option>{models.map(model => <option value={model.value} key={model.value}>{model.label}</option>)}</select></label>)}</section>}
+    {tab === 'routing' && <section className="settings-section"><h3>Automatic model routing</h3><p>Choose a model for each kind of request. Private requests require a local endpoint.</p><label className="include-provider-keys"><input type="checkbox" checked={settings.enabled} onChange={event => saveSettings({ ...settings, enabled: event.target.checked })} />Enable routing</label>{(['fast', 'strong', 'vision', 'private'] as RouteRole[]).map(role => <label key={role}>{routeLabels[role]}<select value={settings.routes[role] || ''} onChange={event => saveSettings({ ...settings, routes: { ...settings.routes, [role]: event.target.value } })}><option value="">{role === 'private' ? 'Choose a local model (required)' : 'Use selected model'}</option>{models.map(model => <option value={model.value} key={model.value}>{model.label}</option>)}</select></label>)}</section>}
     {tab === 'activity' && <section className="settings-section"><h3>Agent activity</h3><p>Recorded plans, approvals, actions, failures and completion for this device.</p>{tasks.length === 0 && <p>No Work tasks have run yet.</p>}{tasks.map(task => <details className="task-record" key={task.id}><summary><b>{task.goal.slice(0, 100)}</b><small>{task.state} · {new Date(task.updatedAt).toLocaleString()}</small></summary>{task.events.map(event => <div key={event.id}><b>{event.label}</b><small>{event.toolName || event.kind} · {new Date(event.at).toLocaleTimeString()}</small>{event.detail && <p>{event.detail}</p>}</div>)}</details>)}</section>}
-    {tab === 'tools' && <section className="settings-section"><h3>Installed native tools</h3><p>These tools are implemented in Nova and governed by the Work access policy.</p>{NOVA_TOOLS.map(tool => <details className="task-record" key={tool.function.name}><summary><b>{tool.function.name}</b><small>{tool.nova.scope} · {tool.nova.risk} risk · Built in</small></summary><p>{tool.function.description}</p></details>)}</section>}
+    {tab === 'tools' && <section className="settings-section"><h3>Built-in Work tools</h3><p>Included with Nova; no installation is needed. Work access permissions control their use in the desktop app. This is a tool catalog, not a third-party marketplace.</p>{toolGroups.map(group => <details className="tool-group" key={group.scope}><summary><b>{group.title}</b><span>{NOVA_TOOLS.filter(tool => tool.nova.scope === group.scope).length} tools</span></summary>{NOVA_TOOLS.filter(tool => tool.nova.scope === group.scope).map(tool => <details className="task-record" key={tool.function.name}><summary><b>{tool.nova.label.replace(/…$/, '')}</b><small>{tool.nova.risk} risk · {tool.nova.effect}</small></summary><p>{tool.function.description}</p><code>{tool.function.name}</code></details>)}</details>)}</section>}
   </div>;
 }

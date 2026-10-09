@@ -189,7 +189,9 @@ Nova creates a hidden `.nova-work` directory inside a folder after you explicitl
 | **Updates** | Check, securely download, and install signed releases without leaving the desktop app. |
 | **About** | View the installed version, configuration mode, and license. |
 
-## Intelligence upgrade (0.20.1)
+## Intelligence upgrade (0.20.2)
+
+The desktop release is published only after Windows and macOS builds succeed and the EXE, MSI, DMG and updater manifest are present. Built-in tools are grouped by purpose; this catalog is not a third-party marketplace.
 
 Open **Settings → Intelligence**. These preferences save immediately, independently of the provider-settings draft:
 

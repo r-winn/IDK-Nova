@@ -2938,6 +2938,7 @@ export default function App() {
                 <button
                   className="icon-button"
                   onClick={closeSettings}
+                  aria-label="Close settings"
                 >
                   <X />
                 </button>

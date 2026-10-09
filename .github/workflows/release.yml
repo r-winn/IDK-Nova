@@ -23,7 +23,7 @@ jobs:
       - name: Build UI for native tests
         run: npm run build
       - name: Run native recovery tests
-        run: cargo test --lib checkpoint_tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib checkpoint_tests
       - name: Import Windows code-signing certificate
         if: env.SIGNING_ENABLED == 'true'
         shell: pwsh
@@ -47,7 +47,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: IDK Nova ${{ github.ref_name }}
           releaseBody: Download the signed Setup.exe for the guided installer, or the MSI for managed deployment.
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
@@ -61,7 +61,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: IDK Nova ${{ github.ref_name }}
           releaseBody: Community build. Download Setup.exe for the guided installer, or MSI for managed deployment. This release is not code-signed yet and Windows SmartScreen may show a warning.
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
@@ -95,7 +95,7 @@ jobs:
       - name: Build UI for native tests
         run: npm run build
       - name: Run native recovery tests
-        run: cargo test --lib checkpoint_tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib checkpoint_tests
       - name: Build universal macOS app and DMG
         uses: tauri-apps/tauri-action@v0
         env:
@@ -104,7 +104,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: IDK Nova ${{ github.ref_name }}
           releaseBody: Download Setup.exe for Windows or the universal DMG for Apple Silicon and Intel Macs. Community builds are not platform code-signed yet, so the operating system may ask you to approve the first launch.
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
@@ -119,3 +119,15 @@ jobs:
                 gh release delete-asset "$GITHUB_REF_NAME" "$asset" --repo "$GITHUB_REPOSITORY" --yes
               fi
             done
+  publish:
+    name: Publish complete desktop release
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify installers and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets > assets.json
+          node -e 'const a=require("./assets.json").assets; for(const suffix of ["-setup.exe", ".msi", ".dmg", "latest.json"]) if(!a.some(x=>x.name.endsWith(suffix))) throw new Error("Missing release asset: "+suffix);'
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
