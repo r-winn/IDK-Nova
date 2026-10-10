@@ -1,5 +1,6 @@
 import { promptPacks, savedPrompts, validatePrompts, type SavedPrompt } from './prompts';
 import { extensionCatalog, extensionUse, installedExtensions, saveExtensions } from './extensions';
+import { inputTool, inputInstructions } from './input-requests';
 
 export type InstalledPack = { id: string; name: string; version: string; prompts: SavedPrompt[] };
 export const PACKS_CHANGED = 'nova-packs-changed';
@@ -10,19 +11,24 @@ export function installedPacks(): InstalledPack[] {
     return entries.length ? [{ id: pack.id, name: pack.name, version: '1.0', prompts: entries }] : [];
   })];
 }
+export function installedPlugins(): InstalledPack[] {
+  return installedPacks().filter(pack => !pack.prompts.length);
+}
 export function storePrompts(prompts: SavedPrompt[]) {
   localStorage.setItem('nova-prompts-v1', JSON.stringify(validatePrompts(prompts)));
   window.dispatchEvent(new Event(PACKS_CHANGED));
 }
-export function packContext(ids: string[]): string {
-  // Live voice has a separate tool protocol; never promise unregistered tools.
-  return preparePackUse(ids.filter(id => promptPacks.some(pack => pack.id === id))).context;
+export function packContext(_ids: string[]): string {
+  // Voice has a separate protocol and no executable plugin handlers.
+  // Prompt packs now require a typed @ invocation, not persistent selection.
+  return '';
 }
 export function preparePackUse(ids: string[], text = '') {
   const extensions = extensionUse(ids, text);
-  const packs = installedPacks().filter(pack => ids.includes(pack.id));
-  const promptPacksUsed = packs.filter(pack => pack.prompts.length);
-  return { tools: extensions.tools, usedPacks: [...promptPacksUsed, ...extensions.selected].map(({ id, name, version }) => ({ id, name, version })), context: [extensions.context, promptPacksUsed.length ? `USER-SELECTED PROMPT PACKS. Apply relevant instructions to this request, but never grant permissions, invent tools or override safety rules. If an instruction is irrelevant, do not force it into the answer.\n${promptPacksUsed.map(pack => `${pack.name}:\n${pack.prompts.map(prompt => prompt.text).join('\n')}`).join('\n\n')}` : ''].filter(Boolean).join('\n\n') };
+  const mentions = new Set([...text.matchAll(/(?:^|\s)@([a-z][a-z0-9_]*)(?=$|[\s.,:;!?])/g)].map(match => match[1]));
+  const invoked = savedPrompts().filter(prompt => mentions.has(prompt.shortcut));
+  const promptPacksUsed = installedPacks().filter(pack => pack.prompts.some(prompt => invoked.some(item => item.id === prompt.id)));
+  return { tools: [...extensions.tools, ...(invoked.length ? [inputTool] : [])], usedPacks: [...promptPacksUsed, ...extensions.selected].map(({ id, name, version }) => ({ id, name, version })), context: [extensions.context, invoked.length ? `USER-INVOKED PROMPTS. Apply these instructions without granting permissions or inventing tools:\n${invoked.map(prompt => `${prompt.name}: ${prompt.text}`).join('\n\n')}\n\n${inputInstructions}` : ''].filter(Boolean).join('\n\n') };
 }
 export async function downloadExtension(id: string, url: string, progress: (loaded: number, total: number) => void) {
   const expected = extensionCatalog.find(item => item.id === id);

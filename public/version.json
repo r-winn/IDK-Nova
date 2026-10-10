@@ -1,6 +1,6 @@
 {
-  "version": "0.24.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.24.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.24.1/IDK.Nova_0.24.1_x64-setup.exe",
-  "notes": ["Urgent fix for dropped alternating characters in the message composer", "Preserve Persian, English, mixed text and pasted input", "Keep @command suggestions without intercepting normal typing", "Skip prompt-library reads during ordinary typing", "Includes all 0.24.0 tools and credential recovery improvements"]
+  "version": "0.25.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.25.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.25.0/IDK.Nova_0.25.0_x64-setup.exe",
+  "notes": ["Inline step-by-step clarification forms for @prompt commands", "Free-text answers, suggested choices, Back/Next and cancellation", "Resume the same task after all answers are submitted", "Keep clarification answers in conversation context", "Plugins menu contains executable plugins only", "Prompt packs use explicit @commands instead of persistent selection", "Shared form UI for main and temporary side chats", "Retains the composer typing hotfix"]
 }

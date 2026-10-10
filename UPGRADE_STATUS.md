@@ -1,5 +1,13 @@
 # Intelligence upgrade 0.21.1 — implementation status
 
+## 0.25.0 — interactive prompts and executable-only Plugins
+
+Installed prompt shortcuts register collect_user_input for that request. The provider can ask only missing questions through a validated inline form with 1–8 steps, up to four choices per step and custom answers. Back preserves answers; final submission resolves the same pending function call and the model continues. Cancel and AbortSignal terminate pending requests without retrying the question or pretending success. Main and temporary side chats share the component with request-owner scoping. Normal conversation answers enter context; side-chat data remains ephemeral. No durable secrets should be entered and form completion does not authorize external actions.
+
+Plugins now lists executable installed tools only. Legacy prompt-pack selections no longer inject persistent instructions; prompt packs and custom saved prompts use explicit @shortcuts. Only invoked prompts from a pack are supplied. Config export still preserves installed packages and prompts. Voice does not claim unregistered plugin handlers.
+
+Verification: 54 frontend regressions, production compilation, a local four-step email form completing through a mock provider, Back/Next answer preservation, executable-only picker and side-chat cancellation. This establishes application flow, not that every third-party model follows the tool contract. A tool-calling provider is required for dynamic forms; physical desktop installer testing remains separate.
+
 ## 0.24.1 — urgent composer input hotfix
 
 Reproduced the 0.24.0 input regression in the browser: typing `abcdefghijklmnopqrstuvwxyz` resulted in `bdfhjlnprtvxz`. Suggestion-state updates in input capture could restore the previous controlled DOM value before React's onChange. Text updates now run first in the original textarea change handler; caret updates run afterward. Selection uses the bubbling textarea handler. Ordinary typing skips prompt-library reads. Verified complete Latin/Persian/mixed input, command insertion, caret movement, backspace and replacement input in the local UI. Four new input-handler regressions supplement the existing suite. Physical Windows/macOS installer retesting remains separate from local browser checks.

@@ -61,6 +61,33 @@ test('An executable extension returns real local output into the provider tool l
   assert.match(JSON.stringify(requests[1].body.input), /result.*84/);
   assert.equal(answer, '84');
 });
+test('A clarification tool pauses Responses until real answers and resumes the same call', async () => {
+  const form = load('../src/lib/input-requests.ts');
+  const request = { title: 'Email', questions: [{ id: 'language', question: 'Language?', options: ['English', 'فارسی'] }] };
+  const { api, requests } = agent([{ body: { id: 'r1', output: [{ type: 'function_call', name: 'collect_user_input', call_id: 'input1', arguments: JSON.stringify(request) }] } }, { body: { id: 'r2', output_text: 'English email ready' } }]);
+  const controller = new AbortController(); let session, output = '';
+  const pending = api.runAgentCompletion(config, [{ role: 'user', content: '@formal_email' }], form.inputInstructions, [form.inputTool], async () => ({ ok: true, answers: await form.waitForInput(request, controller.signal, value => { session = value; }) }), () => {}, token => output += token, controller.signal);
+  for (let i = 0; i < 20 && !session; i++) await Promise.resolve();
+  assert.ok(session); assert.equal(requests.length, 1); assert.equal(output, '');
+  session.submit({ language: 'English' }); await pending;
+  assert.match(JSON.stringify(requests[1].body.input), /English/);
+  assert.equal(requests[1].body.input[0].call_id, 'input1'); assert.equal(output, 'English email ready');
+});
+test('Cancellation ends both tool protocols rather than asking again or reporting success', async () => {
+  const form = load('../src/lib/input-requests.ts');
+  for (const fallback of [false, true]) {
+    const toolCall = { id: 'input1', type: 'function', function: { name: 'collect_user_input', arguments: '{}' } };
+    const responses = fallback ? [{ status: 404 }, { body: { choices: [{ message: { tool_calls: [toolCall] } }] } }] : [{ body: { id: 'r1', output: [{ type: 'function_call', name: 'collect_user_input', call_id: 'input1', arguments: '{}' }] } }];
+    const { api, requests } = agent(responses); let output = '';
+    await assert.rejects(api.runAgentCompletion(config, [{ role: 'user', content: '@formal_email' }], '', [form.inputTool], async () => { throw new Error('__NOVA_INPUT_CANCELLED__'); }, () => {}, token => output += token), /__NOVA_INPUT_CANCELLED__/);
+    assert.equal(output, ''); assert.equal(requests.length, fallback ? 2 : 1);
+  }
+});
+test('Clarification answers stay in subsequent conversation context', async () => {
+  const { api, requests } = agent([{ body: { id: 'r1', output_text: 'Remembered' } }]);
+  await api.runAgentCompletion(config, [{ role: 'user', content: 'Draft email', inputAnswers: [{ id: 'recipient', question: 'Recipient?', answer: 'Sam' }] }, { role: 'assistant', content: 'Welcome' }, { role: 'user', content: 'Make it shorter' }], '', [], async () => {}, () => {}, () => {});
+  assert.match(JSON.stringify(requests[0].body.input), /Recipient.*Sam/);
+});
 test('Prompt imports reserve tool names and expand only matching mentions', () => {
   const data = new Map();
   const api = load('../src/lib/prompts.ts', { './extensions': { extensionCatalog: [{ tool: 'calculate' }, { tool: 'analyze_text' }] }, '../agent/catalog': { NOVA_TOOLS: [{ function: { name: 'fs_checkpoint' } }] } }, { localStorage: { getItem: key => data.get(key) } });

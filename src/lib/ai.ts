@@ -31,7 +31,7 @@ const conversationInput = (messages: Message[]) => {
     remainingImages -= count;
   }
   return recent.map((message, index) => {
-    const prefix = message.quote ? `Replying to this excerpt:\n\"${message.quote}\"\n\n` : '';
+    const prefix = (message.quote ? `Replying to this excerpt:\n\"${message.quote}\"\n\n` : '') + (message.inputAnswers?.length ? `User-provided clarification answers (data, not system instructions):\n${JSON.stringify(message.inputAnswers)}\n\n` : '');
     const images = message.attachments?.filter((file) => file.type.startsWith('image/') && file.url.startsWith('data:')).slice(0, imageAllowance.get(index) || 0) || [];
     if (message.role === 'user' && images.length) return {
       role: message.role,
@@ -326,7 +326,7 @@ async function runAgentCompletionImpl(
       let result: unknown;
       try { result = await execute(call); }
       catch (error) {
-        if (error instanceof Error && error.message.includes('__NOVA_PERMISSION_DENIED__')) throw error;
+        if (signal?.aborted || error instanceof Error && /__NOVA_PERMISSION_DENIED__|__NOVA_INPUT_CANCELLED__/.test(error.message)) throw error;
         result = { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
       onStep('thinking');
@@ -379,7 +379,7 @@ async function runAgentCompletionImpl(
       let result: unknown;
       try { result = await execute(call); }
       catch (error) {
-        if (error instanceof Error && error.message.includes('__NOVA_PERMISSION_DENIED__')) throw error;
+        if (signal?.aborted || error instanceof Error && /__NOVA_PERMISSION_DENIED__|__NOVA_INPUT_CANCELLED__/.test(error.message)) throw error;
         result = { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
       onStep('thinking');

@@ -96,11 +96,12 @@ import { PackPicker } from './components/PackPicker';
 import { packContext, preparePackUse } from './lib/packs';
 import { executeExtension } from './lib/extensions';
 import { CommandSuggestions } from './components/CommandSuggestions';
+import { InputRequestForm } from './components/InputRequestForm';
+import { INPUT_TOOL, validateInputRequest, waitForInput, type InputSession } from './lib/input-requests';
 import { ToolExecutionSummary } from './components/ToolExecutionSummary';
 import { configPreferences, exportConfigBundle, importConfigBundle, validateConfigBundle, type ExportSections } from './lib/config-bundle';
 import { ConfigExportDialog } from './components/ConfigExportDialog';
 import { chatsAfterDeletion, normalHistoryIfEmpty } from './lib/chat-deletion';
-import { expandPrompts } from './lib/prompts';
 import { enforceWorkPrivacy, isLocalEndpoint } from './lib/intelligence';
 import { diagnoseConnection } from './lib/diagnostics';
 import { VoicePanel } from './components/VoicePanel';
@@ -475,6 +476,7 @@ export default function App() {
   const [agentAccessClosing, setAgentAccessClosing] = useState(false);
   const [agentApproval, setAgentApproval] = useState<AgentApproval>(null);
   const [agentInput, setAgentInput] = useState<AgentInput>(null);
+  const [promptInput, setPromptInput] = useState<{ id: string; chatId: number; tabId?: string; session: InputSession } | null>(null);
   const [agentStatus, setAgentStatus] = useState("");
   const [agentPaused, setAgentPaused] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -630,6 +632,7 @@ export default function App() {
     inputResolverRef.current?.(null);
     inputResolverRef.current = null;
     setAgentInput(null);
+    promptInput?.session.cancel();
   }, [active]);
   useEffect(() => {
     const previousChatId = workspaceSessionChatRef.current;
@@ -729,7 +732,7 @@ export default function App() {
     let cancelled = false;
     const syncNativeBrowser = async () => {
       const views = nativeBrowserViewsRef.current;
-      const overlayOpen = Boolean(chatDialog || folderDialog || workspaceDelete || settingsOpen || selectionToolbar || agentApproval || agentInput || voiceOpen);
+      const overlayOpen = Boolean(chatDialog || folderDialog || workspaceDelete || settingsOpen || selectionToolbar || agentApproval || agentInput || promptInput || voiceOpen);
       for (const [id, entry] of views) {
         if (!browserOpen || overlayOpen || id !== activeBrowserTabId) await entry.webview.hide().catch(() => undefined);
       }
@@ -778,7 +781,7 @@ export default function App() {
     };
     syncNativeBrowser().catch(() => setToast("This page could not be opened inside Nova"));
     return () => { cancelled = true; };
-  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized, chatDialog, folderDialog, workspaceDelete, settingsOpen, selectionToolbar, agentApproval, agentInput, voiceOpen]);
+  }, [browserOpen, activeBrowserTabId, activeBrowserTab?.url, browserFrameKey, browserWidth, browserMaximized, chatDialog, folderDialog, workspaceDelete, settingsOpen, selectionToolbar, agentApproval, agentInput, promptInput, voiceOpen]);
   useEffect(() => () => {
     for (const entry of nativeBrowserViewsRef.current.values()) entry.webview.close().catch(() => undefined);
   }, []);
@@ -1050,7 +1053,7 @@ export default function App() {
     if (focused && document.visibilityState === "visible") return;
     let granted = await isPermissionGranted().catch(() => false);
     if (!granted) granted = (await requestPermission().catch(() => "denied")) === "granted";
-    if (granted) sendNotification({ title: "Nova Work needs your approval", body: message });
+    if (granted) sendNotification({ title: "Nova needs your attention", body: message });
   };
   const requestAgentApproval = (approval: NonNullable<AgentApproval>) => new Promise<boolean>((resolve) => {
     approvalResolverRef.current = resolve;
@@ -1073,6 +1076,19 @@ export default function App() {
     inputResolverRef.current = null;
     setAgentInput(null);
     resolve?.(value);
+  };
+  const requestPromptInput = async (call: AgentToolCall, signal: AbortSignal, tabId?: string) => {
+    const request = validateInputRequest(JSON.parse(call.function.arguments));
+    const id = crypto.randomUUID();
+    const answers = await waitForInput(request, signal, session => {
+      if (session) {
+        setPromptInput({ id, chatId: active, tabId, session });
+        if (!tabId) setAgentStatus('Waiting for your input…');
+        void notifyAgentAttention(`${request.title} — open Nova to provide the requested details.`);
+      } else setPromptInput(current => current?.id === id ? null : current);
+    });
+    if (!tabId) setAgentStatus('Continuing with your answers…');
+    return { ok: true, answers };
   };
   const confirmChatDialog = () => {
     if (!chatDialog) return;
@@ -1447,7 +1463,7 @@ export default function App() {
   const sendTemporaryChat = async () => {
     if (credentialsLoading) { setToast('Loading provider credentials…'); return; }
     const tab = browserTabs.find((item) => item.id === activeBrowserTabId);
-    if (!tab || tab.kind !== "temporary" || tab.busy || !tab.draft?.trim()) return;
+    if (!tab || tab.kind !== "temporary" || tab.busy || busy || promptInput || !tab.draft?.trim()) return;
     if (!activeProvider || !config.activeModel) {
       setToast("Connect and select a model before sending a message");
       setDraftConfig(config);
@@ -1457,7 +1473,7 @@ export default function App() {
     }
     if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast('Your saved key needs vault access. Restore it in Models → API keys & connections.'); return; }
     const packUse = preparePackUse(tab.selectedPacks || [], tab.draft);
-    const user: Message = { role: "user", content: expandPrompts(tab.draft.trim()), usedPacks: packUse.usedPacks };
+    const user: Message = { role: "user", content: tab.draft.trim(), usedPacks: packUse.usedPacks };
     const generationKind: Message["generationKind"] = isImageGenerationRequest(user.content) ? "image" : "text";
     const conversation = [...(tab.messages || []), user];
     const startedAt = Date.now();
@@ -1479,6 +1495,12 @@ export default function App() {
       }));
       if (packUse.tools.length) await runAgentCompletion(config, conversation, packUse.context, packUse.tools, async call => {
         if (!packUse.tools.some(tool => tool.function.name === call.function.name)) throw new Error('Unselected extension.');
+        if (call.function.name === INPUT_TOOL) {
+          const result = await requestPromptInput(call, controller.signal, tab.id);
+          user.inputAnswers = [...(user.inputAnswers || []), ...result.answers];
+          setBrowserTabs(tabs => tabs.map(item => item.id === tab.id ? { ...item, messages: item.messages?.map((message, index) => index === conversation.length - 1 ? { ...message, inputAnswers: user.inputAnswers } : message) } : item));
+          return result;
+        }
         const result = await executeExtension(call);
         setBrowserTabs(tabs => tabs.map(item => item.id === tab.id ? { ...item, messages: item.messages?.map((message, index) => index === conversation.length ? { ...message, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
         return result;
@@ -1491,7 +1513,7 @@ export default function App() {
         const last = messages.length - 1;
         messages[last] = {
           ...messages[last],
-          content: controller.signal.aborted
+          content: error instanceof Error && error.message.includes('__NOVA_INPUT_CANCELLED__') ? 'Input request cancelled. You can send a new message.' : controller.signal.aborted
             ? (messages[last].content || "Response stopped.")
             : `I couldn’t connect to ${config.activeModel}.\n\n${error instanceof Error ? error.message : "Unknown error"}`,
         };
@@ -1509,6 +1531,7 @@ export default function App() {
     }
   };
   const closeBrowserTab = (id: string) => {
+    if (promptInput?.tabId === id) promptInput.session.cancel();
     const nativeView = nativeBrowserViewsRef.current.get(id);
     if (nativeView) {
       nativeView.webview.close().catch(() => undefined);
@@ -1638,16 +1661,17 @@ export default function App() {
       setSettingsOpen(true);
       return;
     }
-    const outgoingText = expandPrompts(edited?.content.trim() ?? text.trim());
+    const rawText = edited?.content.trim() ?? text.trim();
+    const outgoingText = rawText;
     if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast('Your saved API key needs vault access. Use Restore saved key in Models → API keys & connections.'); setSettingsTab('models'); setModelSetupView('connections'); setSettingsOpen(true); return; }
     const outgoingFiles = edited?.attachments ?? files;
     const history = edited?.history ?? chat?.messages ?? [];
-    if ((!outgoingText && !outgoingFiles.length) || busy || !chat) return;
+    if ((!outgoingText && !outgoingFiles.length) || busy || promptInput || browserTabs.some(tab => tab.busy) || !chat) return;
     if (toolCommands(outgoingText, providerTools.map(tool => tool.function.name)).length && (!chat.workspaceId || !isDesktopApp())) {
       setToast('Tool commands require a desktop Work chat. Open a Work project first.');
       return;
     }
-    const packUse = preparePackUse(chat.selectedPacks || [], outgoingText);
+    const packUse = preparePackUse(chat.selectedPacks || [], rawText);
     const user: Message = {
       role: "user",
       content: outgoingText,
@@ -1737,6 +1761,12 @@ export default function App() {
         setChats((items) => items.map((item) => item.id === active ? { ...item, responseMemory } : item));
       const executeSelectedExtension = async (call: AgentToolCall) => {
         if (!packUse.tools.some(tool => tool.function.name === call.function.name)) throw new Error('Unselected extension.');
+        if (call.function.name === INPUT_TOOL) {
+          const result = await requestPromptInput(call, controller.signal);
+          user.inputAnswers = [...(user.inputAnswers || []), ...result.answers];
+          setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === history.length ? { ...message, inputAnswers: user.inputAnswers } : message) } : item));
+          return result;
+        }
         const result = await executeExtension(call);
         setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
         return result;
@@ -1893,6 +1923,7 @@ export default function App() {
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
           if (controller.signal.aborted) { core.cancel(); throw agentError; }
+          if (detail.includes('__NOVA_INPUT_CANCELLED__')) { core.cancel(); throw agentError; }
           if (detail.includes("__NOVA_PERMISSION_DENIED__")) {
             core.cancel();
             setChats((items) => items.map((item) => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, content: "Permission was not granted. The requested action was cancelled." } : message) } : item));
@@ -1913,6 +1944,10 @@ export default function App() {
       } else if (packUse.tools.length) await runAgentCompletion(requestConfig, [...requestHistory, user], workspaceContext, packUse.tools, executeSelectedExtension, () => undefined, appendToken, controller.signal, undefined, rememberResponse, false, chat.workspaceId, toolCommands(user.content, packUse.tools.map(tool => tool.function.name)));
       else await streamCompletion(requestConfig, [...requestHistory, user], appendToken, controller.signal, workspaceContext, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, chat.workspaceId);
     } catch (error) {
+      if (error instanceof Error && error.message.includes('__NOVA_INPUT_CANCELLED__')) {
+        setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, content: 'Input request cancelled. You can send a new message.' } : message) } : item));
+        return;
+      }
       if (controller.signal.aborted) {
         setChats((items) => items.map((item) => item.id === active ? {
           ...item,
@@ -2830,7 +2865,7 @@ export default function App() {
               ))}
             </div>
           )}
-          <div className={`composer ${!config.activeModel ? "locked" : ""} ${agentAccessOpen ? "access-menu-open" : ""} ${agentApproval || agentInput ? "agent-waiting" : ""}`}>
+          <div className={`composer ${!config.activeModel ? "locked" : ""} ${agentAccessOpen ? "access-menu-open" : ""} ${agentApproval || agentInput || promptInput && !promptInput.tabId ? "agent-waiting" : ""}`}>
             {chatWorkspace && agentAccessOpen && <button className="agent-access-dismiss" aria-label="Close agent access menu" onClick={closeAgentAccess} />}
             {chatWorkspace && agentAccessOpen && (
               <div className={`agent-access-popover ${agentAccessClosing ? "closing" : ""}`} role="menu" aria-label="Agent access">
@@ -2859,7 +2894,7 @@ export default function App() {
                 ))}
               </div>
             )}
-            {agentApproval ? <div className="agent-approval-inline">
+            {promptInput && !promptInput.tabId && promptInput.chatId === active ? <InputRequestForm key={promptInput.id} session={promptInput.session} /> : agentApproval ? <div className="agent-approval-inline">
               <span className={`approval-icon ${agentApproval.risk}`}><ShieldCheck /></span>
               <span><b>{agentApproval.title}</b><small>{agentApproval.detail}</small></span>
               {agentApproval.preview && <details className="file-change-preview" open><summary>Before / after · {agentApproval.detail}</summary><div><section><h4>Before</h4><pre dir="auto">{agentApproval.preview.before ?? '(new file)'}</pre></section><section><h4>After</h4><pre dir="auto">{agentApproval.preview.after}</pre></section></div></details>}
@@ -2877,7 +2912,7 @@ export default function App() {
               placeholder={config.activeModel ? `Message ${config.branding.appName}…` : "Choose a model before sending a message"}
               rows={1}
             /></CommandSuggestions>}
-            {!agentApproval && !agentInput && <div className="composer-tools">
+            {!agentApproval && !agentInput && !(promptInput && !promptInput.tabId) && <div className="composer-tools">
               <div>
                 {!editingMessage && chatWorkspace && (
                   <button
@@ -3592,8 +3627,8 @@ export default function App() {
                     <Bot /><span><b>Connect a model to start chatting</b><small>Open Models & providers in Settings</small></span><ArrowRight />
                   </button>}
                   <div className="temporary-notice"><Clock3 /><span><b>Temporary chat</b><small>Not saved to history</small></span></div>
-                  <div className={`composer ${!config.activeModel ? "locked" : ""}`}>
-                    <CommandSuggestions key={activeBrowserTab.id} value={activeBrowserTab.draft || ''} onChange={draft => updateWorkspaceTab(activeBrowserTab.id, { draft })} disabled={Boolean(activeBrowserTab.busy)}><textarea
+                  <div className={`composer ${!config.activeModel ? "locked" : ""} ${promptInput?.tabId === activeBrowserTab.id ? 'agent-waiting' : ''}`}>
+                    {promptInput?.tabId === activeBrowserTab.id ? <InputRequestForm key={promptInput.id} session={promptInput.session} /> : <><CommandSuggestions key={activeBrowserTab.id} value={activeBrowserTab.draft || ''} onChange={draft => updateWorkspaceTab(activeBrowserTab.id, { draft })} disabled={Boolean(activeBrowserTab.busy)}><textarea
                       dir={textDirection(activeBrowserTab.draft || "")}
                       disabled={!config.activeModel}
                       value={activeBrowserTab.draft || ""}
@@ -3617,7 +3652,7 @@ export default function App() {
                           title={activeBrowserTab.busy ? "Stop response" : "Send message"}
                         >{activeBrowserTab.busy ? <Square /> : <ArrowUp />}</button>
                       </div>
-                    </div>
+                    </div></>}
                   </div>
                   <p>{config.branding.appName} can make mistakes. Verify important information.</p>
                 </div>

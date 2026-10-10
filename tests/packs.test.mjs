@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 function load(path, dependencies, globals) {
+  if (path === '../src/lib/packs.ts') dependencies = { ...dependencies, './input-requests': load('../src/lib/input-requests.ts', {}, globals) };
   if (path !== '../src/lib/extensions.ts' && !dependencies['./extensions']) dependencies = { ...dependencies, './extensions': load('../src/lib/extensions.ts', {}, globals) };
   const module = { exports: {} };
   const code = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -33,7 +34,8 @@ test('Portable config carries installed packs, prompts, routing and prices witho
   data.clear();
   bundle.importConfigBundle(valid, config, { ...config, providers: [{ ...config.providers[0], id: 'existing' }] });
   assert.equal(packs.installedPacks()[0].id, 'writing');
-  assert.match(packs.packContext(['writing']), /Draft an email/);
+  assert.equal(packs.packContext(['writing']), '');
+  assert.match(packs.preparePackUse([], '@email').context, /Draft an email/);
   assert.equal(JSON.parse(data.get('nova-intelligence')).routes.strong, 'existing::test');
   assert.equal(JSON.parse(data.get('nova-prices-v1'))['existing::test'].output, 2);
   assert.equal(packs.packContext(['research']), '');
@@ -65,7 +67,7 @@ test('Selective export omits unselected sections and import keeps destination pr
   assert.equal(data.get('nova-intelligence'), before);
   assert.equal(data.get('nova-prices-v1'), '{"existing":{"input":2}}');
   assert.equal(JSON.parse(data.get('nova-prompts-v1')).length, 2);
-  const use = packs.preparePackUse(['writing', 'missing']);
+  const use = packs.preparePackUse(['writing', 'missing'], '@mail');
   assert.equal(use.usedPacks.length, 1);
   assert.match(use.context, /Draft an email/);
   data.set('nova-prompts-v1', '[]');
@@ -122,6 +124,19 @@ test('Executable tools are opt-in, portable and actually compute results', async
   bundle.importConfigBundle(bundle.validateConfigBundle(exported.novaBundle), config, config);
   assert.equal(extensions.installedExtensions().length, 2);
   assert.throws(() => bundle.validateConfigBundle({ schema: 1, extensions: ['unknown-script'] }), /Unknown/);
+});
+test('Plugin picker excludes prompt packs and prompts require explicit @ invocation', () => {
+  const { data, packs } = environment();
+  data.set('nova-extensions-v1', '["calculator"]');
+  packs.storePrompts([{ id: 'mail', name: 'Email', shortcut: 'mail', text: 'Draft an email', pack: 'writing' }, { id: 'summary', name: 'Summary', shortcut: 'summary', text: 'Summarize a report', pack: 'writing' }]);
+  assert.deepEqual(Array.from(packs.installedPlugins(), pack => pack.id), ['calculator']);
+  const legacy = packs.preparePackUse(['writing']);
+  assert.equal(legacy.context, ''); assert.equal(legacy.tools.length, 0);
+  const use = packs.preparePackUse([], '@mail for Sam');
+  assert.equal(use.tools[0].function.name, 'collect_user_input');
+  assert.match(use.context, /Draft an email/); assert.doesNotMatch(use.context, /Summarize a report/);
+  assert.equal(use.usedPacks[0].id, 'writing');
+  assert.equal(packs.preparePackUse([], 'person@mail.com @unknown').tools.length, 0);
 });
 test('Calculator parses arithmetic without executing code and text measurements are real', async () => {
   const { extensions } = environment();
