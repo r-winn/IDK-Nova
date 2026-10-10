@@ -1,5 +1,9 @@
 # Intelligence upgrade 0.21.1 — implementation status
 
+## 0.24.1 — urgent composer input hotfix
+
+Reproduced the 0.24.0 input regression in the browser: typing `abcdefghijklmnopqrstuvwxyz` resulted in `bdfhjlnprtvxz`. Suggestion-state updates in input capture could restore the previous controlled DOM value before React's onChange. Text updates now run first in the original textarea change handler; caret updates run afterward. Selection uses the bubbling textarea handler. Ordinary typing skips prompt-library reads. Verified complete Latin/Persian/mixed input, command insertion, caret movement, backspace and replacement input in the local UI. Four new input-handler regressions supplement the existing suite. Physical Windows/macOS installer retesting remains separate from local browser checks.
+
 ## 0.24.0 — real local tools and credential recovery
 
 Four audited executable extensions run via the existing Responses/Chat Completions function-calling loop in main and temporary chats: arithmetic, text metrics, JSON validation and Gregorian date intervals. Tool results are shown separately from supplied prompt-pack badges. Only installed/selected tools are offered; explicit mentions activate installed tools. Config bundles carry their allowlisted IDs, never arbitrary code. Prompt-only packages remain clearly labelled and preserve existing installations. Live caret-aware @ suggestions support keyboard selection and ignore email addresses. Removal actions are red in both themes. Deleting all visible conversations starts a normal draft while keeping archived history.

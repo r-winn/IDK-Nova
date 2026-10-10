@@ -1,6 +1,6 @@
 {
-  "version": "0.24.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.24.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.24.0/IDK.Nova_0.24.0_x64-setup.exe",
-  "notes": ["Preserve saved API-key references when vault access fails", "User-initiated saved-key recovery after macOS updates", "Executable local calculator, text analysis, JSON and date tools", "Separate executable tools from prompt-only packs", "Visible verified tool results in main and temporary chats", "Live filtered @command suggestions with keyboard navigation", "Red marketplace removal buttons", "Portable installed extensions in configuration export", "Fresh normal chat after deleting all visible conversations"]
+  "version": "0.24.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.24.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.24.1/IDK.Nova_0.24.1_x64-setup.exe",
+  "notes": ["Urgent fix for dropped alternating characters in the message composer", "Preserve Persian, English, mixed text and pasted input", "Keep @command suggestions without intercepting normal typing", "Skip prompt-library reads during ordinary typing", "Includes all 0.24.0 tools and credential recovery improvements"]
 }
