@@ -1,6 +1,6 @@
 {
-  "version": "0.26.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.26.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.26.0/IDK.Nova_0.26.0_x64-setup.exe",
-  "notes": ["Redesigned searchable Marketplace with separate Plugins and Prompt packs", "Installed collection and distinct themed package icons", "Real public GitHub read-only connector", "On-device CSV parsing and measured column statistics", "Progressive streaming for prompt packs and agent tool replies", "Streaming tool arguments, usage and interruption checks", "Preserves existing packs, credentials and typing fixes"]
+"version": "0.27.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.27.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.27.0/IDK.Nova_0.27.0_x64-setup.exe",
+  "notes": ["Consistent settings dimensions and sticky Marketplace search", "Real downloadable Word DOCX and Excel XLSX tools", "Read-only GitHub account connection with protected credentials", "Curated useful plugins while preserving installed tools", "Distinct Updates icon", "Verified Office output and dependency security fixes"]
 }

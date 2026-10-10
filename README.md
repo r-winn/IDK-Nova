@@ -20,14 +20,16 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
-### New in 0.26 · A clearer Marketplace, real tools, live replies
+### New in 0.27 · Word, Excel & connected GitHub
 
 Marketplace now separates **Plugins** from **Prompt packs**, with themed icons, search, an installed collection and a responsive two-column catalog. Installation uses real manifest download progress, and Remove is red in both themes. These are bundled, audited Nova integrations—not a claim of compatibility with ChatGPT's third-party plugin catalog.
 
-Two new executable plugins:
+Useful executable plugins, with consistent settings dimensions and sticky search:
 
-- **GitHub** (`@github_read`): reads current public repository metadata, up to 20 open issues/pull requests, or a source file. Uses GET requests to `api.github.com`, with explicit source URLs, response-size limits and a timeout. No login, private repository access or write permission. GitHub's anonymous rate limits apply. Local-only Work blocks network plugin execution.
-- **CSV analyst** (`@analyze_csv`): parses supplied comma-separated text including quoted cells, then calculates row counts and numeric column statistics locally. Up to 100 KB; it does not silently upload a spreadsheet or pretend to support Excel workbooks.
+- **Word documents** (`@create_word_document`): generates downloadable DOCX documents with titles, paragraphs and Persian RTL support.
+- **Excel workbooks** (`@create_excel_workbook`): generates downloadable XLSX files with multiple sheets, styled headers and typed cells. Office tools create new files; they do not control installed Office apps or modify existing Office files.
+- **GitHub** (`@github_read`): reads repository metadata, issues/PRs and source files. Connect a fine-grained read-only token in Marketplace to access permitted private repositories, or use public repositories anonymously. Desktop stores credentials in the OS vault; web keeps them only for the session. No writes or PR creation. Local-only Work blocks network plugins. Tokens are never exported.
+- Previously installed utilities, including CSV analysis, remain available under **Show installed** and in the composer, without crowding curated discovery.
 
 Prompt-pack and agent replies now request genuine streaming in **Responses** and **Chat Completions**, so visible text arrives while the model generates it. Tool arguments are assembled before execution; results resume the same conversation. Usage and stream failures are handled, without replaying the completed answer as fake typing. Providers that ignore streaming and return JSON remain compatible, but cannot provide genuine incremental text.
 

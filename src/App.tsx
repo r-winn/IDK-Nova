@@ -97,6 +97,7 @@ import { fetch as pluginFetch } from '@tauri-apps/plugin-http';
 import { PackPicker } from './components/PackPicker';
 import { packContext, preparePackUse } from './lib/packs';
 import { executeExtension } from './lib/extensions';
+import { githubFetch } from './lib/github-connection';
 import { CommandSuggestions } from './components/CommandSuggestions';
 import { InputRequestForm } from './components/InputRequestForm';
 import { INPUT_TOOL, validateInputRequest, waitForInput, type InputSession } from './lib/input-requests';
@@ -1504,8 +1505,9 @@ export default function App() {
           return result;
         }
         if (call.function.name === 'github_read' && chatWorkspace?.localOnly) throw new Error('This Work is local-only. Network plugins are disabled.');
-        const result = await executeExtension(call, controller.signal, isDesktopApp() ? pluginFetch : fetch);
-        setBrowserTabs(tabs => tabs.map(item => item.id === tab.id ? { ...item, messages: item.messages?.map((message, index) => index === conversation.length ? { ...message, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
+        const raw = await executeExtension(call, controller.signal, call.function.name === 'github_read' ? githubFetch : isDesktopApp() ? pluginFetch : fetch);
+        const { __novaAttachment: generated, ...result } = raw as Record<string, unknown> & { __novaAttachment?: Attachment };
+        setBrowserTabs(tabs => tabs.map(item => item.id === tab.id ? { ...item, messages: item.messages?.map((message, index) => index === conversation.length ? { ...message, attachments: generated ? [...(message.attachments || []), generated] : message.attachments, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
         return result;
       }, () => undefined, append, controller.signal, undefined, undefined, false, undefined, toolCommands(user.content, packUse.tools.map(tool => tool.function.name)));
       else await streamCompletion(config, conversation, append, controller.signal, packUse.context);
@@ -1771,8 +1773,9 @@ export default function App() {
           return result;
         }
         if (call.function.name === 'github_read' && project?.localOnly) throw new Error('This Work is local-only. Network plugins are disabled.');
-        const result = await executeExtension(call, controller.signal, isDesktopApp() ? pluginFetch : fetch);
-        setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
+        const raw = await executeExtension(call, controller.signal, call.function.name === 'github_read' ? githubFetch : isDesktopApp() ? pluginFetch : fetch);
+        const { __novaAttachment: generated, ...result } = raw as Record<string, unknown> & { __novaAttachment?: Attachment };
+        setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, attachments: generated ? [...(message.attachments || []), generated] : message.attachments, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
         return result;
       };
       if (project && isDesktopApp()) {
@@ -3024,7 +3027,7 @@ export default function App() {
               </nav>
               <div className="settings-sidebar-actions">
                 <nav aria-label="Application information">
-                  {([["updates", Download, "Updates"], ["about", Info, "About"]] as const).map(([id, Icon, label]) => <button key={id} className={settingsTab === id ? "active" : ""} onClick={() => setSettingsTab(id)}><Icon /><span>{label}</span>{id === "updates" && updateState === "available" && <i />}</button>)}
+                  {([["updates", RefreshCw, "Updates"], ["about", Info, "About"]] as const).map(([id, Icon, label]) => <button key={id} className={settingsTab === id ? "active" : ""} onClick={() => setSettingsTab(id)}><Icon /><span>{label}</span>{id === "updates" && updateState === "available" && <i />}</button>)}
                 </nav>
                 <button onClick={() => configFileRef.current?.click()}>
                   <Upload />
@@ -3614,6 +3617,7 @@ export default function App() {
                       {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
                         <div className="content" dir={textDirection(message.content)}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : <span className="typing"><i /><i /><i /></span>}</div>
+                        {message.attachments?.map((attachment, attachmentIndex) => <button className="file" key={attachmentIndex} onClick={() => openWorkspaceAttachment(attachment)}><FileText />{attachment.name}</button>)}
                         <ToolExecutionSummary message={message} />
                         {message.role === "user" && message.content && <div className="message-actions user-message-actions">{!!message.usedPacks?.length && <span className="message-pack-marker" title={message.usedPacks.map(pack => `${pack.name} · ${pack.version}`).join('\n')}><Puzzle /><span>{message.usedPacks.map(pack => pack.name).join(' · ')}</span></span>}<button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                         {message.role === "assistant" && message.content && <div className="message-actions">

@@ -3884,7 +3884,14 @@ body.resizing-browser iframe { pointer-events: none; }
 .nova-marketplace { container-type: inline-size; color: var(--text); padding-bottom: 12px; }
 .nova-marketplace button { border: 0; cursor: pointer; }
 .nova-marketplace button:focus-visible { outline: 2px solid var(--muted); outline-offset: 3px; }
-.settings-window:has(.nova-marketplace) { width: min(1080px, calc(100vw - 48px)); }
+.marketplace-search-dock { position: sticky; top: 0; z-index: 4; padding: 16px 0 14px; background: var(--surface); }
+.marketplace-search-dock::before { content: ''; position: absolute; top: -32px; left: 0; right: 0; height: 32px; background: var(--surface); }
+.marketplace-search-dock .marketplace-search { margin: 0; }
+.plugin-logo-word { color: #448bdd; background: color-mix(in srgb, #448bdd 14%, var(--surface)); }
+.plugin-logo-excel { color: #35a778; background: color-mix(in srgb, #35a778 14%, var(--surface)); }
+.github-connect { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.github-connect button { padding: 9px 12px; border-radius: 10px; background: var(--hover); color: var(--text); font: inherit; font-size: 12px; }
+.github-connect input { min-width: 0; flex: 1; }
 .marketplace-tabs { display: flex; gap: 6px; margin-bottom: 26px; }
 .marketplace-tabs button { padding: 10px 16px; min-height: 40px; border-radius: 24px; color: var(--muted); background: transparent; font-size: 13px; }
 .marketplace-tabs button[aria-selected="true"] { color: var(--text); background: var(--hover); }

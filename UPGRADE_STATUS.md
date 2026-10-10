@@ -98,3 +98,6 @@ This incremental upgrade is not a completed implementation of the twelve-part pr
 12. Setup: guided onboarding with verified connection and first-task completion.
 
 Existing features must be audited rather than assumed to satisfy these requirements. Automated unit tests and local builds are not a substitute for Windows/macOS end-to-end tests.
+## 0.27.0 — Office tools and consistent Marketplace
+
+Real DOCX/XLSX generation, read-only GitHub account connection, fixed settings dimensions and sticky search. See [release details](docs/releases/v0.27.0.md) for verified scope and limitations. Office files are attached locally, never sent as binary tool results. GitHub tokens use the OS vault on desktop and session-only memory on web, not portable config.
