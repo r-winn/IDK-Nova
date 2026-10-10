@@ -2214,12 +2214,6 @@ body.resizing-browser iframe { pointer-events: none; }
 .prompt-library-row > span { flex: 1; min-width: 0; }
 .prompt-library-row b, .prompt-library-row small, .prompt-library-row code { display: block; overflow-wrap: anywhere; }
 .prompt-library-row code { font-size: 12px; margin-top: 5px; opacity: .7; }
-.marketplace-pack > svg { display: inline-block; width: 20px; height: 20px; vertical-align: middle; margin-right: 9px; color: var(--muted); }
-.marketplace-pack > h3 { display: inline; vertical-align: middle; }
-.marketplace-pack > button.secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 550; line-height: 1.3; margin-top: 14px; background: var(--hover); color: var(--text); border: 1px solid var(--line); transition: background .18s, border-color .18s; }
-.marketplace-pack > button.secondary svg { width: 15px; height: 15px; flex: 0 0 15px; }
-.marketplace-pack > button.secondary:hover:not(:disabled) { background: var(--surface); border-color: var(--muted); }
-.marketplace-pack > button.secondary:disabled { opacity: .5; cursor: wait; }
 .command-composer { position: relative; width: 100%; min-width: 0; }
 .tool-execution-summary { margin: 10px 0; font-size: 11px; color: var(--muted); }
 .tool-execution-summary summary { cursor: pointer; display: flex; align-items: center; gap: 6px; }
@@ -2233,8 +2227,6 @@ body.resizing-browser iframe { pointer-events: none; }
 .command-suggestions small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
 .command-suggestions em { font-size: 10px; font-style: normal; color: var(--muted); white-space: nowrap; }
 .command-suggestions > small { padding: 5px 12px; }
-.marketplace-pack > button.secondary.pack-remove { color: #ef5757; border-color: #ef575733; background: #ef575710; }
-.marketplace-pack > button.secondary.pack-remove:hover:not(:disabled) { color: #f04949; background: #ef575722; border-color: #ef575766; }
 .settings-sidebar-actions button {
   height: 34px;
   font-size: 10px;
@@ -3887,3 +3879,54 @@ body.resizing-browser iframe { pointer-events: none; }
 .config-export-dialog footer button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 10px 16px; border-radius: 10px; }
 .config-export-dialog footer svg { width: 16px; height: 16px; }
 @media (prefers-reduced-motion: reduce) { .intelligence-tab-content, .config-export-dialog { animation: none; } }
+
+/* Marketplace shares theme tokens with settings; no third-party logo fetches. */
+.nova-marketplace { container-type: inline-size; color: var(--text); padding-bottom: 12px; }
+.nova-marketplace button { border: 0; cursor: pointer; }
+.nova-marketplace button:focus-visible { outline: 2px solid var(--muted); outline-offset: 3px; }
+.settings-window:has(.nova-marketplace) { width: min(1080px, calc(100vw - 48px)); }
+.marketplace-tabs { display: flex; gap: 6px; margin-bottom: 26px; }
+.marketplace-tabs button { padding: 10px 16px; min-height: 40px; border-radius: 24px; color: var(--muted); background: transparent; font-size: 13px; }
+.marketplace-tabs button[aria-selected="true"] { color: var(--text); background: var(--hover); }
+.nova-marketplace header h2 { margin: 0 0 8px; font-size: 25px; letter-spacing: -.6px; font-weight: 600; }
+.nova-marketplace header p, .marketplace-note { color: var(--muted); line-height: 1.7; font-size: 13px; }
+.marketplace-search { display: flex !important; align-items: center; gap: 12px; border-radius: 24px; background: var(--hover); margin: 22px 0 28px; padding: 0 16px; min-height: 46px; }
+.marketplace-search > svg { width: 18px; height: 18px; color: var(--muted); flex-shrink: 0; }
+.marketplace-search input { border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 12px 0 !important; width: 100%; margin: 0 !important; min-width: 0; color: var(--text); }
+.marketplace-search:focus-within { outline: 2px solid var(--muted); outline-offset: 2px; }
+.nova-marketplace section { margin-bottom: 28px; }
+.nova-marketplace h3 { font-size: 14px; font-weight: 550; margin: 0 0 16px; }
+.marketplace-installed > div:first-child { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.marketplace-installed h3 { margin: 0; }
+.marketplace-installed h3 span { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.marketplace-installed button { color: var(--muted); background: transparent; font-size: 12px; min-height: 36px; border-radius: 10px; }
+.marketplace-installed button:hover { background: var(--hover); color: var(--text); }
+.marketplace-installed p, .marketplace-empty { font-size: 12px; color: var(--muted); line-height: 1.7; }
+.marketplace-icon-strip { display: flex; gap: 12px; flex-wrap: wrap; padding-top: 16px; }
+.marketplace-icon-strip button { padding: 0; }
+.plugin-logo { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; background: #8874da18; color: #a08cea; }
+.plugin-logo svg { width: 23px; height: 23px; }
+.plugin-logo-github { background: var(--hover); color: var(--text); }
+.plugin-logo-csv-analysis, .plugin-logo-calculator { background: #3caa831a; color: #3aa781; }
+.plugin-logo-json-inspector, .plugin-logo-development { background: #4c91df18; color: #539adf; }
+.plugin-logo-date-calculator, .plugin-logo-research { background: #d49a3a18; color: #c68f32; }
+.plugin-logo-writing { background: #cd70a31a; color: #ca77a6; }
+.marketplace-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+.marketplace-item { display: flex; gap: 12px; align-items: flex-start; padding: 16px 4px; min-width: 0; border-radius: 12px; }
+.marketplace-item-content { flex: 1; min-width: 0; }
+.marketplace-item h4 { font-size: 14px; font-weight: 550; margin: 0 0 6px; display: flex; align-items: center; gap: 7px; }
+.marketplace-item h4 svg { width: 13px; height: 13px; color: #3aa781; }
+.marketplace-item p { margin: 0 0 8px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.marketplace-item small { display: block; font-size: 10px; line-height: 1.6; color: var(--muted); }
+.marketplace-item code { display: block; font-size: 10px; color: var(--muted); margin-top: 7px; overflow-wrap: anywhere; }
+.marketplace-action { display: inline-flex; gap: 5px; align-items: center; justify-content: center; flex-shrink: 0; min-height: 34px; padding: 7px 8px; border-radius: 9px; background: var(--hover); color: var(--text); font-size: 11px; transition: background .18s; }
+.marketplace-action svg { width: 14px; height: 14px; }
+.marketplace-action:hover:not(:disabled) { background: var(--line); }
+.marketplace-action:disabled { opacity: .55; cursor: wait; }
+.marketplace-action.pack-remove { color: #ef5757; background: #ef575710; }
+.marketplace-action.pack-remove:hover { background: #ef575722; }
+.marketplace-note { padding-top: 16px; border-top: 1px solid var(--line); font-size: 11px; }
+.pack-menu .plugin-logo { width: 30px; height: 30px; border-radius: 8px; }
+.pack-menu .plugin-logo svg { width: 17px; height: 17px; }
+@container (max-width: 660px) { .marketplace-grid { grid-template-columns: 1fr; } }
+@container (max-width: 360px) { .marketplace-action span { display: none; } .marketplace-action { width: 34px; } }

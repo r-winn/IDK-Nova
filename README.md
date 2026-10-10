@@ -20,16 +20,25 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
-### New in 0.23
+### New in 0.26 · A clearer Marketplace, real tools, live replies
+
+Marketplace now separates **Plugins** from **Prompt packs**, with themed icons, search, an installed collection and a responsive two-column catalog. Installation uses real manifest download progress, and Remove is red in both themes. These are bundled, audited Nova integrations—not a claim of compatibility with ChatGPT's third-party plugin catalog.
+
+Two new executable plugins:
+
+- **GitHub** (`@github_read`): reads current public repository metadata, up to 20 open issues/pull requests, or a source file. Uses GET requests to `api.github.com`, with explicit source URLs, response-size limits and a timeout. No login, private repository access or write permission. GitHub's anonymous rate limits apply. Local-only Work blocks network plugin execution.
+- **CSV analyst** (`@analyze_csv`): parses supplied comma-separated text including quoted cells, then calculates row counts and numeric column statistics locally. Up to 100 KB; it does not silently upload a spreadsheet or pretend to support Excel workbooks.
+
+Prompt-pack and agent replies now request genuine streaming in **Responses** and **Chat Completions**, so visible text arrives while the model generates it. Tool arguments are assembled before execution; results resume the same conversation. Usage and stream failures are handled, without replaying the completed answer as fake typing. Providers that ignore streaming and return JSON remain compatible, but cannot provide genuine incremental text.
 
 Settings apply and save automatically; there is no Save/Cancel footer. Intelligence keeps its tab strip and top breathing room while its content scrolls.
 
-Install a local tool or prompt pack in **Marketplace**. Executable tools appear in **Plugins** beside chat attachments; prompt packs are invoked with `@shortcut`, not selected in Plugins:
+Install a plugin or prompt pack in **Marketplace**. Executable tools appear in **Plugins** beside chat attachments; prompt packs are invoked with `@shortcut`, not selected in Plugins:
 
-- **Executable tools:** calculator, text measurements, JSON validation and Gregorian date intervals. Audited handlers run locally through the provider's function-calling loop. Only installed, selected tools are exposed; an explicit `@calculate`, `@analyze_text`, `@inspect_json` or `@date_interval` also activates the matching installed tool for that request. Actual results appear below the assistant's answer. These require a tool-calling model/provider; no unsupported fallback pretends to have executed them.
+- **Executable tools:** public GitHub reads, CSV statistics, calculator, text measurements, JSON validation and Gregorian date intervals. Audited handlers run through the provider's function-calling loop. Only installed, selected tools are exposed; an explicit `@github_read`, `@analyze_csv`, `@calculate`, `@analyze_text`, `@inspect_json` or `@date_interval` also activates the matching installed tool for that request. Actual results appear below the assistant's answer. These require a tool-calling model/provider; no unsupported fallback pretends to have executed them. Except for the clearly labelled GitHub connector, these handlers do not make network requests.
 - **Prompt packs:** writing, review and research instructions. Use `@formal_email`, `@report_summary`, `@review_project` or `@research_brief` after installing the relevant pack. Custom saved shortcuts work too. A tool-calling model can gather missing details through an inline, step-by-step form instead of ending its answer with questions. The form supports free text, up to four suggested answers per step, Back/Next and cancellation; submitting all answers resumes the same tool call. Answers become part of that conversation's context; temporary side-chat answers disappear with the tab. Already supplied facts should not be asked again. Form use depends on the provider/model's function-calling support and adherence, not a guarantee for every third-party model. Pack badges show what was supplied, not proof of execution. No email is sent by completing a form.
 
-Both types work in main and temporary side chats. Installation progress counts actual manifest bytes; red Remove buttons uninstall the selected package. Config export's **Packs** choice includes installed local tools. Downloaded manifests activate bundled handlers, never arbitrary third-party JavaScript or system access. Type `@` to see filtered suggestions, use ↑/↓ and Enter/Tab to insert, or Esc to dismiss. Native Work commands require a desktop Work chat.
+Both types work in main and temporary side chats. Installation progress counts actual manifest bytes; red Remove buttons uninstall the selected package. Config export's **Packs** choice includes installed plugins and prompt packs. Downloaded manifests activate bundled handlers, never arbitrary third-party JavaScript or system access. Network access is disclosed before installing/selecting GitHub; no credentials are needed or exported for it. Type `@` to see filtered suggestions, use ↑/↓ and Enter/Tab to insert, or Esc to dismiss. Native Work commands require a desktop Work chat.
 
 **Export config** opens a checklist: choose appearance, providers/models, personal prompts, installed packs, routing/context preferences, model prices and optional personal memory. API keys are excluded by default; including them creates a plaintext credential-bearing file. Routing and prices require the provider list so connections can be remapped correctly. Import merges providers instead of removing existing models and leaves omitted sections unchanged. Work files, project memory and chat history remain separate from config export. A small pack indicator beneath sent messages records the instructions supplied with that request; it is not a guarantee that a model followed them perfectly.
 
@@ -45,7 +54,7 @@ In a desktop **Work** chat, use commands such as `@fs_checkpoint`, `@fs_list` or
 
 Live voice is a **desktop preview** requiring an OpenAI-compatible Realtime provider and model; a text-only model or Chat Completions proxy is insufficient. The native host mints a short-lived token following the [official WebRTC flow](https://developers.openai.com/api/docs/guides/voice-webrtc). Clicking Live voice starts microphone access; Stop or Cancel ends it. Voice does not use Work tools or automatically save transcripts. No live provider/microphone end-to-end test is claimed.
 
-See [implementation status and remaining limitations](UPGRADE_STATUS.md) before relying on advanced workflows. Unified search, complete portable ZIP export, global quick-window shortcuts, guided onboarding and executable plugin installation are not completed by this release.
+See [implementation status and remaining limitations](UPGRADE_STATUS.md) before relying on advanced workflows. Unified search, complete portable ZIP export, global quick-window shortcuts, guided onboarding and arbitrary third-party executable plugin installation are not completed by this release. Marketplace currently installs audited bundled integrations, not arbitrary downloaded code or authenticated Gmail/Drive connections.
 
 > [!IMPORTANT]
 > IDK Nova connects directly to the providers you configure. Verify important AI output, review Work actions before approval, and send sensitive information only to providers you trust.

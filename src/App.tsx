@@ -92,6 +92,8 @@ import { AgentControl } from "./agent/control";
 import { IntelligenceCenter } from "./components/IntelligenceCenter";
 import { toolCommands, commandInstructions } from './agent/commands';
 import { PromptLibrary } from './components/PromptLibrary';
+import { Marketplace } from './components/Marketplace';
+import { fetch as pluginFetch } from '@tauri-apps/plugin-http';
 import { PackPicker } from './components/PackPicker';
 import { packContext, preparePackUse } from './lib/packs';
 import { executeExtension } from './lib/extensions';
@@ -167,7 +169,7 @@ const settingMeta = {
   intelligence: ["Intelligence", "Memory, model routing and Work activity."],
   tools: ["Tools & capabilities", "Explore what Nova Work can do."],
   prompts: ["Prompt library", "Reusable instructions for your conversations."],
-  marketplace: ["Marketplace", "Install local tools and reusable prompt packs."],
+  marketplace: ["Marketplace", "Discover real tools and reusable prompt packs."],
   updates: ["Software update", "Keep Nova secure and up to date."],
   about: ["About Nova", "Version, licensing and deployment details."],
 } as const;
@@ -1501,7 +1503,8 @@ export default function App() {
           setBrowserTabs(tabs => tabs.map(item => item.id === tab.id ? { ...item, messages: item.messages?.map((message, index) => index === conversation.length - 1 ? { ...message, inputAnswers: user.inputAnswers } : message) } : item));
           return result;
         }
-        const result = await executeExtension(call);
+        if (call.function.name === 'github_read' && chatWorkspace?.localOnly) throw new Error('This Work is local-only. Network plugins are disabled.');
+        const result = await executeExtension(call, controller.signal, isDesktopApp() ? pluginFetch : fetch);
         setBrowserTabs(tabs => tabs.map(item => item.id === tab.id ? { ...item, messages: item.messages?.map((message, index) => index === conversation.length ? { ...message, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
         return result;
       }, () => undefined, append, controller.signal, undefined, undefined, false, undefined, toolCommands(user.content, packUse.tools.map(tool => tool.function.name)));
@@ -1767,7 +1770,8 @@ export default function App() {
           setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === history.length ? { ...message, inputAnswers: user.inputAnswers } : message) } : item));
           return result;
         }
-        const result = await executeExtension(call);
+        if (call.function.name === 'github_read' && project?.localOnly) throw new Error('This Work is local-only. Network plugins are disabled.');
+        const result = await executeExtension(call, controller.signal, isDesktopApp() ? pluginFetch : fetch);
         setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
         return result;
       };
@@ -3054,7 +3058,8 @@ export default function App() {
                 </button>
               </header>
               <div className={`settings-scroll settings-tab-transition ${settingsTab === 'intelligence' ? 'intelligence-scroll' : ''}`} key={`${settingsTab}-${configImportRevision}`}>
-                {(settingsTab === 'prompts' || settingsTab === 'marketplace') && <PromptLibrary key={configImportRevision} marketplace={settingsTab === 'marketplace'} onUse={value => { setText(current => `${current}${current ? '\n\n' : ''}${value}`); closeSettings(); }} />}
+                {settingsTab === 'marketplace' && <Marketplace key={configImportRevision} />}
+                {settingsTab === 'prompts' && <PromptLibrary key={configImportRevision} onUse={value => { setText(current => `${current}${current ? '\n\n' : ''}${value}`); closeSettings(); }} />}
                 {settingsTab === "tools" && <ToolsCatalog onInsertCommand={command => { if (!chat.workspaceId || !isDesktopApp()) { setToast('Open a desktop Work chat to use tool commands'); return; } setText(current => `${current}${current ? ' ' : ''}${command} `); closeSettings(); }} />}
                 {settingsTab === "intelligence" && <IntelligenceCenter onPrivacy={(id, localOnly) => setWorkspaces(items => items.map(project => project.id === id ? { ...project, localOnly } : project))} config={draftConfig} onResume={task => { const original = chats.find(item => item.id === task.chatId && item.workspaceId === task.workspaceId); if (!original) { setToast("The original Work chat is no longer available"); return; } setActive(original.id); setOpenWorkspaceId(task.workspaceId); setText(recoveryPrompt(task)); closeSettings(); }} chat={chat} projects={workspaces} responsePanel={<ResponseSettings config={draftConfig} onChange={setDraftConfig} />} storagePanel={<StorageSettings config={draftConfig} onChange={setDraftConfig} />} running={busy} onProjectMemory={(scope, notes) => setWorkspaces(items => items.map(project => project.id === scope ? { ...project, memoryNotes: notes } : project))} />}
                 {settingsTab === "general" && (

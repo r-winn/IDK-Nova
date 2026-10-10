@@ -1,5 +1,15 @@
 # Intelligence upgrade 0.21.1 — implementation status
 
+## 0.26.0 — Marketplace refresh and streaming tools
+
+Marketplace is now a separate component rather than a conditional branch of Prompt Library. Plugins and prompt packs have separate tabs, search, installed icon collection, responsive rows, distinct bundled icons and themed install/red remove actions. The composer uses the same plugin icons and identifies GitHub's network access. Existing installations and portable config IDs remain supported. Obsolete marketplace JSX, state and CSS were removed.
+
+New audited handlers: GitHub public repository/issues/PR/file reads through an allowlisted GET-only API path, 20-item pagination limit, 1 MB response limit, 50K-character source-file excerpt, 20-second timeout and cancellation; and local CSV parsing with quoted cells and numeric statistics (100 KB input limit). GitHub is anonymous/read-only, with no private repositories, OAuth or writes; its server rate limits are surfaced honestly. Local-only Work refuses this network plugin, including its side chats. No fake Gmail/Drive tiles imply unimplemented account connections.
+
+Agent tool loops now request streaming for both Responses and Chat Completions. Text deltas surface immediately; indexed tool arguments are assembled before execution; completed response metadata, usage, JSON-compatible provider responses and truncated/failed streams are handled. Unsupported Chat streaming usage options negotiate once. Explicit requested tools cannot leak an unverified streamed completion before they succeed.
+
+Verification: 61 frontend regressions and production build; local UI installation/search/category checks and light/dark visual inspection; a live anonymous GitHub read of the Nova public repository. Integration tests verify both provider protocols stream visible text before completion after a real local tool result. No paid model/API key was used. Native installer builds and physical-device checks remain separate; this is not a claim of a complete third-party plugin ecosystem or a zero-bug audit of all historical code.
+
 ## 0.25.0 — interactive prompts and executable-only Plugins
 
 Installed prompt shortcuts register collect_user_input for that request. The provider can ask only missing questions through a validated inline form with 1–8 steps, up to four choices per step and custom answers. Back preserves answers; final submission resolves the same pending function call and the model continues. Cancel and AbortSignal terminate pending requests without retrying the question or pretending success. Main and temporary side chats share the component with request-owner scoping. Normal conversation answers enter context; side-chat data remains ephemeral. No durable secrets should be entered and form completion does not authorize external actions.

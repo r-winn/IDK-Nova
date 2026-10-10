@@ -1,0 +1,1 @@
+{"id":"github","version":"1.0","runtime":"nova-builtin","tool":"github_read","permissions":["network:api.github.com:read"]}

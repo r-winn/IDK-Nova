@@ -230,6 +230,70 @@ const compactScreenFingerprint = (dataUrl: string) => {
   return `${dataUrl.length}:${(hash >>> 0).toString(16)}`;
 };
 
+// Stream text immediately, but execute tools only after their arguments are complete.
+// Some compatible providers still return JSON despite stream:true; accept that honestly.
+export async function readAgentTurn(response: Response, protocol: 'responses' | 'chat', onToken: (text: string) => void) {
+  if (!response.headers?.get('content-type')?.includes('text/event-stream')) return { payload: await response.json(), streamed: false };
+  if (!response.body) throw new Error('The provider returned an empty stream');
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let buffer = '', text = '', payload: any, ended = false;
+  const items = new Map<number, any>(), calls = new Map<number, any>();
+  let usage: unknown, id = '';
+  const handle = (frame: string) => {
+    const raw = frame.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
+    if (!raw) return;
+    if (raw === '[DONE]') { ended = true; return; }
+    const event = JSON.parse(raw);
+    if (event.error || event.type === 'response.failed' || event.type === 'error') throw new Error(event.response?.error?.message || event.error?.message || event.message || 'Provider stream failed');
+    if (protocol === 'responses') {
+      id = event.response?.id || id;
+      if (event.type === 'response.output_item.added' || event.type === 'response.output_item.done') items.set(event.output_index, event.item);
+      if (event.type === 'response.function_call_arguments.delta') {
+        const item = items.get(event.output_index);
+        if (item) item.arguments = (item.arguments || '') + event.delta;
+      }
+      if (event.type === 'response.function_call_arguments.done') {
+        const item = items.get(event.output_index);
+        if (item) item.arguments = event.arguments;
+      }
+      if (event.type === 'response.output_text.delta' || event.type === 'response.refusal.delta') {
+        if (typeof event.delta === 'string') { text += event.delta; onToken(event.delta); }
+      }
+      if (event.type === 'response.completed') { payload = event.response; ended = true; }
+      if (event.type === 'response.incomplete') throw new Error(`Response incomplete: ${event.response?.incomplete_details?.reason || 'provider interrupted generation'}`);
+    } else {
+      if (event.usage) usage = event.usage;
+      const choice = event.choices?.[0], delta = choice?.delta;
+      if (typeof delta?.content === 'string') { text += delta.content; onToken(delta.content); }
+      for (const part of delta?.tool_calls || []) {
+        const call = calls.get(part.index) || { id: '', type: 'function', function: { name: '', arguments: '' } };
+        if (part.id) call.id = part.id;
+        if (part.function?.name) call.function.name += part.function.name;
+        if (part.function?.arguments) call.function.arguments += part.function.arguments;
+        calls.set(part.index, call);
+      }
+      if (choice?.finish_reason) {
+        if (choice.finish_reason === 'length' || choice.finish_reason === 'content_filter') throw new Error(`Response interrupted: ${choice.finish_reason}`);
+        ended = true;
+      }
+    }
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) { buffer += decoder.decode(); break; }
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split(/\r?\n\r?\n/); buffer = frames.pop() || '';
+      frames.forEach(handle);
+    }
+    if (buffer.trim()) handle(buffer);
+    if (!ended) throw new Error('Provider stream ended before the response completed');
+    if (protocol === 'chat') payload = { usage, choices: [{ message: { content: text, tool_calls: [...calls.values()] } }] };
+    else payload = { id, output: [...items.values()], output_text: text || undefined, ...payload };
+    return { payload, streamed: Boolean(text) };
+  } finally { await reader.cancel(); reader.releaseLock(); }
+}
+
 async function runAgentCompletionImpl(
   config: Config,
   messages: Message[],
@@ -272,7 +336,7 @@ async function runAgentCompletionImpl(
     if (signal?.aborted) throw new DOMException('The task was stopped', 'AbortError');
     const response = await request(endpoint(provider, '/responses'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, instructions: systemContext, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: temperaturelessResponsesProviders.has(providerKey) ? undefined : config.temperature, store: !stateless, tools: responseTools, tool_choice: pendingTools.size || (turn === 0 && requireTool) ? 'required' : 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, stream: true, instructions: systemContext, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: temperaturelessResponsesProviders.has(providerKey) ? undefined : config.temperature, store: !stateless, tools: responseTools, tool_choice: pendingTools.size || (turn === 0 && requireTool) ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
@@ -300,7 +364,7 @@ async function runAgentCompletionImpl(
       }
       throw new Error(`Agent provider returned ${response.status}: ${detail}`);
     }
-    const payload = await response.json();
+    const { payload, streamed } = await readAgentTurn(response, 'responses', pendingTools.size ? () => {} : onToken);
     reportUsage(payload.usage);
     if (!stateless) previousResponseId = payload.id || previousResponseId;
     if (stateless && Array.isArray(payload.output)) statelessContext.push(...payload.output);
@@ -313,7 +377,7 @@ async function runAgentCompletionImpl(
         continue;
       }
       const output = typeof payload.output_text === 'string' ? payload.output_text : (payload.output || []).flatMap((item: any) => item?.content || []).filter((item: any) => item?.type === 'output_text').map((item: any) => item.text || '').join('');
-      onToken(output || 'Task complete.');
+      if (!streamed) onToken(output || 'Task complete.');
       if (stateless) onMemory?.(undefined);
       else if (previousResponseId) onMemory?.({ providerId: provider.id, model: config.activeModel, previousResponseId });
       return;
@@ -356,14 +420,15 @@ async function runAgentCompletionImpl(
     if (signal?.aborted) throw new DOMException('The task was stopped', 'AbortError');
     const response = await request(endpoint(provider, '/chat/completions'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: false, messages: conversation, tools, tool_choice: forceFirstTool && (pendingTools.size || turn === 0) ? 'required' : 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, stream_options: usageOptionlessProviders.has(providerKey) ? undefined : { include_usage: true }, messages: conversation, tools, tool_choice: forceFirstTool && (pendingTools.size || turn === 0) ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
+      if (response.status === 400 && /stream_options|include_usage/i.test(detail) && !usageOptionlessProviders.has(providerKey)) { usageOptionlessProviders.add(providerKey); continue; }
       if (turn === 0 && forceFirstTool && response.status === 400 && /tool_choice|required/i.test(detail)) { forceFirstTool = false; continue; }
       throw new Error(`Agent provider returned ${response.status}: ${detail}`);
     }
-    const payload = await response.json();
+    const { payload, streamed } = await readAgentTurn(response, 'chat', pendingTools.size ? () => {} : onToken);
     reportUsage(payload.usage);
     const assistant = payload.choices?.[0]?.message;
     if (!assistant) throw new Error('Agent provider returned an invalid completion');
@@ -371,7 +436,7 @@ async function runAgentCompletionImpl(
     const calls: AgentToolCall[] = Array.isArray(assistant.tool_calls) ? assistant.tool_calls : [];
     if (!calls.length) {
       if (pendingTools.size) { conversation.push({ role: 'user', content: missingToolInstruction() }); turn += 1; continue; }
-      onToken(assistant.content || 'Task complete.'); return;
+      if (!streamed) onToken(assistant.content || 'Task complete.'); return;
     }
     const screenImages: string[] = [];
     for (const call of calls) {

@@ -1,6 +1,6 @@
 {
-  "version": "0.25.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.25.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.25.0/IDK.Nova_0.25.0_x64-setup.exe",
-  "notes": ["Inline step-by-step clarification forms for @prompt commands", "Free-text answers, suggested choices, Back/Next and cancellation", "Resume the same task after all answers are submitted", "Keep clarification answers in conversation context", "Plugins menu contains executable plugins only", "Prompt packs use explicit @commands instead of persistent selection", "Shared form UI for main and temporary side chats", "Retains the composer typing hotfix"]
+  "version": "0.26.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.26.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.26.0/IDK.Nova_0.26.0_x64-setup.exe",
+  "notes": ["Redesigned searchable Marketplace with separate Plugins and Prompt packs", "Installed collection and distinct themed package icons", "Real public GitHub read-only connector", "On-device CSV parsing and measured column statistics", "Progressive streaming for prompt packs and agent tool replies", "Streaming tool arguments, usage and interruption checks", "Preserves existing packs, credentials and typing fixes"]
 }

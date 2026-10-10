@@ -34,7 +34,8 @@ export async function downloadExtension(id: string, url: string, progress: (load
   const expected = extensionCatalog.find(item => item.id === id);
   if (!expected) throw new Error('Unknown extension.');
   const { manifest, loaded } = await downloadManifest(url, progress);
-  if (manifest.id !== id || manifest.version !== expected.version || manifest.tool !== expected.tool || manifest.runtime !== 'nova-builtin' || !Array.isArray(manifest.permissions) || manifest.permissions.length) throw new Error('Invalid executable extension manifest.');
+  const permissions = id === 'github' ? ['network:api.github.com:read'] : [];
+  if (manifest.id !== id || manifest.version !== expected.version || manifest.tool !== expected.tool || manifest.runtime !== 'nova-builtin' || !Array.isArray(manifest.permissions) || JSON.stringify(manifest.permissions) !== JSON.stringify(permissions)) throw new Error('Invalid executable extension manifest.');
   saveExtensions([...new Set([...installedExtensions(), id])]);
   progress(loaded, loaded);
 }

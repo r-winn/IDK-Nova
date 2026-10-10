@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Puzzle, X } from 'lucide-react';
 import { installedPlugins, PACKS_CHANGED } from '../lib/packs';
+import { PluginIcon } from './PluginIcon';
 
 export function PackPicker({ selected, onChange, disabled }: { selected: string[]; onChange: (ids: string[]) => void; disabled: boolean }) {
   const [packs, setPacks] = useState(installedPlugins);
@@ -17,7 +18,7 @@ export function PackPicker({ selected, onChange, disabled }: { selected: string[
   useEffect(() => { const valid = selected.filter(id => packs.some(pack => pack.id === id)); if (valid.length !== selected.length) onChange(valid); }, [packs, selected, onChange]);
   return <div className="pack-picker" ref={root}>
     <button type="button" disabled={disabled} title="Plugins · executable tools" aria-label="Plugins" aria-expanded={open} onClick={() => setOpen(!open)}><Puzzle /></button>
-    {open && <div className="pack-menu" role="menu" aria-label="Installed plugins"><b>Installed plugins</b>{!packs.length && <p>Install an executable tool in Settings → Marketplace.</p>}{packs.map(pack => <button type="button" role="menuitemcheckbox" aria-checked={selected.includes(pack.id)} key={pack.id} onClick={() => { onChange(selected.includes(pack.id) ? selected.filter(id => id !== pack.id) : [...selected, pack.id]); setOpen(false); }}><Puzzle /><span>{pack.name}<small>Executable tool · tool-calling model required</small></span>{selected.includes(pack.id) && <Check />}</button>)}<small>Prompt packs use @commands. Work permissions stay unchanged.</small></div>}
+    {open && <div className="pack-menu" role="menu" aria-label="Installed plugins"><b>Installed plugins</b>{!packs.length && <p>Install an executable tool in Settings → Marketplace.</p>}{packs.map(pack => <button type="button" role="menuitemcheckbox" aria-checked={selected.includes(pack.id)} key={pack.id} onClick={() => { onChange(selected.includes(pack.id) ? selected.filter(id => id !== pack.id) : [...selected, pack.id]); setOpen(false); }}><PluginIcon id={pack.id} /><span>{pack.name}<small>{pack.id === 'github' ? 'Public GitHub · read-only network access' : 'On-device tool · no network access'}</small></span>{selected.includes(pack.id) && <Check />}</button>)}<small>Prompt packs use @commands. Work permissions stay unchanged.</small></div>}
     {packs.filter(pack => selected.includes(pack.id)).map(pack => <button type="button" className="pack-pill" key={pack.id} disabled={disabled} title={`Remove ${pack.name}`} onClick={() => onChange(selected.filter(id => id !== pack.id))}><span>{pack.name}</span><X /></button>)}
   </div>;
 }
