@@ -18,7 +18,7 @@ export function Marketplace() {
     const update = () => { setExtensions(installedExtensions()); setPrompts(savedPrompts()); };
     window.addEventListener(PACKS_CHANGED, update); return () => window.removeEventListener(PACKS_CHANGED, update);
   }, []);
-  const catalog = tab === 'plugins' ? extensionCatalog.filter(item => ['word', 'excel', 'github'].includes(item.id) || (onlyInstalled && extensions.includes(item.id))) : promptPacks;
+  const catalog = tab === 'plugins' ? extensionCatalog.filter(item => ['word', 'excel', 'powerpoint', 'chrome', 'github'].includes(item.id) || (onlyInstalled && extensions.includes(item.id))) : promptPacks;
   const installed = (id: string) => extensions.includes(id) || prompts.some(prompt => prompt.pack === id);
   const installedItems = catalog.filter(item => installed(item.id));
   const items = catalog.filter(item => (!onlyInstalled || installed(item.id)) && `${item.name} ${item.description} ${'tool' in item ? item.tool : item.prompts.map(prompt => prompt.shortcut).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()));
@@ -53,7 +53,7 @@ export function Marketplace() {
         const ready = installed(item.id), download = downloads[item.id], tool = 'tool' in item ? item.tool : '';
         return <article className="marketplace-item" key={item.id}>
           <PluginIcon id={item.id} /><div className="marketplace-item-content"><h4>{item.name}{ready && <Check aria-label="Installed" />}</h4><p>{item.description}</p>
-            <small>Nova · v{'version' in item ? item.version : '1.0'} · {item.id === 'github' ? 'GitHub API · read-only access' : ['word', 'excel'].includes(item.id) ? 'On-device · downloadable Office files' : tool ? 'On-device · no network access' : 'Instructions · no executable access'}</small>
+            <small>Nova · v{'version' in item ? item.version : '1.0'} · {item.id === 'chrome' ? 'Desktop Work · separate Chrome profile · browser permissions' : item.id === 'github' ? 'GitHub API · read-only access' : ['word', 'excel', 'powerpoint'].includes(item.id) ? 'On-device · read, create & revise Office files' : tool ? 'On-device · no network access' : 'Instructions · no executable access'}</small>
             <code>{tool ? `@${tool}` : 'prompts' in item ? item.prompts.map(prompt => `@${prompt.shortcut}`).join(' · ') : ''}</code>
             {item.id === 'github' && ready && <div className="github-connect">
               {login ? <><span>Connected as {login}</span><button disabled={connecting} onClick={async () => { setConnecting(true); try { await disconnectGithub(); setLogin(''); } catch { setError('Could not disconnect GitHub. Try again.'); } finally { setConnecting(false); } }}>Disconnect</button></> : <button onClick={() => setConnectOpen(value => !value)}>Connect GitHub</button>}
@@ -65,6 +65,6 @@ export function Marketplace() {
         </article>;
       })}</div>{!items.length && <p className="marketplace-empty">No matching packages. Try another search.</p>}
     </section>
-    <p className="marketplace-note">{tab === 'plugins' ? 'Select installed plugins beside attachments, or use their @command. A tool-calling model is required. Word and Excel generate real downloadable files, not control the installed Office apps. GitHub reads public repositories, or repositories permitted by your connected token; it cannot write or create PRs.' : 'Type @ in the composer to invoke an installed prompt. Missing details can be collected in an inline form; replies stream normally when your provider supports streaming.'}</p>
+    <p className="marketplace-note">{tab === 'plugins' ? 'Select installed plugins beside attachments, or use their @command. A tool-calling model is required. Word, Excel and PowerPoint read, create and revise files locally, without controlling installed Office apps. Chrome requires desktop Work and opens a separate native Chrome profile, never your personal browser profile. GitHub reads public repositories, or repositories permitted by your connected token; it cannot write or create PRs.' : 'Type @ in the composer to invoke an installed prompt. Missing details can be collected in an inline form; replies stream normally when your provider supports streaming.'}</p>
   </div>;
 }

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 const read = file => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 test('Desktop recovery tests use an explicit Cargo manifest on both platforms', () => {
   const workflow = read('.github/workflows/release.yml');
-  assert.equal((workflow.match(/cargo test --manifest-path src-tauri\/Cargo\.toml --locked --lib checkpoint_tests/g) || []).length, 2);
+  assert.equal((workflow.match(/cargo test --manifest-path src-tauri\/Cargo\.toml --locked --lib\n/g) || []).length, 2);
   assert.doesNotMatch(workflow, /run: cargo test --lib/);
   assert.match(workflow, /needs: \[windows, macos\]/);
   assert.equal((workflow.match(/releaseDraft: true/g) || []).length, 3);

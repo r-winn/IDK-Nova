@@ -1,0 +1,1 @@
+{"id":"chrome","version":"1.0","runtime":"nova-builtin","tool":"chrome_browser","permissions":["browser:isolated-chrome","network:http-https"]}

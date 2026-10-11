@@ -101,3 +101,9 @@ Existing features must be audited rather than assumed to satisfy these requireme
 ## 0.27.0 — Office tools and consistent Marketplace
 
 Real DOCX/XLSX generation, read-only GitHub account connection, fixed settings dimensions and sticky search. See [release details](docs/releases/v0.27.0.md) for verified scope and limitations. Office files are attached locally, never sent as binary tool results. GitHub tokens use the OS vault on desktop and session-only memory on web, not portable config.
+
+## 0.28.0 — Office editing, PowerPoint and isolated Chrome
+
+Added styled DOCX blocks/page layout, themed PPTX with speaker notes, inspection of actual uploaded Office content, and exact text-run/cell edits saved as a separate copy. Existing graphics and styles are preserved when text is changed; this is not arbitrary Office layout editing or desktop Office automation. Files are parsed locally; only inspected content and metadata, not binary data URLs, enter tool results. Selected cloud providers can receive inspected text; do not upload sensitive files to untrusted providers.
+
+Chrome for Work uses the installed native browser and a per-Work profile with loopback DevTools. Open, inspect, navigate, click and text fill are supported with the existing permission policy; personal browser profiles and manual authentication challenges remain outside automatic control. Four new prompt packs and ordinary/temporary chat stage labels were added. See [verification and limitations](docs/releases/v0.28.0.md). Native protocol tests are now included in Windows and macOS release jobs; full physical desktop end-to-end validation is not claimed.

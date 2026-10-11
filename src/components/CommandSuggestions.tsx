@@ -10,7 +10,11 @@ export function CommandSuggestions({ value, onChange, work = false, disabled = f
   const mention = mentionAt(value, caret);
   // Ordinary typing must not read and validate the entire prompt library.
   const installed = mention && focused && !disabled ? installedExtensions() : [];
-  const options = mention && focused && !disabled ? [...savedPrompts().map(item => ({ name: item.shortcut, label: item.name, kind: 'Prompt' })), ...extensionCatalog.filter(item => installed.includes(item.id)).map(item => ({ name: item.tool, label: item.name, kind: 'Tool' })), ...(work ? providerTools.map(item => ({ name: item.function.name, label: item.function.description, kind: 'Work tool' })) : [])] : [];
+  const officeCommands = installed.some(item => ['word', 'excel', 'powerpoint'].includes(item)) ? [
+    { name: 'inspect_office_file', label: 'Read an attached Word, Excel or PowerPoint file', kind: 'Tool' },
+    { name: 'edit_office_file', label: 'Revise an attached Office file as a new copy', kind: 'Tool' },
+  ] : [];
+  const options = mention && focused && !disabled ? [...savedPrompts().map(item => ({ name: item.shortcut, label: item.name, kind: 'Prompt' })), ...extensionCatalog.filter(item => installed.includes(item.id)).map(item => ({ name: item.tool, label: item.name, kind: 'Tool' })), ...officeCommands, ...(work ? providerTools.map(item => ({ name: item.function.name, label: item.function.description, kind: 'Work tool' })) : [])] : [];
   const matches = mention ? suggestCommands(options, mention.query) : [];
   const visible = focused && !disabled && !!mention && !!matches.length && dismissed !== `${value}:${caret}`;
   const choose = (index: number) => {

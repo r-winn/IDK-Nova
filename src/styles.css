@@ -1720,6 +1720,7 @@ body.resizing-browser iframe { pointer-events: none; }
   .agent-input-inline > div { justify-content: flex-end; }
 }
 .agent-progress { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 10px; }
+.generation-stage { margin-top: 12px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .agent-progress-wrap { display: grid; gap: 11px; padding: 3px 0; }
 .agent-timeline { display: grid; gap: 7px; color: var(--muted); font-size: 9px; }
 .agent-timeline span { display: flex; align-items: center; gap: 8px; min-height: 15px; }
@@ -3888,6 +3889,10 @@ body.resizing-browser iframe { pointer-events: none; }
 .marketplace-search-dock::before { content: ''; position: absolute; top: -32px; left: 0; right: 0; height: 32px; background: var(--surface); }
 .marketplace-search-dock .marketplace-search { margin: 0; }
 .plugin-logo-word { color: #448bdd; background: color-mix(in srgb, #448bdd 14%, var(--surface)); }
+.plugin-logo-powerpoint { color: #d57745; background: color-mix(in srgb, #d57745 14%, var(--surface)); }
+.plugin-logo-chrome { color: #619dcb; background: color-mix(in srgb, #619dcb 14%, var(--surface)); }
+.plugin-logo-academic { color: #9681cb; background: color-mix(in srgb, #9681cb 14%, var(--surface)); }
+.plugin-logo-business { color: #b09052; background: color-mix(in srgb, #b09052 14%, var(--surface)); }
 .plugin-logo-excel { color: #35a778; background: color-mix(in srgb, #35a778 14%, var(--surface)); }
 .github-connect { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .github-connect button { padding: 9px 12px; border-radius: 10px; background: var(--hover); color: var(--text); font: inherit; font-size: 12px; }

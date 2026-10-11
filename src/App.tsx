@@ -98,6 +98,7 @@ import { PackPicker } from './components/PackPicker';
 import { packContext, preparePackUse } from './lib/packs';
 import { executeExtension } from './lib/extensions';
 import { githubFetch } from './lib/github-connection';
+import { generationStatus } from './lib/generation-status';
 import { CommandSuggestions } from './components/CommandSuggestions';
 import { InputRequestForm } from './components/InputRequestForm';
 import { INPUT_TOOL, validateInputRequest, waitForInput, type InputSession } from './lib/input-requests';
@@ -296,6 +297,7 @@ type BrowserTab = {
   selectedPacks?: string[];
   draft?: string;
   busy?: boolean;
+  progressStatus?: string;
   imageUrl?: string;
   imageZoom?: number;
   imageRotation?: number;
@@ -885,6 +887,10 @@ export default function App() {
 
   const prepareAttachment = (file: File): Promise<Attachment> =>
     new Promise((resolve, reject) => {
+      if (/\.(docx|xlsx|pptx)$/i.test(file.name) && file.size > 10_000_000) {
+        reject(new Error('Office files must be 10 MB or smaller. Choose a smaller copy.'));
+        return;
+      }
       if (!file.type.startsWith("image/")) {
         const reader = new FileReader();
         reader.onload = () => resolve({ name: file.name, type: file.type, url: String(reader.result) });
@@ -1476,13 +1482,16 @@ export default function App() {
     }
     if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast('Your saved key needs vault access. Restore it in Models → API keys & connections.'); return; }
     const packUse = preparePackUse(tab.selectedPacks || [], tab.draft);
+    if (packUse.tools.some(tool => tool.function.name === 'chrome_browser')) { setToast('Chrome automation requires a desktop Work chat, not a temporary side chat.'); return; }
     const user: Message = { role: "user", content: tab.draft.trim(), usedPacks: packUse.usedPacks };
     const generationKind: Message["generationKind"] = isImageGenerationRequest(user.content) ? "image" : "text";
     const conversation = [...(tab.messages || []), user];
+    const extensionAttachments = conversation.flatMap(message => message.attachments || []);
     const startedAt = Date.now();
     updateWorkspaceTab(tab.id, {
       draft: "",
       busy: true,
+      progressStatus: 'Waiting for the model…',
       startedAt,
       messages: [...conversation, { role: "assistant", content: "", generating: true, generationKind }],
     });
@@ -1494,7 +1503,7 @@ export default function App() {
         const messages = [...(item.messages || [])];
         const last = messages.length - 1;
         messages[last] = { ...messages[last], content: messages[last].content + token };
-        return { ...item, messages };
+        return { ...item, messages, progressStatus: 'Writing the response…' };
       }));
       if (packUse.tools.length) await runAgentCompletion(config, conversation, packUse.context, packUse.tools, async call => {
         if (!packUse.tools.some(tool => tool.function.name === call.function.name)) throw new Error('Unselected extension.');
@@ -1505,11 +1514,12 @@ export default function App() {
           return result;
         }
         if (call.function.name === 'github_read' && chatWorkspace?.localOnly) throw new Error('This Work is local-only. Network plugins are disabled.');
-        const raw = await executeExtension(call, controller.signal, call.function.name === 'github_read' ? githubFetch : isDesktopApp() ? pluginFetch : fetch);
+        const raw = await executeExtension(call, controller.signal, call.function.name === 'github_read' ? githubFetch : isDesktopApp() ? pluginFetch : fetch, extensionAttachments);
         const { __novaAttachment: generated, ...result } = raw as Record<string, unknown> & { __novaAttachment?: Attachment };
+        if (generated) extensionAttachments.push(generated);
         setBrowserTabs(tabs => tabs.map(item => item.id === tab.id ? { ...item, messages: item.messages?.map((message, index) => index === conversation.length ? { ...message, attachments: generated ? [...(message.attachments || []), generated] : message.attachments, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
         return result;
-      }, () => undefined, append, controller.signal, undefined, undefined, false, undefined, toolCommands(user.content, packUse.tools.map(tool => tool.function.name)));
+      }, step => updateWorkspaceTab(tab.id, { progressStatus: generationStatus(step) }), append, controller.signal, undefined, undefined, false, undefined, toolCommands(user.content, packUse.tools.map(tool => tool.function.name)));
       else await streamCompletion(config, conversation, append, controller.signal, packUse.context);
     } catch (error) {
       setBrowserTabs((tabs) => tabs.map((item) => {
@@ -1677,6 +1687,7 @@ export default function App() {
       return;
     }
     const packUse = preparePackUse(chat.selectedPacks || [], rawText);
+    if (packUse.tools.some(tool => tool.function.name === 'chrome_browser') && (!chat.workspaceId || !isDesktopApp())) { setToast('Use Chrome automation in a desktop Work chat. Office plugins work in ordinary chats too.'); return; }
     const user: Message = {
       role: "user",
       content: outgoingText,
@@ -1691,6 +1702,7 @@ export default function App() {
       enforceWorkPrivacy(workspaces.find(project => project.id === chat.workspaceId), requestConfig);
     } catch (error) { setToast(error instanceof Error ? error.message : String(error)); return; }
     const requestHistory = selectedContext(chat, history);
+    const extensionAttachments = [...requestHistory, user].flatMap(message => message.attachments || []);
     const managedMemory = [memoryContext(chat), packUse.context].filter(Boolean).join('\n\n');
     agentControlRef.current = new AgentControl();
     setAgentPaused(false);
@@ -1721,7 +1733,7 @@ export default function App() {
     responseStartedRef.current = Date.now();
     setResponseElapsedMs(0);
     setBusy(true);
-    setAgentStatus(chat.workspaceId ? "Reviewing your request and project…" : "");
+    setAgentStatus(chat.workspaceId ? "Reviewing your request and project…" : "Waiting for the model…");
     setAgentTimeline(chat.workspaceId ? ["Reviewing your request and project…"] : []);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1747,7 +1759,8 @@ export default function App() {
         const projectMemory = chats.filter((item) => item.workspaceId === project.id && item.id !== chat.id).slice(0, 6).map((item) => `CHAT: ${item.title}\n${item.messages.slice(-4).map((message) => `${message.role.toUpperCase()}: ${message.content}`).join("\n")}`).join("\n\n").slice(0, 6_000);
         workspaceContext = `You are working inside the local Nova Work project "${project.name}". Only reason about this project and never claim a file was changed unless a Nova tool confirms it. Workspace agent access is "${project.agentAccess || "ask"}".\n\nPROJECT FILE INDEX:\n${scan.entries.slice(0, 400).map((entry) => `${entry.kind === "directory" ? "[dir]" : "[file]"} ${entry.path}`).join("\n")}\n\nRELEVANT FILE CONTENT:\n${snippets.join("\n\n") || "No matching text file was selected for this request."}\n\nPROJECT CHAT MEMORY:\n${projectMemory || "No earlier Work chats in this project."}`;
       }
-      const appendToken = (token: string) =>
+      const appendToken = (token: string) => {
+        setAgentStatus('Writing the response…');
         setChats((items) =>
           items.map((item) =>
             item.id === active
@@ -1762,10 +1775,24 @@ export default function App() {
               : item,
           ),
         );
+      };
       const rememberResponse = (responseMemory?: NonNullable<Chat["responseMemory"]>) =>
         setChats((items) => items.map((item) => item.id === active ? { ...item, responseMemory } : item));
       const executeSelectedExtension = async (call: AgentToolCall) => {
         if (!packUse.tools.some(tool => tool.function.name === call.function.name)) throw new Error('Unselected extension.');
+        if (call.function.name === 'chrome_browser') {
+          if (!project || !isDesktopApp()) throw new Error('Chrome control requires a desktop Work chat.');
+          if (project.localOnly) throw new Error('Chrome network access is disabled in this local-only Work.');
+          const args = JSON.parse(call.function.arguments);
+          if (!args || !['open', 'inspect', 'navigate', 'click', 'fill', 'close'].includes(args.action) || ['url', 'selector', 'text'].some(key => typeof args[key] !== 'string')) throw new Error('Invalid Chrome action arguments.');
+          const shouldAsk = project.agentAccess !== 'auto' && (project.agentAccess !== 'safe' || ['open', 'navigate', 'click', 'fill', 'close'].includes(args.action));
+          if (shouldAsk && !await requestAgentApproval({ title: 'Chrome Work access', detail: `${args.action} · ${args.url || args.selector || 'isolated Work profile'}`, risk: 'browser' })) throw new Error('__NOVA_PERMISSION_DENIED__');
+          controller.signal.throwIfAborted();
+          const result = await invoke<Record<string, unknown>>('chrome_work_action', { workId: project.id, action: args.action, url: args.url || null, selector: args.selector || null, text: args.text || null });
+          controller.signal.throwIfAborted();
+          setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
+          return result;
+        }
         if (call.function.name === INPUT_TOOL) {
           const result = await requestPromptInput(call, controller.signal);
           user.inputAnswers = [...(user.inputAnswers || []), ...result.answers];
@@ -1773,8 +1800,9 @@ export default function App() {
           return result;
         }
         if (call.function.name === 'github_read' && project?.localOnly) throw new Error('This Work is local-only. Network plugins are disabled.');
-        const raw = await executeExtension(call, controller.signal, call.function.name === 'github_read' ? githubFetch : isDesktopApp() ? pluginFetch : fetch);
+        const raw = await executeExtension(call, controller.signal, call.function.name === 'github_read' ? githubFetch : isDesktopApp() ? pluginFetch : fetch, extensionAttachments);
         const { __novaAttachment: generated, ...result } = raw as Record<string, unknown> & { __novaAttachment?: Attachment };
+        if (generated) extensionAttachments.push(generated);
         setChats(items => items.map(item => item.id === active ? { ...item, messages: item.messages.map((message, index) => index === item.messages.length - 1 ? { ...message, attachments: generated ? [...(message.attachments || []), generated] : message.attachments, toolExecutions: [...(message.toolExecutions || []), { name: call.function.name, result: JSON.stringify(result) }] } : message) } : item));
         return result;
       };
@@ -1925,7 +1953,7 @@ export default function App() {
           const actionRequested = /(باز\s*کن|جستجو|سرچ|کلیک|اضافه\s*کن|سبد|وارد\s*شو|لاگین|بساز|ایجاد\s*کن|ویرایش\s*کن|تغییر\s*بده|اجرا\s*کن|open|search|click|add|cart|login|sign\s*in|create|write|edit|run|launch)/i.test(user.content);
           const allTools = [...providerTools, ...packUse.tools];
           const requestedTools = toolCommands(user.content, allTools.map(tool => tool.function.name));
-          await runAgentCompletion(requestConfig, [...requestHistory, user], `${workspaceContext}\n\n${managedMemory}\n\n${NOVA_WORK_SYSTEM}\n\n${commandInstructions(requestedTools)}`, allTools, call => packUse.tools.some(tool => tool.function.name === call.function.name) ? executeSelectedExtension(call) : executeAgentTool(call), () => undefined, appendToken, controller.signal, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, actionRequested || requestedTools.length > 0, chat.workspaceId, requestedTools);
+          await runAgentCompletion(requestConfig, [...requestHistory, user], `${workspaceContext}\n\n${managedMemory}\n\n${NOVA_WORK_SYSTEM}\n\n${commandInstructions(requestedTools)}`, allTools, call => packUse.tools.some(tool => tool.function.name === call.function.name) ? executeSelectedExtension(call) : executeAgentTool(call), step => setAgentStatus(generationStatus(step)), appendToken, controller.signal, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, actionRequested || requestedTools.length > 0, chat.workspaceId, requestedTools);
           core.complete();
         } catch (agentError) {
           const detail = agentError instanceof Error ? agentError.message : String(agentError);
@@ -1948,7 +1976,7 @@ export default function App() {
           setToast("This provider does not support Agent tools yet · using normal Work chat");
           await streamCompletion(requestConfig, [...requestHistory, user], appendToken, controller.signal, `${workspaceContext}\n${managedMemory}`, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, chat.workspaceId);
         }
-      } else if (packUse.tools.length) await runAgentCompletion(requestConfig, [...requestHistory, user], workspaceContext, packUse.tools, executeSelectedExtension, () => undefined, appendToken, controller.signal, undefined, rememberResponse, false, chat.workspaceId, toolCommands(user.content, packUse.tools.map(tool => tool.function.name)));
+      } else if (packUse.tools.length) await runAgentCompletion(requestConfig, [...requestHistory, user], workspaceContext, packUse.tools, executeSelectedExtension, step => setAgentStatus(generationStatus(step)), appendToken, controller.signal, undefined, rememberResponse, false, chat.workspaceId, toolCommands(user.content, packUse.tools.map(tool => tool.function.name)));
       else await streamCompletion(requestConfig, [...requestHistory, user], appendToken, controller.signal, workspaceContext, !edited && requestHistory.length === history.length && !managedMemory ? chat.responseMemory : undefined, rememberResponse, chat.workspaceId);
     } catch (error) {
       if (error instanceof Error && error.message.includes('__NOVA_INPUT_CANCELLED__')) {
@@ -2763,13 +2791,14 @@ export default function App() {
                     <div className="content" dir={textDirection(message.content)}>
                       {message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : (
                         <div className="agent-progress-wrap">
-                          <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{chat.workspaceId && agentStatus && <span>{agentStatus}</span>}</div>
+                          <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{message.generating && agentStatus && <span role="status">{agentStatus}</span>}</div>
                           {chat.workspaceId && busy && <div className="agent-run-controls"><button onClick={() => { if (agentPaused) agentControlRef.current.resume(); else agentControlRef.current.pause(); setAgentPaused(!agentPaused); }}>{agentPaused ? "Resume task" : "Pause after current action"}</button><button onClick={stopResponse}>Stop</button>{agentPaused && <small>Paused at the next tool boundary</small>}</div>}
                           {chat.workspaceId && agentTimeline.length > 1 && <div className="agent-timeline" aria-label="Task activity">{agentTimeline.slice(-3).map((item, step) => <span key={`${item}-${step}`} className={step === agentTimeline.slice(-3).length - 1 ? "active" : "done"}>{step === agentTimeline.slice(-3).length - 1 ? <i /> : <Check />}{item}</span>)}</div>}
                         </div>
                       )}
                     </div>
                     <ToolExecutionSummary message={message} />
+                    {message.generating && message.content && agentStatus && <div className="generation-stage" role="status">{agentStatus}</div>}
                     {message.role === "user" && (message.content || message.usedPacks?.length) && <div className="message-actions user-message-actions">
                       {!!message.usedPacks?.length && <span className="message-pack-marker" title={message.usedPacks.map(pack => `${pack.name} · ${pack.version}`).join('\n')}><Puzzle /><span>{message.usedPacks.map(pack => pack.name).join(' · ')}</span></span>}
                       {message.content && <button onClick={() => copy(message.content)}><Copy />Copy</button>}
@@ -3616,9 +3645,10 @@ export default function App() {
                     <article className={`${message.role} ${message.role === "assistant" ? "no-speaker" : ""}`} key={index}>
                       {message.role === "user" && <div className="speaker"><CircleUserRound /></div>}
                       <div className="message-body">
-                        <div className="content" dir={textDirection(message.content)}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : <span className="typing"><i /><i /><i /></span>}</div>
+                        <div className="content" dir={textDirection(message.content)}>{message.content ? (message.role === "user" ? renderProse(message.content, index) : renderMessageContent(message)) : message.generationKind === "image" && message.generating ? <ImageGenerationProgress /> : <div className="agent-progress"><span className="typing"><i /><i /><i /></span>{message.generating && <span role="status">{activeBrowserTab.progressStatus || "Waiting for the model…"}</span>}</div>}</div>
                         {message.attachments?.map((attachment, attachmentIndex) => <button className="file" key={attachmentIndex} onClick={() => openWorkspaceAttachment(attachment)}><FileText />{attachment.name}</button>)}
                         <ToolExecutionSummary message={message} />
+                        {message.generating && message.content && <div className="generation-stage" role="status">{activeBrowserTab.progressStatus || 'Writing the response…'}</div>}
                         {message.role === "user" && message.content && <div className="message-actions user-message-actions">{!!message.usedPacks?.length && <span className="message-pack-marker" title={message.usedPacks.map(pack => `${pack.name} · ${pack.version}`).join('\n')}><Puzzle /><span>{message.usedPacks.map(pack => pack.name).join(' · ')}</span></span>}<button onClick={() => copy(message.content)}><Copy />Copy</button></div>}
                         {message.role === "assistant" && message.content && <div className="message-actions">
                           <button disabled={message.generating} onClick={() => copy(message.content)}><Copy />Copy</button>

@@ -1,6 +1,6 @@
 {
-"version": "0.27.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.27.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.27.0/IDK.Nova_0.27.0_x64-setup.exe",
-  "notes": ["Consistent settings dimensions and sticky Marketplace search", "Real downloadable Word DOCX and Excel XLSX tools", "Read-only GitHub account connection with protected credentials", "Curated useful plugins while preserving installed tools", "Distinct Updates icon", "Verified Office output and dependency security fixes"]
+  "version": "0.28.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.28.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.28.0/IDK.Nova_0.28.0_x64-setup.exe",
+  "notes": ["PowerPoint studio with real themed PPTX slides and speaker notes", "Styled Word documents with tables, headers, footers and page breaks", "Read and revise attached DOCX, XLSX and PPTX as separate copies", "Native Chrome automation in isolated desktop Work profiles", "Article, academic, business and data-analysis prompt packs", "Real generation-stage labels in ordinary and temporary chats"]
 }

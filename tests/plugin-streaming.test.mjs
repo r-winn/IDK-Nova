@@ -70,6 +70,7 @@ test('Both agent protocols stream final answers after real tool results without 
     await visible; assert.equal(finished, false); assert.equal(calls, 1);
     outputController.enqueue(encode(protocol === 'responses' ? { type: 'response.completed', response: { id: 'r2', output_text: 'Four', output: [] } } : { choices: [{ delta: {}, finish_reason: 'stop' }] })); outputController.close();
     await task; assert.equal(text, 'Four'); assert.equal(bodies.at(-1).stream, true); assert.match(JSON.stringify(bodies.at(-1)), /result.*4/);
+    if (protocol === 'responses') assert.equal(bodies[0].tools[0].strict, false);
   }
 });
 test('CSV plugin measures actual quoted data and rejects malformed rows', async () => {

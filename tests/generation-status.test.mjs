@@ -1,0 +1,20 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+const module = { exports: {} };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/generation-status.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { module, exports: module.exports });
+test('Generation status reports observable waits and actual tools, not invented reasoning', () => {
+  const status = module.exports.generationStatus;
+  assert.match(status('thinking'), /Waiting for the model/);
+  assert.match(status('create_powerpoint'), /PowerPoint/);
+  assert.match(status('inspect_office_file'), /Reading/);
+  assert.match(status('edit_office_file'), /revised/);
+  assert.match(status('collect_user_input'), /Waiting for your/);
+  assert.match(status('unknown'), /selected tool/);
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /progressStatus: 'Waiting for the model…'/);
+  assert.match(app, /setAgentStatus\('Writing the response…'\)/);
+  assert.match(app, /progressStatus: generationStatus\(step\)/);
+});

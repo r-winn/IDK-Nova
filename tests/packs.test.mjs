@@ -21,6 +21,30 @@ function environment() {
   return { data, events, globals, prompts, packs, bundle, extensions: load('../src/lib/extensions.ts', {}, globals) };
 }
 const config = { providers: [{ id: 'source', baseUrl: 'https://test.invalid/v1', models: ['test'], apiKey: 'test-secret', apiKeyStored: true }], database: { url: 'private-database' } };
+test('Office support tools are opt-in and exact commands do not match email addresses', () => {
+  const { extensions } = environment();
+  assert.equal(extensions.extensionUse([], '@edit_office_file').tools.length, 0);
+  extensions.saveExtensions(['powerpoint']);
+  const use = extensions.extensionUse([], 'Please @edit_office_file revise the deck');
+  assert.deepEqual(Array.from(use.tools, item => item.function.name).sort(), ['create_powerpoint', 'edit_office_file', 'inspect_office_file']);
+  assert.equal(extensions.extensionUse([], 'person@edit_office_file.com').tools.length, 0);
+  assert.equal(extensions.extensionUse([], '@edit_office_file_extra').tools.length, 0);
+});
+test('New prompt pack manifests and Office plugins survive portable config export', () => {
+  const { prompts, packs, extensions, bundle, data } = environment();
+  for (const id of ['articles', 'academic', 'business', 'data-work']) {
+    const manifest = JSON.parse(readFileSync(new URL(`../public/packs/${id}.json`, import.meta.url), 'utf8'));
+    const catalog = prompts.promptPacks.find(item => item.id === id);
+    assert.ok(catalog); assert.deepEqual(manifest.permissions, []);
+    assert.deepEqual(manifest.prompts.map(item => item.shortcut), Array.from(catalog.prompts, item => item.shortcut));
+    packs.storePrompts([...prompts.savedPrompts(), ...manifest.prompts.map(item => ({ ...item, pack: id }))]);
+  }
+  extensions.saveExtensions(['word', 'excel', 'powerpoint', 'chrome']);
+  const exported = bundle.exportConfigBundle(config);
+  data.clear(); bundle.importConfigBundle(bundle.validateConfigBundle(exported.novaBundle), config, config);
+  assert.deepEqual(Array.from(extensions.installedExtensions()), ['word', 'excel', 'powerpoint', 'chrome']);
+  assert.equal(packs.preparePackUse([], '@write_article on science').usedPacks[0].id, 'articles');
+});
 test('Portable config carries installed packs, prompts, routing and prices without secrets or history', () => {
   const { data, packs, bundle } = environment();
   packs.storePrompts([{ id: 'a', name: 'Email', shortcut: 'email', text: 'Draft an email', pack: 'writing' }]);

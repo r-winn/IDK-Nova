@@ -20,16 +20,23 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
-### New in 0.27 · Word, Excel & connected GitHub
+### New in 0.28 · Office studio & Chrome for Work
 
 Marketplace now separates **Plugins** from **Prompt packs**, with themed icons, search, an installed collection and a responsive two-column catalog. Installation uses real manifest download progress, and Remove is red in both themes. These are bundled, audited Nova integrations—not a claim of compatibility with ChatGPT's third-party plugin catalog.
 
 Useful executable plugins, with consistent settings dimensions and sticky search:
 
-- **Word documents** (`@create_word_document`): generates downloadable DOCX documents with titles, paragraphs and Persian RTL support.
-- **Excel workbooks** (`@create_excel_workbook`): generates downloadable XLSX files with multiple sheets, styled headers and typed cells. Office tools create new files; they do not control installed Office apps or modify existing Office files.
+- **Word studio** (`@create_word_document`): real DOCX output with headings, styled paragraphs, tables, headers, footers, page breaks, font sizes, landscape pages and Persian RTL.
+- **Excel workbooks** (`@create_excel_workbook`): real XLSX output with multiple sheets, styled headers and typed cells.
+- **PowerPoint studio** (`@create_powerpoint`): real widescreen PPTX slides, a consistent color/font theme, Persian RTL and speaker notes—not a text-only slide outline.
+- **Attached Office files**: select any Office plugin and attach a `.docx`, `.xlsx` or `.pptx`. Ask for analysis or changes, or use `@inspect_office_file` / `@edit_office_file`. Nova reads the actual file and makes exact text-run/cell replacements in a **new copy**, preserving the original and unrelated package parts. These tools do not control installed Office apps, render a live Office editor, recalculate formulas, or edit arbitrary shapes/charts. Structural redesign uses a newly generated document/deck. Unencrypted files up to 10 MB are supported; older DOC/XLS/PPT and macros are not.
+- **Chrome for Work** (`@chrome_browser`): desktop-only control of an installed native Chrome in a **separate Work profile**, using actual page inspection, selectors, click and text-field fill. Default Work browsing still uses Nova's internal browser. It never attaches to your personal Chrome profile; login passwords, CAPTCHA, OTP and payments require a user handoff. Work permissions apply; local-only Work blocks this network integration. Inspect after navigation before claiming success. This is not unrestricted computer control or a full multi-tab browser automation suite.
 - **GitHub** (`@github_read`): reads repository metadata, issues/PRs and source files. Connect a fine-grained read-only token in Marketplace to access permitted private repositories, or use public repositories anonymously. Desktop stores credentials in the OS vault; web keeps them only for the session. No writes or PR creation. Local-only Work blocks network plugins. Tokens are never exported.
 - Previously installed utilities, including CSV analysis, remain available under **Show installed** and in the composer, without crowding curated discovery.
+
+New prompt packs: **Article workshop**, **Academic research**, **Business communication** and **Spreadsheet analysis**. Install from Marketplace → Prompt packs, then type `@write_article`, `@literature_review`, `@decision_brief` or `@audit_dataset`. These supply detailed editorial/methodology instructions, not executable permissions, fabricated research or a guarantee of model quality. Other included shortcuts support revision, research proposals, presentation narratives and dataset reports.
+
+Normal and temporary chats show observable stages such as waiting for the model, reading an Office file, creating slides and writing the response. Nova does not invent internal model reasoning or a percentage of work completed. See [0.28 release details and verification limits](docs/releases/v0.28.0.md).
 
 Prompt-pack and agent replies now request genuine streaming in **Responses** and **Chat Completions**, so visible text arrives while the model generates it. Tool arguments are assembled before execution; results resume the same conversation. Usage and stream failures are handled, without replaying the completed answer as fake typing. Providers that ignore streaming and return JSON remain compatible, but cannot provide genuine incremental text.
 

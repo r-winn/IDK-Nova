@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 mod credentials;
 mod voice;
+mod chrome;
+use chrome::chrome_work_action;
 use voice::create_voice_token;
 use credentials::{read_provider_credential, write_provider_credential};
 use futures_util::StreamExt;
@@ -1109,7 +1111,8 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![create_voice_token, read_provider_credential, write_provider_credential, import_gguf_model, ollama_status, install_ollama, scan_workspace, checkpoint_workspace, list_workspace_checkpoints, restore_workspace_checkpoint, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, prepare_workspace_change, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal, install_package, start_preview_server])
+        .on_window_event(|window, event| { if window.label() == "main" && matches!(event, tauri::WindowEvent::CloseRequested { .. }) { chrome::close_all(); } })
+        .invoke_handler(tauri::generate_handler![chrome_work_action, create_voice_token, read_provider_credential, write_provider_credential, import_gguf_model, ollama_status, install_ollama, scan_workspace, checkpoint_workspace, list_workspace_checkpoints, restore_workspace_checkpoint, read_workspace_file, read_workspace_range, read_workspace_asset, search_workspace, initialize_workspace, save_workspace_history, write_workspace_file, patch_workspace_file, prepare_workspace_change, create_workspace_directory, move_workspace_item, copy_workspace_item, trash_workspace_item, undo_workspace_change, observe_screen, click_screen, move_screen, drag_screen, type_text, press_key, scroll_screen, open_application, run_terminal, install_package, start_preview_server])
         .setup(|app| {
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
