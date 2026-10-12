@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Check, Download, Search, Trash2 } from 'lucide-react';
 import { extensionCatalog, installedExtensions, saveExtensions } from '../lib/extensions';
 import { promptPacks, savedPrompts } from '../lib/prompts';
@@ -34,6 +34,7 @@ export function Marketplace() {
     finally { installing.current.delete(id); setDownloads(current => { const next = { ...current }; delete next[id]; return next; }); }
   };
   const remove = (id: string) => {
+    if (id === 'github') { setConnectOpen(false); setToken(''); }
     try { if (extensions.includes(id)) saveExtensions(installedExtensions().filter(value => value !== id)); else storePrompts(savedPrompts().filter(prompt => prompt.pack !== id)); setError(''); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
@@ -51,18 +52,24 @@ export function Marketplace() {
     <section><h3>{onlyInstalled ? 'Your collection' : tab === 'plugins' ? 'Explore plugins' : 'Writing, development & research'}</h3>
       <div className="marketplace-grid">{items.map(item => {
         const ready = installed(item.id), download = downloads[item.id], tool = 'tool' in item ? item.tool : '';
-        return <article className="marketplace-item" key={item.id}>
+        return <Fragment key={item.id}><article className="marketplace-item">
           <PluginIcon id={item.id} /><div className="marketplace-item-content"><h4>{item.name}{ready && <Check aria-label="Installed" />}</h4><p>{item.description}</p>
             <small>Nova · v{'version' in item ? item.version : '1.0'} · {item.id === 'chrome' ? 'Desktop Work · separate Chrome profile · browser permissions' : item.id === 'github' ? 'GitHub API · read-only access' : ['word', 'excel', 'powerpoint'].includes(item.id) ? 'On-device · read, create & revise Office files' : tool ? 'On-device · no network access' : 'Instructions · no executable access'}</small>
             <code>{tool ? 'Select in chat' : 'prompts' in item ? item.prompts.map(prompt => `@${prompt.shortcut}`).join(' · ') : ''}</code>
             {item.id === 'github' && ready && <div className="github-connect">
               {login ? <><span>Connected as {login}</span><button disabled={connecting} onClick={async () => { setConnecting(true); try { await disconnectGithub(); setLogin(''); } catch { setError('Could not disconnect GitHub. Try again.'); } finally { setConnecting(false); } }}>Disconnect</button></> : <button onClick={() => setConnectOpen(value => !value)}>Connect GitHub</button>}
-              {connectOpen && !login && <form onSubmit={async event => { event.preventDefault(); setConnecting(true); setError(''); try { setLogin(await connectGithub(token)); setToken(''); setConnectOpen(false); } catch (e) { setError(e instanceof Error ? e.message : 'Connection failed.'); } finally { setConnecting(false); } }}><input type="password" aria-label="GitHub access token" placeholder="GitHub access token" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" /><button disabled={connecting || !token.trim()}>{connecting ? 'Connecting…' : 'Test & connect'}</button><small>Use a fine-grained token with repository read permissions only. Desktop saves it in the OS vault; web keeps it for this session only. Tokens are never exported.</small></form>}
             </div>}
-            {download && <div className="pack-download" role="status"><progress max={download.total || undefined} value={download.total ? download.loaded : undefined} /><span>{download.loaded.toLocaleString()} / {download.total ? download.total.toLocaleString() : 'unknown'} bytes</span></div>}
+            <div className="pack-download-slot" data-active={Boolean(download)}>{download && <div className="pack-download" role="status"><progress max={download.total || undefined} value={download.total ? download.loaded : undefined} /><span>{download.loaded.toLocaleString()} / {download.total ? download.total.toLocaleString() : 'unknown'} bytes</span></div>}</div>
           </div>
           <button className={`marketplace-action ${ready ? 'pack-remove' : ''}`} disabled={Boolean(download)} aria-label={`${ready ? 'Remove' : 'Install'} ${item.name}`} onClick={() => ready ? remove(item.id) : void install(item.id)}>{ready ? <Trash2 /> : <Download />}<span>{download ? 'Installing…' : ready ? 'Remove' : 'Install'}</span></button>
-        </article>;
+</article>{item.id === 'github' && <div className="github-connection-panel" data-open={ready && connectOpen && !login} aria-hidden={!ready || !connectOpen || Boolean(login)}><div><form onSubmit={async event => { event.preventDefault(); setConnecting(true); setError(''); try { setLogin(await connectGithub(token)); setToken(''); setConnectOpen(false); } catch (e) { setError(e instanceof Error ? e.message : 'Connection failed.'); } finally { setConnecting(false); } }}>
+          <h4>Connect your GitHub account</h4><p>Use a personal access token, not a connection string or your GitHub password.</p>
+          <ol><li>Open GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens.</li><li>Create a token, choose an expiry and select only the repositories you need.</li><li>Set Contents, Issues and Pull requests to Read-only. Copy the token and paste it below.</li></ol>
+          <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" tabIndex={connectOpen ? 0 : -1}>Create a fine-grained token on GitHub ↗</a>
+          <label>Personal access token<input type="password" aria-label="GitHub access token" placeholder="github_pat_…" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" disabled={!connectOpen || connecting} /></label>
+          <div className="github-connection-actions"><button type="button" disabled={connecting} tabIndex={connectOpen ? 0 : -1} onClick={() => { setConnectOpen(false); setToken(''); }}>Cancel</button><button disabled={!connectOpen || connecting || !token.trim()}>{connecting ? 'Connecting…' : 'Test & connect'}</button></div>
+          <small>Never share this token. Desktop saves it in the OS vault; web keeps it for this session only. Tokens are never exported. Organization repositories may require administrator approval.</small>
+        </form></div></div>}</Fragment>;
       })}</div>{!items.length && <p className="marketplace-empty">No matching packages. Try another search.</p>}
     </section>
     <p className="marketplace-note">{tab === 'plugins' ? 'Select installed plugins beside attachments. Plugins are not activated with @. A tool-calling model is required. Office plugins read, create and revise actual files; previews may differ from Microsoft Office for complex objects. PDF research extracts real page text, not OCR. Delivery bundles package selected chat files. Chrome requires desktop Work and a separate browser profile. GitHub is read-only.' : 'Type @ in the composer to invoke an installed prompt. Missing details can be collected in an inline form; replies stream normally when your provider supports streaming.'}</p>

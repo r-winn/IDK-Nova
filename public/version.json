@@ -1,6 +1,6 @@
 {
-  "version": "0.29.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.29.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.29.0/IDK.Nova_0.29.0_x64-setup.exe",
-  "notes": ["Dedicated Word, Excel and PowerPoint previews in Workspace", "Designed Word presets and five PowerPoint slide layouts", "Original Microsoft Office file icons", "Generated files organized per conversation", "PDF research and real ZIP delivery bundles", "Six new professional prompt packs; plugins selected only in the composer"]
+  "version": "0.29.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.29.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.29.1/IDK.Nova_0.29.1_x64-setup.exe",
+  "notes": ["Current Office application icons with app-colored backgrounds", "Compact consistent plugin picker and properly aligned tab icons", "Borderless grouped Office preview controls", "Stable plugin installation layout without download jumps", "Animated GitHub connection panel with token setup guide"]
 }

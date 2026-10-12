@@ -20,7 +20,11 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
-### New in 0.29 · Designed Office outputs and previews
+### New in 0.29.1 · Visual consistency
+
+Current Office application icons, app-colored backgrounds, compact equal-height plugin rows and aligned Workspace tabs replace the older file marks. Preview controls now match Nova's borderless toolbars. Plugin installation reserves space to avoid layout jumps. GitHub opens an animated full-width token form with separate actions and step-by-step read-only setup instructions. [Release details](docs/releases/v0.29.1.md).
+
+### Office outputs and previews
 
 Generated DOCX, XLSX and PPTX attachments appear in **Workspace → Files**, scoped to the current conversation. Click a file to open its dedicated document, spreadsheet or slide preview. Word/Excel/PowerPoint use original Microsoft file icons. Previewing is local; complex charts, images, master styles and exact pagination may differ from Office. Nova does not run macros or calculate spreadsheet formulas.
 

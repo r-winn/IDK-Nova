@@ -102,6 +102,10 @@ Existing features must be audited rather than assumed to satisfy these requireme
 
 Real DOCX/XLSX generation, read-only GitHub account connection, fixed settings dimensions and sticky search. See [release details](docs/releases/v0.27.0.md) for verified scope and limitations. Office files are attached locally, never sent as binary tool results. GitHub tokens use the OS vault on desktop and session-only memory on web, not portable config.
 
+## 0.29.1 — Consistent plugin and Office UI
+
+Current Office app marks, properly constrained tab/menu icons, per-app background colors, compact plugin rows and themed preview controls replace inconsistent styling. Installation reserves its layout space; GitHub setup uses an animated full-width form with read-only token guidance. Reopening the same attachment reuses its existing Workspace tab. See [verification](docs/releases/v0.29.1.md).
+
 ## 0.29.0 — Designed Office previews and explicit plugins
 
 Word/Excel/PowerPoint files now have dedicated local previews and original Microsoft file icons. Generated attachments appear in conversation-scoped Workspace Files. Word gains editorial/report/letter styling and PowerPoint adds cover, section, cards, content and quote layouts across three themes. PDF page text extraction and ZIP attachment packaging are real executable integrations; six prompt packs add nine specialized shortcuts. Plugins activate only through the composer picker, while prompt packs use @. See [verification and preview limits](docs/releases/v0.29.0.md).

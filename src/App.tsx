@@ -1224,6 +1224,8 @@ export default function App() {
   };
   const openWorkspaceAttachment = (attachment: Attachment) => {
     if (attachment.type.startsWith("image/")) { openWorkspaceImage(attachment.name, attachment.url); return; }
+    const existing = browserTabs.find(tab => tab.fileUrl === attachment.url && tab.title === attachment.name);
+    if (existing) { setActiveBrowserTabId(existing.id); setBrowserOpen(true); return; }
     const isPdf = attachment.type === "application/pdf" || attachment.name.toLowerCase().endsWith(".pdf");
     const isText = attachment.type.startsWith("text/") || /\.(md|markdown|txt|json|csv|xml|log|ya?ml)$/i.test(attachment.name);
     const id = `file-${Date.now()}`;

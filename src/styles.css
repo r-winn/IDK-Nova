@@ -1568,7 +1568,7 @@ body.resizing-browser iframe { pointer-events: none; }
 .pack-menu > b, .pack-menu > small { display: block; font-size: 11px; line-height: 1.6; padding: 6px; }
 .pack-menu > small, .pack-menu p { color: var(--muted); font-size: 10px; }
 .composer-tools .pack-menu button { width: 100%; height: auto; min-height: 40px; display: flex; gap: 10px; padding: 8px; text-align: left; font-size: 12px; }
-.pack-menu button span { flex: 1; }
+.pack-menu button .pack-menu-copy { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pack-download { display: grid; gap: 7px; margin-top: 14px; color: var(--muted); font-size: 11px; }
 .pack-download progress { width: 100%; height: 5px; border: 0; border-radius: 8px; overflow: hidden; background: var(--hover); accent-color: var(--text); }
 .pack-download progress::-webkit-progress-bar { background: var(--hover); border-radius: 8px; }
@@ -3892,8 +3892,14 @@ body.resizing-browser iframe { pointer-events: none; }
 .plugin-logo img { width: 30px; height: 30px; object-fit: contain; }
 .file .plugin-logo, .workspace-file-list .plugin-logo { flex: 0 0 34px; width: 34px; height: 34px; background: transparent; }
 .office-viewer { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.office-preview-controls { display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 6px 14px; background: var(--surface); color: var(--muted); font-size: 11px; flex-shrink: 0; }
-.office-preview-controls button { color: var(--text); background: transparent; padding: 8px; border-radius: 8px; min-height: 34px; cursor: pointer; }
+.office-preview-controls { display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 4px 12px; background: transparent; color: var(--muted); font-size: 11px; flex-shrink: 0; }
+.office-preview-controls button { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); background: transparent; border: 0; box-shadow: none; padding: 0 8px; border-radius: 8px; min-height: 32px; min-width: 32px; cursor: pointer; font: inherit; transition: color .18s ease, background .18s ease; }
+.office-preview-controls > span { min-width: 65px; margin-right: auto; }
+.office-page-nav, .office-zoom-group { display: flex; align-items: center; gap: 2px; }
+.office-page-nav { margin-right: auto; }
+.office-page-nav span { min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }
+.office-zoom-group { margin-left: auto; }
+.office-preview-controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .office-preview-controls button:hover, .office-preview-controls button.active { background: var(--hover); }
 .office-preview-controls button:disabled { opacity: .35; cursor: default; }
 .office-preview-controls svg { width: 16px; height: 16px; }
@@ -3909,11 +3915,6 @@ body.resizing-browser iframe { pointer-events: none; }
 .office-sheet-scroll td, .office-sheet-scroll th { border: 1px solid var(--border); padding: 10px 14px; min-width: 100px; max-width: 360px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .office-sheet-scroll th { position: sticky; left: 0; min-width: 44px; background: var(--hover); color: var(--muted); font-weight: 400; }
 .office-sheet-scroll p { padding: 10px; color: var(--muted); font-size: 11px; }
-.plugin-logo-powerpoint { color: #d57745; background: color-mix(in srgb, #d57745 14%, var(--surface)); }
-.plugin-logo-chrome { color: #619dcb; background: color-mix(in srgb, #619dcb 14%, var(--surface)); }
-.plugin-logo-academic { color: #9681cb; background: color-mix(in srgb, #9681cb 14%, var(--surface)); }
-.plugin-logo-business { color: #b09052; background: color-mix(in srgb, #b09052 14%, var(--surface)); }
-.plugin-logo-excel { color: #35a778; background: color-mix(in srgb, #35a778 14%, var(--surface)); }
 .github-connect { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .github-connect button { padding: 9px 12px; border-radius: 10px; background: var(--hover); color: var(--text); font: inherit; font-size: 12px; }
 .github-connect input { min-width: 0; flex: 1; }
@@ -3934,9 +3935,19 @@ body.resizing-browser iframe { pointer-events: none; }
 .marketplace-installed button { color: var(--muted); background: transparent; font-size: 12px; min-height: 36px; border-radius: 10px; }
 .marketplace-installed button:hover { background: var(--hover); color: var(--text); }
 .marketplace-installed p, .marketplace-empty { font-size: 12px; color: var(--muted); line-height: 1.7; }
-.marketplace-icon-strip { display: flex; gap: 12px; flex-wrap: wrap; padding-top: 16px; }
-.marketplace-icon-strip button { padding: 0; }
-.plugin-logo { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; background: #8874da18; color: #a08cea; }
+.marketplace-icon-strip { display: flex; gap: 12px; flex-wrap: nowrap; padding-top: 16px; overflow-x: auto; }
+.marketplace-icon-strip button { padding: 0; flex: 0 0 42px; }
+.plugin-logo { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; background: var(--hover); color: var(--muted); }
+.plugin-logo-word { color: #4285ef; background: color-mix(in srgb, #4285ef 13%, var(--surface)); }
+.plugin-logo-excel { color: #229e65; background: color-mix(in srgb, #229e65 13%, var(--surface)); }
+.plugin-logo-powerpoint { color: #ef6d42; background: color-mix(in srgb, #ef6d42 13%, var(--surface)); }
+.plugin-logo-chrome { color: #e4af32; background: color-mix(in srgb, #e4af32 12%, var(--surface)); }
+.plugin-logo-academic, .plugin-logo-education { color: #9b84d7; background: color-mix(in srgb, #9b84d7 13%, var(--surface)); }
+.plugin-logo-business, .plugin-logo-meetings { color: #b59a59; background: color-mix(in srgb, #b59a59 13%, var(--surface)); }
+.plugin-logo-pdf-reader { color: #e36060; background: color-mix(in srgb, #e36060 12%, var(--surface)); }
+.plugin-logo-archive, .plugin-logo-document-design { color: #699ac2; background: color-mix(in srgb, #699ac2 13%, var(--surface)); }
+.plugin-logo-presentation-design { color: #dc9167; background: color-mix(in srgb, #dc9167 13%, var(--surface)); }
+.plugin-logo-translation, .plugin-logo-product-design { color: #57a69a; background: color-mix(in srgb, #57a69a 13%, var(--surface)); }
 .plugin-logo svg { width: 23px; height: 23px; }
 .plugin-logo-github { background: var(--hover); color: var(--text); }
 .plugin-logo-csv-analysis, .plugin-logo-calculator { background: #3caa831a; color: #3aa781; }
@@ -3951,14 +3962,41 @@ body.resizing-browser iframe { pointer-events: none; }
 .marketplace-item p { margin: 0 0 8px; font-size: 12px; color: var(--muted); line-height: 1.6; }
 .marketplace-item small { display: block; font-size: 10px; line-height: 1.6; color: var(--muted); }
 .marketplace-item code { display: block; font-size: 10px; color: var(--muted); margin-top: 7px; overflow-wrap: anywhere; }
-.marketplace-action { display: inline-flex; gap: 5px; align-items: center; justify-content: center; flex-shrink: 0; min-height: 34px; padding: 7px 8px; border-radius: 9px; background: var(--hover); color: var(--text); font-size: 11px; transition: background .18s; }
+.marketplace-action { display: inline-flex; gap: 5px; align-items: center; justify-content: center; flex-shrink: 0; min-height: 34px; width: 86px; padding: 7px 8px; border-radius: 9px; background: var(--hover); color: var(--text); font-size: 11px; transition: background .18s; }
 .marketplace-action svg { width: 14px; height: 14px; }
 .marketplace-action:hover:not(:disabled) { background: var(--line); }
 .marketplace-action:disabled { opacity: .55; cursor: wait; }
 .marketplace-action.pack-remove { color: #ef5757; background: #ef575710; }
 .marketplace-action.pack-remove:hover { background: #ef575722; }
 .marketplace-note { padding-top: 16px; border-top: 1px solid var(--line); font-size: 11px; }
-.pack-menu .plugin-logo { width: 30px; height: 30px; border-radius: 8px; }
+.composer-tools .pack-menu .plugin-logo { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 8px; }
+.pack-menu .plugin-logo img { width: 22px; height: 22px; }
+.composer-tools .pack-menu button { height: 54px; min-height: 54px; width: 100%; border: 0; border-radius: 10px; gap: 10px; padding: 8px; }
+.pack-menu-copy small { display: block; font-size: 10px; line-height: 16px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-tools .pack-menu .pack-menu-check { flex: 0 0 14px; width: 14px; height: 14px; }
+.pack-menu-list { max-height: min(324px, 45vh); overflow-y: auto; overscroll-behavior: contain; }
+.browser-tabs button > .plugin-logo { flex: 0 0 18px; width: 18px; height: 18px; background: transparent; border-radius: 0; overflow: visible; }
+.browser-tabs .plugin-logo img { display: block; width: 18px; height: 18px; }
+.marketplace-icon-strip { min-height: 58px; }
+.marketplace-installed > p { min-height: 58px; margin: 0; display: flex; align-items: center; }
+.pack-download-slot { height: 32px; margin-top: 8px; }
+.pack-download-slot .pack-download { margin: 0; gap: 4px; font-size: 9px; animation: plugin-detail-enter .24s ease both; }
+.nova-marketplace { overflow-anchor: none; }
+.github-connection-panel { grid-column: 1 / -1; display: grid; grid-template-rows: 0fr; margin-block: -6px; opacity: 0; visibility: hidden; transition: grid-template-rows .3s ease-in-out, margin .3s ease-in-out, opacity .22s ease, visibility .3s; }
+.github-connection-panel[data-open="true"] { grid-template-rows: 1fr; margin-block: 0; opacity: 1; visibility: visible; }
+.github-connection-panel > div { overflow: hidden; min-height: 0; }
+.github-connection-panel form { padding: 20px; margin: 0 0 12px; border-radius: 16px; background: var(--hover); display: grid; gap: 12px; }
+.github-connection-panel h4 { margin: 0; font-size: 14px; }
+.github-connection-panel p, .github-connection-panel ol, .github-connection-panel small { margin: 0; font-size: 11px; line-height: 1.8; color: var(--muted); }
+.github-connection-panel ol { padding-left: 18px; }
+.github-connection-panel a { font-size: 11px; color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.github-connection-panel label { display: grid; gap: 8px; font-size: 11px; }
+.github-connection-panel input { width: 100%; min-width: 0; box-sizing: border-box; margin: 0; }
+.github-connection-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.github-connection-actions button { min-height: 36px; padding: 8px 14px; border: 0; border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 11px; }
+.github-connection-actions button:disabled { opacity: .45; }
+@keyframes plugin-detail-enter { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .github-connection-panel, .pack-download-slot .pack-download { transition: none; animation: none; } }
 .pack-menu .plugin-logo svg { width: 17px; height: 17px; }
 @container (max-width: 660px) { .marketplace-grid { grid-template-columns: 1fr; } }
 @container (max-width: 360px) { .marketplace-action span { display: none; } .marketplace-action { width: 34px; } }
