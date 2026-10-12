@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 mod credentials;
 mod voice;
 mod chrome;
+mod gguf;
 use chrome::chrome_work_action;
 use voice::create_voice_token;
 use credentials::{read_provider_credential, write_provider_credential};
@@ -384,10 +385,10 @@ fn ollama_executable() -> Option<PathBuf> {
 }
 
 fn ensure_ollama_runtime(ollama: &Path) -> Result<(), String> {
-    let runtime_ready = || Command::new(ollama).arg("list").output().map(|output| output.status.success()).unwrap_or(false);
+    let runtime_ready = || Command::new(ollama).env("OLLAMA_HOST", "127.0.0.1:11434").arg("list").output().map(|output| output.status.success()).unwrap_or(false);
     if runtime_ready() { return Ok(()); }
     let mut command = Command::new(ollama);
-    command.arg("serve").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    command.env("OLLAMA_HOST", "127.0.0.1:11434").arg("serve").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -456,6 +457,7 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_nam
         if !source.is_file() {
             return Err("The selected model file is unavailable".into());
         }
+        gguf::check_chat_file(&source)?;
         let fallback = source.file_stem().and_then(|value| value.to_str()).unwrap_or("nova-local");
         let requested = if model_name.trim().is_empty() { fallback } else { model_name.trim() };
         let safe_name: String = requested.to_lowercase().chars().map(|character| if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':') { character } else { '-' }).collect();
@@ -476,7 +478,7 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_nam
         send_import_status(&on_event, "starting", "Starting the local Ollama runtime", 69);
         ensure_ollama_runtime(&ollama)?;
         let mut command = Command::new(&ollama);
-        command.args(["create", &safe_name, "-f"]).arg(&model_file).stdout(Stdio::null()).stderr(Stdio::piped());
+        command.env("OLLAMA_HOST", "127.0.0.1:11434").args(["create", &safe_name, "-f"]).arg(&model_file).stdout(Stdio::null()).stderr(Stdio::piped());
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -507,12 +509,12 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, model_nam
             return Err(if detail.is_empty() { "Ollama could not import this GGUF file".into() } else { detail });
         }
         send_import_status(&on_event, "verifying", "Verifying the imported model with Ollama", 98);
-        let verification = Command::new(&ollama).args(["show", &safe_name]).output().map_err(|error| format!("The model was imported, but verification could not start: {error}"))?;
+        let verification = Command::new(&ollama).env("OLLAMA_HOST", "127.0.0.1:11434").args(["show", &safe_name]).output().map_err(|error| format!("The model was imported, but verification could not start: {error}"))?;
         if !verification.status.success() {
             let detail = String::from_utf8_lossy(&verification.stderr).trim().to_string();
             return Err(if detail.is_empty() { "Ollama did not recognize the imported model".into() } else { detail });
         }
-        send_import_status(&on_event, "ready", "Local model imported and verified", 100);
+        send_import_status(&on_event, "registered", "Model registered in Ollama; checking live response next", 98);
         Ok(safe_name)
     }).await.map_err(|error| error.to_string())?
 }
@@ -1128,6 +1130,20 @@ pub fn run() {
 #[cfg(test)]
 mod checkpoint_tests {
     use super::*;
+    #[test]
+    fn ollama_scope_allows_actual_completion_port_without_opening_other_ports() {
+        let capability: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        let entries = capability["permissions"].as_array().unwrap().iter().find(|v| v["identifier"] == "http:default").unwrap()["allow"].as_array().unwrap();
+        let matches = |url: &str| entries.iter().any(|entry| {
+            let mut init = urlpattern::UrlPatternInit::parse_constructor_string::<regex::Regex>(entry["url"].as_str().unwrap(), None).unwrap();
+            if init.pathname.as_deref() == Some("/") { init.pathname = Some("*".into()); }
+            let pattern: urlpattern::UrlPattern = urlpattern::UrlPattern::parse(init, Default::default()).unwrap();
+            pattern.test(urlpattern::UrlPatternMatchInput::Url(reqwest::Url::parse(url).unwrap())).unwrap()
+        });
+        assert!(matches("http://127.0.0.1:11434/v1/chat/completions"));
+        assert!(matches("http://localhost:11434/api/show"));
+        assert!(!matches("http://127.0.0.1:9999/v1/chat/completions"));
+    }
     #[test]
     fn reviewed_write_rejects_changed_or_newly_created_files() {
         let project = TestProject::new();

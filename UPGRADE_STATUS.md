@@ -102,6 +102,10 @@ Existing features must be audited rather than assumed to satisfy these requireme
 
 Real DOCX/XLSX generation, read-only GitHub account connection, fixed settings dimensions and sticky search. See [release details](docs/releases/v0.27.0.md) for verified scope and limitations. Office files are attached locally, never sent as binary tool results. GitHub tokens use the OS vault on desktop and session-only memory on web, not portable config.
 
+## 0.29.2 — Local GGUF connection and compatibility
+
+Explicit desktop loopback scope for Ollama fixes requests blocked before reaching port 11434. GGUF architecture validation and model metadata diagnostics distinguish image models from conversational ones. Registration and live readiness are separate; import commands target the same local host as the configured provider. 78 frontend and 9 native tests passed, plus an actual Qwen3 GGUF completion through local Ollama. [Details](docs/releases/v0.29.2.md).
+
 ## 0.29.1 — Consistent plugin and Office UI
 
 Current Office app marks, properly constrained tab/menu icons, per-app background colors, compact plugin rows and themed preview controls replace inconsistent styling. Installation reserves its layout space; GitHub setup uses an animated full-width form with read-only token guidance. Reopening the same attachment reuses its existing Workspace tab. See [verification](docs/releases/v0.29.1.md).

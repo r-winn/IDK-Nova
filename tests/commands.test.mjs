@@ -19,6 +19,8 @@ test('Diagnostics distinguish authentication and avoid guessing CORS', () => {
   assert.equal(api.diagnoseConnection('Provider returned 401').title, 'Authentication rejected');
   assert.equal(api.diagnoseConnection('500').title, 'Provider server error');
   assert.match(api.diagnoseConnection('Failed to fetch').action, /cannot distinguish/);
+  assert.equal(api.diagnoseConnection('url not allowed on the configured scope: http://127.0.0.1:11434/v1/chat/completions').title, 'Desktop connection permission blocked');
+  assert.equal(api.diagnoseConnection('GGUF_IMAGE_MODEL: flux').title, 'Not a chat model');
 });
 function agent(responses) {
   const requests = [];
@@ -31,6 +33,16 @@ function agent(responses) {
   return { api, requests };
 }
 const config = { providers: [{ id: 'test', baseUrl: 'https://test.invalid/v1', apiKey: '', models: ['model'] }], activeModel: 'model', temperature: .5 };
+test('Ollama tests reject an existing image model from actual metadata before inference', async () => {
+  const { api, requests } = agent([{ body: { details: { family: 'flux' }, capabilities: ['completion'] } }]);
+  await assert.rejects(api.testModel({ id: 'local', baseUrl: 'http://127.0.0.1:11434/v1', apiKey: '', models: ['image'] }, 'image'), /GGUF_NOT_CHAT/);
+  assert.equal(requests.length, 1); assert.equal(requests[0].url, 'http://127.0.0.1:11434/api/show');
+});
+test('Compatible Ollama metadata continues to a real chat-completion test', async () => {
+  const { api, requests } = agent([{ body: { model_info: { 'general.architecture': 'qwen3' } } }, { body: { choices: [{ message: { role: 'assistant', content: 'OK' } }] } }]);
+  assert.equal(typeof await api.testModel({ id: 'local', baseUrl: 'http://localhost:11434/v1', apiKey: '', models: ['chat'] }, 'chat'), 'number');
+  assert.equal(requests[1].url, 'http://localhost:11434/v1/chat/completions');
+});
 const tools = [{ type: 'function', function: { name: 'fs_checkpoint', parameters: { type: 'object' }, description: 'Checkpoint' } }];
 const run = (api, execute, onToken = () => {}) => api.runAgentCompletion(config, [{ role: 'user', content: '@fs_checkpoint' }], '', tools, execute, () => {}, onToken, undefined, undefined, undefined, true, 'work', ['fs_checkpoint']);
 test('Responses executes an explicit tool before declaring completion', async () => {

@@ -1,6 +1,6 @@
 {
-  "version": "0.29.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.29.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.29.1/IDK.Nova_0.29.1_x64-setup.exe",
-  "notes": ["Current Office application icons with app-colored backgrounds", "Compact consistent plugin picker and properly aligned tab icons", "Borderless grouped Office preview controls", "Stable plugin installation layout without download jumps", "Animated GitHub connection panel with token setup guide"]
+  "version": "0.29.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.29.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.29.2/IDK.Nova_0.29.2_x64-setup.exe",
+  "notes": ["Fixed desktop permission for local Ollama on port 11434", "GGUF metadata validation rejects image models as chat imports", "Existing image models diagnosed before chat testing", "Readiness is confirmed only after a live completion succeeds", "Ollama commands and imported provider now share the same local host"]
 }

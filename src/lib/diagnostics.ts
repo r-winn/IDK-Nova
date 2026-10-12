@@ -1,4 +1,6 @@
 export function diagnoseConnection(error: string): { title: string; action: string } {
+  if (/url not allowed on the configured scope/i.test(error)) return { title: 'Desktop connection permission blocked', action: 'Nova blocked the request before reaching the provider. Update Nova to restore local Ollama access; this error does not mean the model or internet is offline.' };
+  if (/GGUF_IMAGE_MODEL|GGUF_NOT_CHAT|does not support (chat|completion)/i.test(error)) return { title: 'Not a chat model', action: 'This model is for image generation or another non-chat task. Import a compatible conversational GGUF into Ollama; an image model requires its own image-generation runtime.' };
   if (/\b401\b|invalid.?api.?key|authentication_error/i.test(error)) return { title: 'Authentication rejected', action: 'Check the API key for this Base URL. The server responded; this is not proof of an internet outage.' };
   if (/\b403\b/i.test(error)) return { title: 'Access denied', action: 'Check model permissions, your company network policy and regional access restrictions.' };
   if (/model.*(not found|does not exist)|model_not_found|\b404\b/i.test(error)) return { title: 'Model or endpoint unavailable', action: 'Refresh the model list and confirm the Base URL ends at the API root, not /chat/completions.' };

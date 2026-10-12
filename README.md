@@ -20,7 +20,11 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
-### New in 0.29.1 · Visual consistency
+### New in 0.29.2 · Local GGUF connectivity
+
+Desktop access to Ollama's loopback port 11434 is fixed. Import checks actual GGUF metadata, explains why image/video models such as FLUX are not chat models, and reports readiness only after a live completion succeeds. Already-registered image models receive a specific diagnostic instead of a generic connection failure. Existing model files are preserved. [Verification and limits](docs/releases/v0.29.2.md).
+
+### Visual consistency
 
 Current Office application icons, app-colored backgrounds, compact equal-height plugin rows and aligned Workspace tabs replace the older file marks. Preview controls now match Nova's borderless toolbars. Plugin installation reserves space to avoid layout jumps. GitHub opens an animated full-width token form with separate actions and step-by-step read-only setup instructions. [Release details](docs/releases/v0.29.1.md).
 

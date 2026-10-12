@@ -117,6 +117,14 @@ export async function testModel(provider: Provider, model: string): Promise<numb
   const started = performance.now();
   const providerKey = responsesProviderKey(provider);
   const localOllama = /^https?:\/\/(?:localhost|127\.0\.0\.1):11434(?:\/|$)/i.test(provider.baseUrl);
+  if (localOllama) {
+    const info = await request(`${new URL(provider.baseUrl).origin}/api/show`, { method: 'POST', headers: headers(provider), body: JSON.stringify({ model }) });
+    if (info.ok) {
+      const metadata = await info.json();
+      const architecture = metadata.model_info?.['general.architecture'] || metadata.details?.family;
+      if (typeof architecture === 'string' && /^(flux|flux1|sd1|sd2|sdxl|sd3|stable-diffusion|wan)$/i.test(architecture)) throw new Error('GGUF_NOT_CHAT: This is an image/video model, not a conversational model. Use a compatible image runtime instead of Ollama chat.');
+    }
+  }
   if (!localOllama && !unsupportedResponsesProviders.has(providerKey)) {
     const response = await request(endpoint(provider, '/responses'), { method: 'POST', headers: headers(provider), body: JSON.stringify({ model, input: 'Reply with OK', max_output_tokens: 8, store: false }) });
     if (response.ok) {

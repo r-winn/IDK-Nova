@@ -2243,14 +2243,15 @@ export default function App() {
       try {
         setLocalModelImport((current) => ({ ...(current || { processed: 0, total: 0, error: "" }), phase: "testing", message: "Running a live completion test", percent: 99, error: "" }));
         latency = await testModel(verifiedProvider, model);
+        setLocalModelImport({ phase: "ready", message: "Model imported and answered successfully", processed: 0, total: 0, percent: 100, error: "" });
         setModelHealth((current) => ({ ...current, [`${providerId}:${model}`]: { state: "online", latency, checkedAt: Date.now() } }));
       } catch (testError) {
         const detail = testError instanceof Error ? testError.message : String(testError);
         setModelHealth((current) => ({ ...current, [`${providerId}:${model}`]: { state: "offline", checkedAt: Date.now(), error: detail } }));
-        setLocalModelImport({ phase: "ready", message: "Model imported; the live response test needs attention", processed: 0, total: 0, percent: 100, error: detail });
+        setLocalModelImport({ phase: "error", message: "Model registered, but could not answer", processed: 0, total: 0, percent: 100, error: detail });
       }
       setModelSetupView("list");
-      setToast(latency ? `${model} imported, verified, and ready · ${latency} ms` : `${model} was imported. Use Test after checking that the model fits in available memory.`);
+      setToast(latency ? `${model} imported, verified, and ready · ${latency} ms` : `${model} was registered, but could not answer. See Test & diagnose for the actual error.`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error || "Local model import failed");
       setLocalModelImport((current) => ({ ...(current || { phase: "error", message: "Import failed", processed: 0, total: 0, percent: 0, error: "" }), phase: "error", message: "Local model import failed", error: detail }));
