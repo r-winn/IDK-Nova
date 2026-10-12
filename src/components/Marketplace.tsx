@@ -18,7 +18,7 @@ export function Marketplace() {
     const update = () => { setExtensions(installedExtensions()); setPrompts(savedPrompts()); };
     window.addEventListener(PACKS_CHANGED, update); return () => window.removeEventListener(PACKS_CHANGED, update);
   }, []);
-  const catalog = tab === 'plugins' ? extensionCatalog.filter(item => ['word', 'excel', 'powerpoint', 'chrome', 'github'].includes(item.id) || (onlyInstalled && extensions.includes(item.id))) : promptPacks;
+  const catalog = tab === 'plugins' ? extensionCatalog.filter(item => ['word', 'excel', 'powerpoint', 'chrome', 'github', 'pdf-reader', 'archive', 'csv-analysis'].includes(item.id) || (onlyInstalled && extensions.includes(item.id))) : promptPacks;
   const installed = (id: string) => extensions.includes(id) || prompts.some(prompt => prompt.pack === id);
   const installedItems = catalog.filter(item => installed(item.id));
   const items = catalog.filter(item => (!onlyInstalled || installed(item.id)) && `${item.name} ${item.description} ${'tool' in item ? item.tool : item.prompts.map(prompt => prompt.shortcut).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()));
@@ -54,7 +54,7 @@ export function Marketplace() {
         return <article className="marketplace-item" key={item.id}>
           <PluginIcon id={item.id} /><div className="marketplace-item-content"><h4>{item.name}{ready && <Check aria-label="Installed" />}</h4><p>{item.description}</p>
             <small>Nova · v{'version' in item ? item.version : '1.0'} · {item.id === 'chrome' ? 'Desktop Work · separate Chrome profile · browser permissions' : item.id === 'github' ? 'GitHub API · read-only access' : ['word', 'excel', 'powerpoint'].includes(item.id) ? 'On-device · read, create & revise Office files' : tool ? 'On-device · no network access' : 'Instructions · no executable access'}</small>
-            <code>{tool ? `@${tool}` : 'prompts' in item ? item.prompts.map(prompt => `@${prompt.shortcut}`).join(' · ') : ''}</code>
+            <code>{tool ? 'Select in chat' : 'prompts' in item ? item.prompts.map(prompt => `@${prompt.shortcut}`).join(' · ') : ''}</code>
             {item.id === 'github' && ready && <div className="github-connect">
               {login ? <><span>Connected as {login}</span><button disabled={connecting} onClick={async () => { setConnecting(true); try { await disconnectGithub(); setLogin(''); } catch { setError('Could not disconnect GitHub. Try again.'); } finally { setConnecting(false); } }}>Disconnect</button></> : <button onClick={() => setConnectOpen(value => !value)}>Connect GitHub</button>}
               {connectOpen && !login && <form onSubmit={async event => { event.preventDefault(); setConnecting(true); setError(''); try { setLogin(await connectGithub(token)); setToken(''); setConnectOpen(false); } catch (e) { setError(e instanceof Error ? e.message : 'Connection failed.'); } finally { setConnecting(false); } }}><input type="password" aria-label="GitHub access token" placeholder="GitHub access token" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" /><button disabled={connecting || !token.trim()}>{connecting ? 'Connecting…' : 'Test & connect'}</button><small>Use a fine-grained token with repository read permissions only. Desktop saves it in the OS vault; web keeps it for this session only. Tokens are never exported.</small></form>}
@@ -65,6 +65,6 @@ export function Marketplace() {
         </article>;
       })}</div>{!items.length && <p className="marketplace-empty">No matching packages. Try another search.</p>}
     </section>
-    <p className="marketplace-note">{tab === 'plugins' ? 'Select installed plugins beside attachments, or use their @command. A tool-calling model is required. Word, Excel and PowerPoint read, create and revise files locally, without controlling installed Office apps. Chrome requires desktop Work and opens a separate native Chrome profile, never your personal browser profile. GitHub reads public repositories, or repositories permitted by your connected token; it cannot write or create PRs.' : 'Type @ in the composer to invoke an installed prompt. Missing details can be collected in an inline form; replies stream normally when your provider supports streaming.'}</p>
+    <p className="marketplace-note">{tab === 'plugins' ? 'Select installed plugins beside attachments. Plugins are not activated with @. A tool-calling model is required. Office plugins read, create and revise actual files; previews may differ from Microsoft Office for complex objects. PDF research extracts real page text, not OCR. Delivery bundles package selected chat files. Chrome requires desktop Work and a separate browser profile. GitHub is read-only.' : 'Type @ in the composer to invoke an installed prompt. Missing details can be collected in an inline form; replies stream normally when your provider supports streaming.'}</p>
   </div>;
 }

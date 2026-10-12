@@ -13,6 +13,33 @@ const editing = { exports: {} };
 const editCode = ts.transpileModule(readFileSync(new URL('../src/lib/office-edit.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
 vm.runInNewContext(editCode, { module: editing, exports: editing.exports, require: name => name === './office-plugins' ? module.exports : require(name), Uint8Array, DataView, atob, Error });
 const { editOfficeFile, validateOfficeZip } = editing.exports;
+const preview = { exports: {} };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/office-preview.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText, { module: preview, exports: preview.exports, require: name => name === './office-edit' ? editing.exports : name === './office-format' ? {} : require(name), Uint8Array, atob, Error });
+const archive = { exports: {} };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/file-tools.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText, { module: archive, exports: archive.exports, require: name => name === './office-plugins' ? module.exports : require(name), Uint8Array, atob, Error });
+test('Modern slides have actual cover typography, dark colors and card geometry', async () => {
+  const result = await createOfficeFile('create_powerpoint', { filename: 'modern', title: 'Studio', rtl: false, theme: { preset: 'midnight' }, slides: [{ title: 'Ideas into impact', bullets: ['One clear message'], layout: 'cover', notes: '' }, { title: 'Principles', bullets: ['Hierarchy', 'Whitespace', 'Clarity', 'Consistency'], layout: 'cards', notes: '' }] });
+  const zip = await require('jszip').loadAsync(bytes(result));
+  const cover = await zip.file('ppt/slides/slide1.xml').async('string'), cards = await zip.file('ppt/slides/slide2.xml').async('string');
+  assert.match(cover, /152A36/); assert.match(cover, /sz="4200"/); assert.match(cards, /Consistency/); assert.ok((cards.match(/<p:sp>/g) || []).length >= 12);
+});
+test('Office preview strips external relationships and extracts actual styled sheet cells', async () => {
+  const result = await createOfficeFile('create_excel_workbook', { filename: 'preview', sheets: [{ name: 'Results', rows: [['Count'], [42]] }] });
+  const zip = await require('jszip').loadAsync(bytes(result));
+  zip.file('xl/_rels/external.xml.rels', '<Relationships><Relationship TargetMode="External" Target="https://example.invalid"/><Relationship TargetMode=\'External\' Target=\'https://example.invalid\'/></Relationships>');
+  const encoded = 'data:application/zip;base64,' + (await zip.generateAsync({ type: 'nodebuffer' })).toString('base64');
+  const clean = await preview.exports.officePackage(encoded);
+  assert.doesNotMatch(await clean.zip.file('xl/_rels/external.xml.rels').async('string'), /example.invalid/);
+  const sheets = await preview.exports.spreadsheetPreview(bytes(result));
+  assert.equal(sheets[0].name, 'Results'); assert.equal(sheets[0].rows[1][0].text, '42'); assert.equal(sheets[0].rows[0][0].bold, true);
+});
+test('Archive plugin packages only exact real chat attachments and rejects unsafe paths', async () => {
+  const files = [{ name: 'notes.txt', url: 'data:text/plain;base64,' + Buffer.from('Actual notes').toString('base64') }];
+  const result = await archive.exports.createArchive({ filename: 'delivery', files: ['notes.txt'] }, files);
+  const zip = await require('jszip').loadAsync(bytes(result)); assert.equal(await zip.file('notes.txt').async('string'), 'Actual notes');
+  await assert.rejects(archive.exports.createArchive({ filename: 'delivery', files: ['../secret'] }, files), /paths/);
+  await assert.rejects(archive.exports.createArchive({ filename: 'delivery', files: ['missing.txt'] }, files), /Attach/);
+});
 test('Word generates a real DOCX containing Persian RTL paragraphs', async () => {
   const result = await createOfficeFile('create_word_document', { filename: 'letter', title: 'نامه', paragraphs: ['سلام همکار عزیز'], rtl: true });
   const zip = await require('jszip').loadAsync(bytes(result));

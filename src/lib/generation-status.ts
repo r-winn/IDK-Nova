@@ -1,4 +1,5 @@
 const steps: Record<string, string> = {
+  inspect_pdf: 'Reading the PDF page…', create_archive: 'Packaging your files…',
   chrome_browser: 'Working in Chrome…',
   create_word_document: 'Creating your Word document…', create_excel_workbook: 'Building your Excel workbook…', create_powerpoint: 'Preparing your PowerPoint slides…',
   inspect_office_file: 'Reading your Office file…', edit_office_file: 'Creating the revised file…', github_read: 'Reading GitHub…', collect_user_input: 'Waiting for your details…',

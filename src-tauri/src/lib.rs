@@ -890,6 +890,9 @@ async fn read_workspace_asset(root_path: String, relative_path: String) -> Resul
         if size > 25_000_000 { return Err("This preview is larger than the 25 MB safety limit".into()); }
         let extension = target.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
         let mime = match extension.as_str() {
+            "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             "pdf" => "application/pdf", "png" => "image/png", "jpg" | "jpeg" => "image/jpeg",
             "gif" => "image/gif", "webp" => "image/webp", "svg" => "image/svg+xml",
             _ => return Err("This file type does not have a native preview".into()),

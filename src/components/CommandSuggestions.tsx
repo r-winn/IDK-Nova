@@ -1,7 +1,5 @@
 import { cloneElement, isValidElement, useId, useRef, useState, type ChangeEvent, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
 import { savedPrompts } from '../lib/prompts';
-import { extensionCatalog, installedExtensions } from '../lib/extensions';
-import { providerTools } from '../agent/catalog';
 import { mentionAt, suggestCommands } from '../lib/command-suggestions';
 
 export function CommandSuggestions({ value, onChange, work = false, disabled = false, children }: { value: string; onChange: (value: string) => void; work?: boolean; disabled?: boolean; children: ReactNode }) {
@@ -9,12 +7,8 @@ export function CommandSuggestions({ value, onChange, work = false, disabled = f
   const [caret, setCaret] = useState(value.length), [focused, setFocused] = useState(false), [dismissed, setDismissed] = useState(''), [active, setActive] = useState(0);
   const mention = mentionAt(value, caret);
   // Ordinary typing must not read and validate the entire prompt library.
-  const installed = mention && focused && !disabled ? installedExtensions() : [];
-  const officeCommands = installed.some(item => ['word', 'excel', 'powerpoint'].includes(item)) ? [
-    { name: 'inspect_office_file', label: 'Read an attached Word, Excel or PowerPoint file', kind: 'Tool' },
-    { name: 'edit_office_file', label: 'Revise an attached Office file as a new copy', kind: 'Tool' },
-  ] : [];
-  const options = mention && focused && !disabled ? [...savedPrompts().map(item => ({ name: item.shortcut, label: item.name, kind: 'Prompt' })), ...extensionCatalog.filter(item => installed.includes(item.id)).map(item => ({ name: item.tool, label: item.name, kind: 'Tool' })), ...officeCommands, ...(work ? providerTools.map(item => ({ name: item.function.name, label: item.function.description, kind: 'Work tool' })) : [])] : [];
+  void work;
+  const options = mention && focused && !disabled ? savedPrompts().map(item => ({ name: item.shortcut, label: item.name, kind: 'Prompt' })) : [];
   const matches = mention ? suggestCommands(options, mention.query) : [];
   const visible = focused && !disabled && !!mention && !!matches.length && dismissed !== `${value}:${caret}`;
   const choose = (index: number) => {

@@ -12,8 +12,10 @@ const server = http.createServer(async (request, response) => {
   const latest = messages.findLast(message => message.role === 'user')?.content || '';
   const toolMessages = messages.filter(message => message.role === 'tool');
   const last = toolMessages.at(-1); let message;
-  if (String(latest).includes('@create_powerpoint')) {
-    message = !last ? call('create_powerpoint', { filename: 'ui-slides', title: 'Nova UI test', rtl: true, theme: { accent: '245B7A' }, slides: [{ title: 'اسلاید آزمایشی', bullets: ['متن فارسی', 'Editable presentation'], notes: 'Actual speaker notes' }] }) : { role: 'assistant', content: 'Actual PowerPoint slides attached.' };
+  if (String(latest).includes('slides')) {
+    message = !last ? call('create_powerpoint', { filename: 'ui-slides', title: 'Nova studio', rtl: false, theme: { preset: 'midnight' }, slides: [{ title: 'Ideas into impact', bullets: ['A modern presentation'], layout: 'cover', notes: 'Actual speaker notes' }, { title: 'Design with purpose', bullets: ['Clear hierarchy', 'Intentional whitespace', 'Consistent typography', 'Editable content'], layout: 'cards', notes: 'Four principles' }] }) : { role: 'assistant', content: 'Actual PowerPoint slides attached.' };
+  } else if (String(latest).includes('workbook')) {
+    message = !last ? call('create_excel_workbook', { filename: 'ui-workbook', sheets: [{ name: 'Sales', rows: [['Product', 'Revenue'], ['Nova', 1250], ['Studio', 800]] }, { name: 'Notes', rows: [['Status'], ['Verified data']] }] }) : { role: 'assistant', content: 'Actual workbook attached.' };
   } else if (String(latest).includes('@edit_office_file')) {
     if (!last) message = call('inspect_office_file', { source: 'ui-report.docx' });
     else if (last.name === 'inspect_office_file' || JSON.parse(last.content).entries) {

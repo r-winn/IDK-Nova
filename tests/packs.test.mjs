@@ -25,14 +25,15 @@ test('Office support tools are opt-in and exact commands do not match email addr
   const { extensions } = environment();
   assert.equal(extensions.extensionUse([], '@edit_office_file').tools.length, 0);
   extensions.saveExtensions(['powerpoint']);
-  const use = extensions.extensionUse([], 'Please @edit_office_file revise the deck');
+  assert.equal(extensions.extensionUse([], 'Please @edit_office_file revise the deck').tools.length, 0);
+  const use = extensions.extensionUse(['powerpoint'], 'Revise the deck');
   assert.deepEqual(Array.from(use.tools, item => item.function.name).sort(), ['create_powerpoint', 'edit_office_file', 'inspect_office_file']);
   assert.equal(extensions.extensionUse([], 'person@edit_office_file.com').tools.length, 0);
   assert.equal(extensions.extensionUse([], '@edit_office_file_extra').tools.length, 0);
 });
 test('New prompt pack manifests and Office plugins survive portable config export', () => {
   const { prompts, packs, extensions, bundle, data } = environment();
-  for (const id of ['articles', 'academic', 'business', 'data-work']) {
+  for (const id of ['articles', 'academic', 'business', 'data-work', 'presentation-design', 'document-design', 'education', 'product-design', 'translation', 'meetings']) {
     const manifest = JSON.parse(readFileSync(new URL(`../public/packs/${id}.json`, import.meta.url), 'utf8'));
     const catalog = prompts.promptPacks.find(item => item.id === id);
     assert.ok(catalog); assert.deepEqual(manifest.permissions, []);
@@ -138,7 +139,8 @@ test('Executable tools are opt-in, portable and actually compute results', async
   const { extensions, packs, bundle, data } = environment();
   extensions.saveExtensions(['calculator', 'text-analysis']);
   assert.equal(packs.preparePackUse([]).tools.length, 0);
-  const use = packs.preparePackUse([], '@calculate 12 * 7');
+  assert.equal(packs.preparePackUse([], '@calculate 12 * 7').tools.length, 0);
+  const use = packs.preparePackUse(['calculator'], '12 * 7');
   assert.equal(use.tools[0].function.name, 'calculate');
   assert.equal(use.usedPacks[0].id, 'calculator');
   const result = await extensions.executeExtension({ function: { name: 'calculate', arguments: '{"expression":"12 * 7"}' } });

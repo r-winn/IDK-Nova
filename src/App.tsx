@@ -99,6 +99,8 @@ import { packContext, preparePackUse } from './lib/packs';
 import { executeExtension } from './lib/extensions';
 import { githubFetch } from './lib/github-connection';
 import { generationStatus } from './lib/generation-status';
+import { AttachmentIcon } from './components/PluginIcon';
+import { officeFormat } from './lib/office-format';
 import { CommandSuggestions } from './components/CommandSuggestions';
 import { InputRequestForm } from './components/InputRequestForm';
 import { INPUT_TOOL, validateInputRequest, waitForInput, type InputSession } from './lib/input-requests';
@@ -157,6 +159,7 @@ import { redactSecrets } from './lib/secrets';
 import { ThemeSelector } from "./components/ThemeSelector";
 
 const PdfViewer = lazy(() => import("./components/PdfViewer"));
+const OfficeViewer = lazy(() => import('./components/OfficeViewer'));
 
 const starterChats: Chat[] = [
   { id: 1, title: "Welcome to Nova", time: "Today", messages: [] },
@@ -283,7 +286,7 @@ type AgentInput = { prompt: string; placeholder: string; value: string } | null;
 type ModelHealth = { state: "online" | "offline"; latency?: number; checkedAt: number; error?: string };
 type BrowserTab = {
   id: string;
-  kind: "home" | "browser" | "artifact" | "document" | "email" | "files" | "projectfiles" | "temporary" | "image" | "file" | "pdf";
+  kind: "home" | "browser" | "artifact" | "document" | "email" | "files" | "projectfiles" | "temporary" | "image" | "file" | "pdf" | "office";
   title: string;
   url: string;
   input: string;
@@ -566,7 +569,8 @@ export default function App() {
   const voicePrivacyBlocked = Boolean(chatWorkspace?.localOnly && activeProvider && !isLocalEndpoint(activeProvider.baseUrl));
   useEffect(() => { setVoiceOpen(false); }, [active, config.activeProviderId, config.activeModel]);
   const activeBrowserTab = browserTabs.find((tab) => tab.id === activeBrowserTabId) || browserTabs[0];
-  const workspaceArtifacts = useMemo(() => chats.flatMap((sourceChat) => sourceChat.messages.flatMap((message, messageIndex) => {
+  const workspaceAttachments = useMemo(() => [...chat.messages, ...browserTabs.filter(tab => tab.kind === 'temporary').flatMap(tab => tab.messages || [])].flatMap((message, index) => (message.attachments || []).map((attachment, fileIndex) => ({ id: `${index}-${fileIndex}`, attachment, generated: message.role === 'assistant' }))), [chat.messages, browserTabs]);
+  const workspaceArtifacts = useMemo(() => chats.filter(sourceChat => sourceChat.id === chat.id).flatMap((sourceChat) => sourceChat.messages.flatMap((message, messageIndex) => {
     if (message.role !== "assistant") return [];
     return splitContent(message.content).flatMap((part, partIndex) => part.type === "code" ? [{
       id: `${sourceChat.id}-${messageIndex}-${partIndex}`,
@@ -575,7 +579,7 @@ export default function App() {
       content: part.content,
       chatTitle: sourceChat.title,
     }] : []);
-  })), [chats]);
+  })), [chats, chat.id]);
   const visibleChats = useMemo(
     () =>
       chats.filter(
@@ -1225,7 +1229,7 @@ export default function App() {
     const id = `file-${Date.now()}`;
     setBrowserTabs((tabs) => [...tabs, {
       id,
-      kind: isPdf ? "pdf" : "file",
+      kind: isPdf ? "pdf" : officeFormat(attachment.name) ? "office" : "file",
       title: attachment.name || "Attachment",
       fileUrl: attachment.url,
       mime: attachment.type || "application/octet-stream",
@@ -1348,11 +1352,11 @@ export default function App() {
         return;
       }
       const extension = entry.name.split(".").pop()?.toLowerCase() || "text";
-      if (["pdf", "png", "jpg", "jpeg", "gif", "webp", "svg"].includes(extension)) {
+      if (["pdf", "docx", "xlsx", "pptx", "png", "jpg", "jpeg", "gif", "webp", "svg"].includes(extension)) {
         const fileUrl = await invoke<string>("read_workspace_asset", { rootPath: project.rootPath, relativePath: entry.path });
         const id = `asset-${Date.now()}`;
         const isPdf = extension === "pdf";
-        setBrowserTabs((tabs) => [...tabs, { id, kind: isPdf ? "pdf" : "image", title: entry.name, fileUrl, imageUrl: isPdf ? undefined : fileUrl, imageZoom: 1, projectId: project.id, projectPath: entry.path, entries: tab.entries, directoryPath: parentDirectory(entry.path), url: "", input: "", history: [], historyIndex: -1 }]);
+        setBrowserTabs((tabs) => [...tabs, { id, kind: isPdf ? "pdf" : officeFormat(entry.name) ? "office" : "image", title: entry.name, fileUrl, imageUrl: isPdf || officeFormat(entry.name) ? undefined : fileUrl, imageZoom: 1, projectId: project.id, projectPath: entry.path, entries: tab.entries, directoryPath: parentDirectory(entry.path), url: "", input: "", history: [], historyIndex: -1 }]);
         setActiveBrowserTabId(id);
         setBrowserOpen(true);
         return;
@@ -2780,7 +2784,7 @@ export default function App() {
                             </button>
                           ) : (
                             <button className="file" key={itemIndex} onClick={() => openWorkspaceAttachment(attachment)} title="Open in Workspace">
-                              <FileText />
+                              <AttachmentIcon name={attachment.name} />
                               <span><b>{attachment.name}</b><small>{attachment.type === "application/pdf" ? "PDF document" : "Open in Workspace"}</small></span>
                               <ArrowRight />
                             </button>
@@ -3461,7 +3465,7 @@ export default function App() {
             <div>
               {browserTabs.map((tab) => (
                 <button className={tab.id === activeBrowserTabId ? "active" : ""} key={tab.id} onClick={() => setActiveBrowserTabId(tab.id)} title={tab.title}>
-                  {tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? (() => { const kind = fileKind(tab.title); return <em className={`file-kind kind-${kind.extension}`}>{kind.label}</em>; })() : ["document", "file", "pdf"].includes(tab.kind) ? <FileText /> : tab.kind === "email" ? <Mail /> : ["files", "projectfiles"].includes(tab.kind) ? <Folder /> : tab.kind === "temporary" ? <Clock3 /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
+                  {tab.kind === "office" ? <AttachmentIcon name={tab.title} /> : tab.kind === "browser" ? <Globe2 /> : tab.kind === "artifact" ? (() => { const kind = fileKind(tab.title); return <em className={`file-kind kind-${kind.extension}`}>{kind.label}</em>; })() : ["document", "file", "pdf"].includes(tab.kind) ? <FileText /> : tab.kind === "email" ? <Mail /> : ["files", "projectfiles"].includes(tab.kind) ? <Folder /> : tab.kind === "temporary" ? <Clock3 /> : tab.kind === "image" ? <ImageIcon /> : <Sparkles />}
                   <span>{tab.title}</span><i onClick={(event) => { event.stopPropagation(); closeBrowserTab(tab.id); }}><X /></i>
                 </button>
               ))}
@@ -3526,13 +3530,13 @@ export default function App() {
               <button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: 1, imageRotation: 0 })}>Fit</button>
               <button onClick={downloadWorkspaceImage}><Download />Download</button>
             </div>
-          ) : activeBrowserTab && ["file", "pdf"].includes(activeBrowserTab.kind) ? (
+          ) : activeBrowserTab && ["file", "pdf", "office"].includes(activeBrowserTab.kind) ? (
             <div className="workspace-toolbar attachment-toolbar">
-              <span>{activeBrowserTab.kind === "pdf" ? `${activeBrowserTab.pdfPages ? `${activeBrowserTab.pdfPages} pages · ` : ""}PDF document` : activeBrowserTab.mime || "Attached file"}</span>
+              <span>{activeBrowserTab.kind === "pdf" ? `${activeBrowserTab.pdfPages ? `${activeBrowserTab.pdfPages} pages · ` : ""}PDF document` : activeBrowserTab.kind === "office" ? `${officeFormat(activeBrowserTab.title)?.toUpperCase()} preview` : activeBrowserTab.mime || "Attached file"}</span>
               {activeBrowserTab.kind === "pdf" && <><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: Math.max(.5, (activeBrowserTab.imageZoom || 1) - .15) })}><ZoomOut />Zoom out</button><button onClick={() => updateWorkspaceTab(activeBrowserTab.id, { imageZoom: Math.min(2.5, (activeBrowserTab.imageZoom || 1) + .15) })}><ZoomIn />Zoom in</button></>}
               <button onClick={downloadWorkspaceFile}><Download />Download</button>
             </div>
-          ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length} generated code file${workspaceArtifacts.length === 1 ? "" : "s"}` : activeBrowserTab?.kind === "projectfiles" ? `${activeBrowserTab.entries?.filter((entry) => entry.kind === "file").length || 0} project files · editable` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
+          ) : <div className="workspace-toolbar workspace-context"><span>{activeBrowserTab?.kind === "files" ? `${workspaceArtifacts.length + workspaceAttachments.length} conversation files` : activeBrowserTab?.kind === "projectfiles" ? `${activeBrowserTab.entries?.filter((entry) => entry.kind === "file").length || 0} project files · editable` : activeBrowserTab?.kind === "temporary" ? "Temporary chat · cleared when this tab closes" : "Choose a workspace tool"}</span></div>}
           <div className="browser-surface" ref={browserSurfaceRef}>
             <div
               className={`workspace-view workspace-view-${activeBrowserTab?.kind || "home"}`}
@@ -3611,18 +3615,20 @@ export default function App() {
               <Suspense fallback={<div className="workspace-file-viewer"><div><FileText /><h3>Opening PDF…</h3><p>Preparing the document viewer.</p></div></div>}>
                 <PdfViewer dataUrl={activeBrowserTab.fileUrl || ""} title={activeBrowserTab.title} zoom={activeBrowserTab.imageZoom || 1} onPages={(pdfPages) => updateWorkspaceTab(activeBrowserTab.id, { pdfPages })} />
               </Suspense>
+            ) : activeBrowserTab?.kind === "office" ? (
+              <Suspense fallback={<div className="office-empty" role="status">Preparing Office preview…</div>}><OfficeViewer dataUrl={activeBrowserTab.fileUrl || ''} title={activeBrowserTab.title} /></Suspense>
             ) : activeBrowserTab?.kind === "file" ? (
               <div className="workspace-file-viewer">
                 {activeBrowserTab.content ? <pre dir="auto">{activeBrowserTab.content}</pre> : <div><FileText /><h3>{activeBrowserTab.title}</h3><p>A native preview is not available for this file type.</p><button onClick={downloadWorkspaceFile}><Download />Download file</button></div>}
               </div>
             ) : activeBrowserTab?.kind === "files" ? (
               <div className="workspace-files">
-                <header><div><h3>Generated files</h3><p>Every code block created in your conversations appears here.</p></div><button onClick={() => fileRef.current?.click()}><Paperclip />Attach</button></header>
-                {workspaceArtifacts.length ? <div className="workspace-file-list">{workspaceArtifacts.map((artifact) => (
+                <header><div><h3>Conversation files</h3><p>Generated files, code and attachments from this chat.</p></div><button onClick={() => fileRef.current?.click()}><Paperclip />Attach</button></header>
+                {(workspaceArtifacts.length || workspaceAttachments.length) ? <div className="workspace-file-list">{workspaceAttachments.map(({ id, attachment, generated }) => <button key={`attachment-${id}`} onClick={() => openWorkspaceAttachment(attachment)}><AttachmentIcon name={attachment.name} /><span><b>{attachment.name}</b><small>{generated ? 'Generated file' : 'Attached file'} · {officeFormat(attachment.name)?.toUpperCase() || attachment.type}</small></span><ArrowRight /></button>)}{workspaceArtifacts.map((artifact) => (
                   <button key={artifact.id} onClick={() => openArtifact(artifact.title, artifact.language, artifact.content)}>
                     <Code2 /><span><b>{artifact.title}</b><small>{artifact.chatTitle} · {artifact.language}</small></span><ArrowRight />
                   </button>
-                ))}</div> : <div className="workspace-files-empty"><Folder /><h3>No generated files yet</h3><p>Ask your model to create code. Each code block will be collected here automatically.</p></div>}
+                ))}</div> : <div className="workspace-files-empty"><Folder /><h3>No files yet</h3><p>Attach a file or ask your model to create one.</p></div>}
                 {files.length > 0 && <section className="workspace-attachments"><small>Current attachments</small>{files.map((file) => <article key={file.name}><FileText /><span>{file.name}</span></article>)}</section>}
               </div>
             ) : activeBrowserTab?.kind === "projectfiles" ? (

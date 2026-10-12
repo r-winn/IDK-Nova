@@ -3889,6 +3889,26 @@ body.resizing-browser iframe { pointer-events: none; }
 .marketplace-search-dock::before { content: ''; position: absolute; top: -32px; left: 0; right: 0; height: 32px; background: var(--surface); }
 .marketplace-search-dock .marketplace-search { margin: 0; }
 .plugin-logo-word { color: #448bdd; background: color-mix(in srgb, #448bdd 14%, var(--surface)); }
+.plugin-logo img { width: 30px; height: 30px; object-fit: contain; }
+.file .plugin-logo, .workspace-file-list .plugin-logo { flex: 0 0 34px; width: 34px; height: 34px; background: transparent; }
+.office-viewer { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.office-preview-controls { display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 6px 14px; background: var(--surface); color: var(--muted); font-size: 11px; flex-shrink: 0; }
+.office-preview-controls button { color: var(--text); background: transparent; padding: 8px; border-radius: 8px; min-height: 34px; cursor: pointer; }
+.office-preview-controls button:hover, .office-preview-controls button.active { background: var(--hover); }
+.office-preview-controls button:disabled { opacity: .35; cursor: default; }
+.office-preview-controls svg { width: 16px; height: 16px; }
+.office-sheet-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; }
+.office-viewer iframe { flex: 1; width: 100%; min-height: 0; border: 0; background: #e7e9ed; }
+.office-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; height: 100%; padding: 32px; color: var(--muted); text-align: center; }
+.office-slide-scroll { flex: 1; min-height: 0; overflow: auto; padding: 24px; background: color-mix(in srgb, var(--surface) 92%, var(--accent)); }
+.office-slide-scroll > div { margin: auto; }
+.office-slide { display: block; width: 100%; height: auto; box-shadow: 0 12px 35px #0002; }
+.office-slide-scroll > small { display: block; max-width: 600px; margin: 20px auto; color: var(--muted); line-height: 1.7; font-size: 11px; }
+.office-sheet-scroll { flex: 1; overflow: auto; min-height: 0; background: var(--surface); user-select: text; }
+.office-sheet-scroll table { border-collapse: collapse; width: max-content; min-width: 100%; }
+.office-sheet-scroll td, .office-sheet-scroll th { border: 1px solid var(--border); padding: 10px 14px; min-width: 100px; max-width: 360px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.office-sheet-scroll th { position: sticky; left: 0; min-width: 44px; background: var(--hover); color: var(--muted); font-weight: 400; }
+.office-sheet-scroll p { padding: 10px; color: var(--muted); font-size: 11px; }
 .plugin-logo-powerpoint { color: #d57745; background: color-mix(in srgb, #d57745 14%, var(--surface)); }
 .plugin-logo-chrome { color: #619dcb; background: color-mix(in srgb, #619dcb 14%, var(--surface)); }
 .plugin-logo-academic { color: #9681cb; background: color-mix(in srgb, #9681cb 14%, var(--surface)); }

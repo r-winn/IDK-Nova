@@ -1,6 +1,6 @@
 {
-  "version": "0.28.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.28.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.28.0/IDK.Nova_0.28.0_x64-setup.exe",
-  "notes": ["PowerPoint studio with real themed PPTX slides and speaker notes", "Styled Word documents with tables, headers, footers and page breaks", "Read and revise attached DOCX, XLSX and PPTX as separate copies", "Native Chrome automation in isolated desktop Work profiles", "Article, academic, business and data-analysis prompt packs", "Real generation-stage labels in ordinary and temporary chats"]
+  "version": "0.29.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.29.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.29.0/IDK.Nova_0.29.0_x64-setup.exe",
+  "notes": ["Dedicated Word, Excel and PowerPoint previews in Workspace", "Designed Word presets and five PowerPoint slide layouts", "Original Microsoft Office file icons", "Generated files organized per conversation", "PDF research and real ZIP delivery bundles", "Six new professional prompt packs; plugins selected only in the composer"]
 }
