@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { inflateSync } from 'node:zlib';
 function load(path, dependencies = {}, globals = {}) {
   const module = { exports: {} };
   const source = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -42,6 +43,17 @@ test('Compatible Ollama metadata continues to a real chat-completion test', asyn
   const { api, requests } = agent([{ body: { model_info: { 'general.architecture': 'qwen3' } } }, { body: { choices: [{ message: { role: 'assistant', content: 'OK' } }] } }]);
   assert.equal(typeof await api.testModel({ id: 'local', baseUrl: 'http://localhost:11434/v1', apiKey: '', models: ['chat'] }, 'chat'), 'number');
   assert.equal(requests[1].url, 'http://localhost:11434/v1/chat/completions');
+});
+test('Vision readiness sends an actual image rather than a text-only ping', async () => {
+  const { api, requests } = agent([{ body: { details: { family: 'qwen35' }, capabilities: ['completion', 'vision'] } }, { body: { choices: [{ message: { content: 'OK' } }] } }]);
+  await api.testModel({ id: 'local', baseUrl: 'http://localhost:11434/v1', apiKey: '', models: ['vision'] }, 'vision', true);
+  assert.equal(requests[1].body.messages[0].content[1].type, 'image_url');
+  assert.match(requests[1].body.messages[0].content[1].image_url.url, /^data:image\/png;base64,/);
+  const image = Buffer.from(requests[1].body.messages[0].content[1].image_url.url.split(',')[1], 'base64');
+  const crc = bytes => { let value = 0xffffffff; for (const byte of bytes) { value ^= byte; for (let bit = 0; bit < 8; bit++) value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0); } return (value ^ 0xffffffff) >>> 0; };
+  let raster;
+  for (let offset = 8; offset < image.length;) { const length = image.readUInt32BE(offset); assert.equal(crc(image.subarray(offset + 4, offset + 8 + length)), image.readUInt32BE(offset + 8 + length)); if (image.toString('ascii', offset + 4, offset + 8) === 'IDAT') raster = inflateSync(image.subarray(offset + 8, offset + 8 + length)); offset += length + 12; }
+  assert.equal(image.readUInt32BE(16), 32); assert.equal(raster.length, 32 * 97);
 });
 const tools = [{ type: 'function', function: { name: 'fs_checkpoint', parameters: { type: 'object' }, description: 'Checkpoint' } }];
 const run = (api, execute, onToken = () => {}) => api.runAgentCompletion(config, [{ role: 'user', content: '@fs_checkpoint' }], '', tools, execute, () => {}, onToken, undefined, undefined, undefined, true, 'work', ['fs_checkpoint']);

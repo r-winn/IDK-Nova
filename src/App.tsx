@@ -39,6 +39,7 @@ import {
   HardDriveUpload,
   Heart,
   Image as ImageIcon,
+  ImagePlus,
   Info,
   Maximize2,
   Mail,
@@ -504,9 +505,13 @@ export default function App() {
   const [browserClosing, setBrowserClosing] = useState(false);
   const [editingMessage, setEditingMessage] = useState<{ index: number } | null>(null);
   const [importingLocalModel, setImportingLocalModel] = useState(false);
+  const localImportLock = useRef(false);
   const [ollamaInstalled, setOllamaInstalled] = useState<boolean | null>(null);
   const [pendingGgufPath, setPendingGgufPath] = useState("");
+  const [localGgufPath, setLocalGgufPath] = useState("");
+  const [localProjectorPath, setLocalProjectorPath] = useState("");
   const [ollamaInstall, setOllamaInstall] = useState<{ phase: string; message: string; downloaded: number; total: number; error: string } | null>(null);
+  const localImportBusy = importingLocalModel || ["starting", "downloading", "verifying", "installing"].includes(ollamaInstall?.phase || "");
   const [localModelImport, setLocalModelImport] = useState<{ phase: string; message: string; processed: number; total: number; percent: number; error: string } | null>(null);
   const [listening, setListening] = useState(false);
   const [config, setConfig] = useState<Config>(loadConfig);
@@ -2103,6 +2108,9 @@ export default function App() {
     setManualModel("");
     setOllamaInstall(null);
     setPendingGgufPath("");
+    setLocalGgufPath("");
+    setLocalProjectorPath("");
+    setLocalModelImport(null);
     setModelSetupView(view);
   };
   const addApiModel = async () => {
@@ -2166,7 +2174,7 @@ export default function App() {
     });
     try {
       if (!provider.apiKey && provider.apiKeyStored) throw new Error('Saved key needs vault access. Restore it in API keys & connections before testing.');
-      const latency = await testModel(provider, model);
+      const latency = await testModel(provider, model, provider.modelCapabilities?.[model]?.includes("vision") || false);
       setModelHealth((current) => ({ ...current, [key]: { state: "online", latency, checkedAt: Date.now() } }));
       setToast(`Model verified in ${latency} ms`);
     } catch (error) {
@@ -2187,16 +2195,29 @@ export default function App() {
       filters: [{ name: "GGUF model", extensions: ["gguf"] }],
     });
     if (!selected) return;
+    setLocalGgufPath(String(selected));
+    setLocalProjectorPath("");
+    setLocalModelImport(null);
+  };
+  const chooseLocalProjector = async () => {
+    if (!isDesktopApp()) { setToast("Local model import requires the desktop app"); return; }
+    const selected = await open({ multiple: false, filters: [{ name: "Vision projector (GGUF)", extensions: ["gguf"] }] });
+    if (selected) setLocalProjectorPath(String(selected));
+  };
+  const startLocalModelImport = async () => {
+    if (!localGgufPath) return;
     const installed = await invoke<boolean>("ollama_status").catch(() => false);
     setOllamaInstalled(installed);
     if (!installed) {
-      setPendingGgufPath(String(selected));
+      setPendingGgufPath(localGgufPath);
       setOllamaInstall({ phase: "missing", message: "Ollama is required to run GGUF models", downloaded: 0, total: 0, error: "" });
       return;
     }
-    await finishLocalModelImport(String(selected));
+    await finishLocalModelImport(localGgufPath, localProjectorPath);
   };
-  const finishLocalModelImport = async (selected: string) => {
+  const finishLocalModelImport = async (selected: string, projector = "") => {
+    if (localImportLock.current) return;
+    localImportLock.current = true;
     setImportingLocalModel(true);
     setLocalModelImport({ phase: "starting", message: "Preparing the model import", processed: 0, total: 0, percent: 1, error: "" });
     const channel = new Channel<{ event: "status" | "progress"; data: { phase: string; message: string; processed?: number; total?: number; percent: number } }>();
@@ -2209,19 +2230,22 @@ export default function App() {
       error: "",
     }));
     try {
-      const model = await invoke<string>("import_gguf_model", {
+      const imported = await invoke<{ model: string; capabilities: string[] }>("import_gguf_model", {
         sourcePath: selected,
+        projectorPath: projector || null,
         modelName: "",
         onEvent: channel,
       });
-      const existing = draftConfig.providers.find((provider) =>
-        /localhost:11434|127\.0\.0\.1:11434/.test(provider.baseUrl),
-      );
+      const { model, capabilities } = imported;
+      const existing = draftConfig.providers.find((provider) => {
+        try { const url = new URL(provider.baseUrl); return ["localhost", "127.0.0.1"].includes(url.hostname) && url.port === "11434"; } catch { return false; }
+      });
       const providerId = existing?.id || `ollama-import-${Date.now()}`;
       const verifiedProvider: Provider = {
         ...(existing || { id: providerId, name: "Ollama Local", apiKey: "", models: [] }),
         baseUrl: "http://127.0.0.1:11434/v1",
         models: [...new Set([...(existing?.models || []), model])],
+        modelCapabilities: { ...(existing?.modelCapabilities || {}), [model]: capabilities },
       };
       const providers = existing
         ? draftConfig.providers.map((provider) =>
@@ -2242,7 +2266,7 @@ export default function App() {
       let latency = 0;
       try {
         setLocalModelImport((current) => ({ ...(current || { processed: 0, total: 0, error: "" }), phase: "testing", message: "Running a live completion test", percent: 99, error: "" }));
-        latency = await testModel(verifiedProvider, model);
+        latency = await testModel(verifiedProvider, model, capabilities.includes("vision"));
         setLocalModelImport({ phase: "ready", message: "Model imported and answered successfully", processed: 0, total: 0, percent: 100, error: "" });
         setModelHealth((current) => ({ ...current, [`${providerId}:${model}`]: { state: "online", latency, checkedAt: Date.now() } }));
       } catch (testError) {
@@ -2257,6 +2281,7 @@ export default function App() {
       setLocalModelImport((current) => ({ ...(current || { phase: "error", message: "Import failed", processed: 0, total: 0, percent: 0, error: "" }), phase: "error", message: "Local model import failed", error: detail }));
       setToast(detail);
     } finally {
+      localImportLock.current = false;
       setImportingLocalModel(false);
     }
   };
@@ -2271,7 +2296,7 @@ export default function App() {
       await invoke("install_ollama", { onEvent: channel });
       setOllamaInstalled(true);
       setOllamaInstall((current) => ({ ...(current || { downloaded: 0, total: 0, error: "" }), phase: "ready", message: "Ollama installed and ready", error: "" }));
-      if (pendingGgufPath) { const path = pendingGgufPath; setPendingGgufPath(""); await finishLocalModelImport(path); }
+      if (pendingGgufPath) { const path = pendingGgufPath; setPendingGgufPath(""); await finishLocalModelImport(path, localProjectorPath); }
     } catch (error) {
       setOllamaInstall((current) => ({ ...(current || { phase: "error", message: "Installation failed", downloaded: 0, total: 0, error: "" }), phase: "error", error: error instanceof Error ? error.message : String(error) }));
     }
@@ -3241,7 +3266,7 @@ export default function App() {
                           return <div className={`model-library-row ${activeModel ? "active" : ""}`} key={key}>
                             <button className="model-library-main" onClick={() => setDraftConfig((current) => ({ ...current, activeProviderId: provider.id, activeModel: model }))}>
                               <span className={`model-status ${health?.state || "unchecked"}`}><Bot /></span>
-                              <span><b>{model}</b><small>{provider.name} · {health?.state === "online" ? `Last test passed · ${new Date(health.checkedAt).toLocaleTimeString()}` : health?.state === "offline" ? "Connection unavailable" : activeModel ? "Selected · not tested this session" : "Not tested this session"}</small></span>
+                              <span><b>{model}</b><small>{provider.name} · {health?.state === "online" ? `Last test passed · ${new Date(health.checkedAt).toLocaleTimeString()}` : health?.state === "offline" ? "Connection unavailable" : activeModel ? "Selected · not tested this session" : "Not tested this session"}</small>{provider.modelCapabilities?.[model]?.length ? <span className="local-model-capabilities" aria-label="Runtime-reported model capabilities">{provider.modelCapabilities[model].filter(value => ["completion", "vision", "tools", "thinking"].includes(value)).map(value => <span key={value}>{({ completion: "Chat", vision: "Vision", tools: "Tools", thinking: "Thinking" } as Record<string, string>)[value]}</span>)}</span> : null}</span>
                             </button>
                             <div className="model-library-actions">
                               {health?.state === "online" && <span className="verified-label" title={`Live completion test passed ${new Date(health.checkedAt).toLocaleTimeString()}`}><ShieldCheck />{health.latency} ms</span>}
@@ -3286,8 +3311,11 @@ export default function App() {
                     </div>}
                     {modelSetupView === "local" && <div className="model-setup-view local-model-setup">
                       <button className="setup-back" onClick={() => setModelSetupView("choose")}><ChevronRight />Choose another method</button>
-                      <div className="setup-title"><h2>Import a local model</h2><p>Choose a GGUF file. Nova keeps a private copy and configures the local runtime for you.</p></div>
-                      <button className="local-drop" disabled={importingLocalModel} onClick={importLocalModel}><HardDriveUpload /><span><b>{importingLocalModel ? "Importing and verifying…" : "Choose a GGUF file"}</b><small>Desktop app only · the original file is not modified</small></span></button>
+                      <div className="setup-title"><h2>Import a local model</h2><p>Select the main GGUF and, for image understanding, its matching Vision projector. Nova copies both privately and verifies the actual capabilities.</p></div>
+                      <button className="local-drop" disabled={localImportBusy} onClick={importLocalModel}><HardDriveUpload /><span><b>{localGgufPath ? localGgufPath.split(/[\\/]/).pop() : "Choose the main GGUF"}</b><small>Language model · original file stays unchanged</small></span></button>
+                      <div className="local-vision-component"><button className="local-drop" disabled={localImportBusy} onClick={chooseLocalProjector}><ImagePlus /><span><b>{localProjectorPath ? localProjectorPath.split(/[\\/]/).pop() : "Add Vision projector (optional)"}</b><small>Matching mmproj GGUF · required for separate Vision weights</small></span></button>{localProjectorPath && <button className="secondary" disabled={localImportBusy} onClick={() => setLocalProjectorPath("")}>Remove projector</button>}</div>
+                      <p className="local-import-hint">Use the projector published for the exact same model. A projector is not a LoRA adapter. Use an up-to-date Ollama; unsupported combinations produce an error, not a false Vision badge. Image generation models such as FLUX need a different runtime.</p>
+                      <button className="primary-button" disabled={!localGgufPath || localImportBusy} onClick={startLocalModelImport}>{importingLocalModel ? "Importing and verifying…" : "Import & test model"}</button>
                       {localModelImport && <div className={`local-import-progress ${localModelImport.phase === "error" ? "failed" : ""}`}>
                         <div><span><b>{localModelImport.message}</b><small>{localModelImport.phase === "copying" && localModelImport.total > 0 ? `${(localModelImport.processed / 1073741824).toFixed(2)} / ${(localModelImport.total / 1073741824).toFixed(2)} GB` : localModelImport.phase === "error" ? localModelImport.error : localModelImport.phase === "ready" ? "The model is stored privately in Nova." : "Please keep Nova open until this finishes."}</small></span><strong>{localModelImport.percent}%</strong></div>
                         <i><span style={{ width: `${Math.max(1, Math.min(100, localModelImport.percent))}%` }} /></i>

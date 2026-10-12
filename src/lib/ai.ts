@@ -113,7 +113,7 @@ export async function discoverModels(provider: Provider): Promise<string[]> {
   return [...new Set<string>(ids)].sort();
 }
 
-export async function testModel(provider: Provider, model: string): Promise<number> {
+export async function testModel(provider: Provider, model: string, testVision = false): Promise<number> {
   const started = performance.now();
   const providerKey = responsesProviderKey(provider);
   const localOllama = /^https?:\/\/(?:localhost|127\.0\.0\.1):11434(?:\/|$)/i.test(provider.baseUrl);
@@ -136,7 +136,8 @@ export async function testModel(provider: Provider, model: string): Promise<numb
     if (isUnsupportedResponsesError(response.status) || (response.status === 400 && /(responses.{0,30}(not supported|unsupported)|(?:unknown|unsupported).{0,24}(?:endpoint|route))/i.test(detail))) unsupportedResponsesProviders.add(providerKey);
     else throw new Error(`Model test failed (${response.status}): ${detail}`);
   }
-  const response = await request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: headers(provider), body: JSON.stringify({ model, stream: false, max_tokens: 8, messages: [{ role: 'user', content: 'Reply with OK' }] }) });
+const content = testVision ? [{ type: 'text', text: 'Reply with OK.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nO3NMQ0AAAgDsEnBvzokoGEnSWugmdKWIhAIBAKBQCAQCL4EB0kdYFs/wATcAAAAAElFTkSuQmCC' } }] : 'Reply with OK';
+  const response = await request(endpoint(provider, '/chat/completions'), { method: 'POST', headers: headers(provider), body: JSON.stringify({ model, stream: false, max_tokens: 8, messages: [{ role: 'user', content }] }) });
   if (!response.ok) throw new Error(`Model test failed (${response.status}): ${await response.text()}`);
   const payload = await response.json();
   if (!payload.choices?.[0]?.message) throw new Error('Provider returned an invalid Chat Completions payload');

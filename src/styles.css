@@ -3424,6 +3424,12 @@ body.resizing-browser iframe { pointer-events: none; }
 .clean-form input { margin-bottom: 0 !important; }
 .connect-model-button { grid-column: 1 / -1; justify-self: start; margin-top: 5px; }
 .local-model-setup .local-drop { margin-top: 4px; }
+.local-vision-component { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.local-vision-component .local-drop { flex: 1; min-width: 0; }
+.local-model-setup .local-drop b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.local-import-hint { margin: 14px 0; color: var(--muted); font-size: 11px; line-height: 1.8; }
+.local-model-capabilities { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.local-model-capabilities span { padding: 3px 7px; border-radius: 6px; background: var(--hover); color: var(--muted); font-size: 9px; }
 @media (max-width: 720px) {
   .models-page-heading { align-items: flex-start; flex-direction: column; }
   .model-source-options, .clean-form { grid-template-columns: 1fr; }

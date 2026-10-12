@@ -1,6 +1,6 @@
 {
-  "version": "0.29.2",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.29.2",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.29.2/IDK.Nova_0.29.2_x64-setup.exe",
-  "notes": ["Fixed desktop permission for local Ollama on port 11434", "GGUF metadata validation rejects image models as chat imports", "Existing image models diagnosed before chat testing", "Readiness is confirmed only after a live completion succeeds", "Ollama commands and imported provider now share the same local host"]
+  "version": "0.29.3",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.29.3",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.29.3/IDK.Nova_0.29.3_x64-setup.exe",
+  "notes": ["Select a main GGUF and matching optional Vision projector", "Aggregate progress for all local model components", "Runtime-reported Chat, Vision, Tools and Thinking capabilities", "Vision readiness tested with an actual image request", "Bounded import progress and 30-minute registration safeguard"]
 }

@@ -31,6 +31,18 @@ fn architecture(bytes: &[u8]) -> Result<Option<String>, String> {
     }
     Ok(None)
 }
+pub fn modelfile(main: &Path, projector: Option<&Path>) -> String {
+    let source = |path: &Path| format!("FROM \"{}\"\n", path.to_string_lossy().replace('\\', "/").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r"));
+    let mut value = source(main);
+    if let Some(path) = projector { value.push_str(&source(path)); }
+    value
+}
+pub fn verify_vision(capabilities: &[String], requested: bool) -> Result<(), String> {
+    if requested && !capabilities.iter().any(|value| value == "vision") {
+        return Err("VISION_NOT_ENABLED: Files were registered, but Ollama did not recognize Vision. Update Ollama and select the matching projector for this exact model. No Vision-ready model has been added to Nova.".into());
+    }
+    Ok(())
+}
 struct Metadata<'a> { bytes: &'a [u8], position: usize }
 impl Metadata<'_> {
     fn take(&mut self, size: usize) -> Result<&[u8], String> {
@@ -64,4 +76,6 @@ mod tests {
     }
     #[test] fn actual_architecture_is_read_not_guessed_from_filename() { assert_eq!(architecture(&sample("flux")).unwrap().as_deref(), Some("flux")); assert_eq!(architecture(&sample("llama")).unwrap().as_deref(), Some("llama")); }
     #[test] fn invalid_or_truncated_metadata_is_rejected() { assert!(architecture(b"html").is_err()); let mut bytes = sample("llama"); bytes.pop(); assert!(architecture(&bytes).is_err()); }
+    #[test] fn projector_is_a_model_layer_not_a_lora_adapter() { let value = modelfile(Path::new("model.gguf"), Some(Path::new("mmproj.gguf"))); assert_eq!(value.matches("FROM ").count(), 2); assert!(!value.contains("ADAPTER")); assert_eq!(modelfile(Path::new("model.gguf"), None).matches("FROM ").count(), 1); }
+    #[test] fn missing_vision_is_not_reported_as_ready() { assert!(verify_vision(&["completion".into()], true).is_err()); assert!(verify_vision(&["completion".into(), "vision".into()], true).is_ok()); assert!(verify_vision(&[], false).is_ok()); }
 }

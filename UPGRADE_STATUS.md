@@ -102,6 +102,10 @@ Existing features must be audited rather than assumed to satisfy these requireme
 
 Real DOCX/XLSX generation, read-only GitHub account connection, fixed settings dimensions and sticky search. See [release details](docs/releases/v0.27.0.md) for verified scope and limitations. Office files are attached locally, never sent as binary tool results. GitHub tokens use the OS vault on desktop and session-only memory on web, not portable config.
 
+## 0.29.3 — Local model components
+
+The import wizard selects main GGUF plus optional matching Vision projector, aggregates copy progress, registers both through Ollama, and displays runtime capabilities. A real image probe is required for Vision readiness. Import progress is bounded and registration cannot hang indefinitely. Original model files are unchanged. [Verification and limits](docs/releases/v0.29.3.md).
+
 ## 0.29.2 — Local GGUF connection and compatibility
 
 Explicit desktop loopback scope for Ollama fixes requests blocked before reaching port 11434. GGUF architecture validation and model metadata diagnostics distinguish image models from conversational ones. Registration and live readiness are separate; import commands target the same local host as the configured provider. 78 frontend and 9 native tests passed, plus an actual Qwen3 GGUF completion through local Ollama. [Details](docs/releases/v0.29.2.md).

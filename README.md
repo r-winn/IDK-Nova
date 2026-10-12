@@ -20,7 +20,11 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
-### New in 0.29.2 · Local GGUF connectivity
+### New in 0.29.3 · Local multimodal import
+
+The local-model wizard accepts a main GGUF and a matching optional mmproj Vision file. Both are copied privately, registered as Ollama model layers and checked for actual capabilities. Vision-ready imports send a real test image before being marked ready; mismatches and unsupported runtimes remain explicit errors. [Setup and verification limits](docs/releases/v0.29.3.md).
+
+### Local GGUF connectivity
 
 Desktop access to Ollama's loopback port 11434 is fixed. Import checks actual GGUF metadata, explains why image/video models such as FLUX are not chat models, and reports readiness only after a live completion succeeds. Already-registered image models receive a specific diagnostic instead of a generic connection failure. Existing model files are preserved. [Verification and limits](docs/releases/v0.29.2.md).
 
