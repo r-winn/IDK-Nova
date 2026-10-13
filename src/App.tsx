@@ -1542,7 +1542,7 @@ export default function App() {
           ...messages[last],
           content: error instanceof Error && error.message.includes('__NOVA_INPUT_CANCELLED__') ? 'Input request cancelled. You can send a new message.' : controller.signal.aborted
             ? (messages[last].content || "Response stopped.")
-            : `I couldn’t connect to ${config.activeModel}.\n\n${error instanceof Error ? error.message : "Unknown error"}`,
+            : `The response could not be completed by ${config.activeModel}.\n\n${error instanceof Error ? error.message : "Unknown error"}`,
         };
         return { ...item, messages };
       }));
@@ -2011,7 +2011,7 @@ export default function App() {
                   index === item.messages.length - 1
                     ? {
                         ...message,
-                        content: `I couldn’t connect to ${config.activeModel || "the selected model"}. Check Settings and make sure the provider is running.\n\n${redactSecrets(error instanceof Error ? error.message : "Unknown error")}`,
+                        content: `The response could not be completed by ${config.activeModel || "the selected model"}.\n\n${redactSecrets(error instanceof Error ? error.message : "Unknown error")}`,
                       }
                     : message,
                 ),

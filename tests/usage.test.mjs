@@ -31,6 +31,16 @@ function aiWithFetch(fetch) {
   const api = load('../src/lib/ai.ts', { '../types': { getActiveProvider: value => value.providers[0] }, '@tauri-apps/plugin-http': { fetch }, '../agent/loop-watchdog': { AgentLoopWatchdog: class { observe() {} } }, './usage': { UsageTracker: Tracker } }, { window: { fetch }, location: { protocol: 'https:' } });
   return { api, reported };
 }
+test('Ordinary Ollama chat ignores stale response IDs and retains complete conversation history', async () => {
+  const requests = [];
+  const { api } = aiWithFetch(async (_, options) => { requests.push(JSON.parse(options.body)); return new Response('data: {"type":"response.output_text.delta","delta":"Blue"}\n\ndata: {"type":"response.completed","response":{"id":"local-id","output":[]}}\n\n'); });
+  const local = { ...config, providers: [{ ...config.providers[0], baseUrl: 'http://127.0.0.1:11434/v1' }] };
+  const messages = [{ role: 'user', content: 'Remember blue' }, { role: 'assistant', content: 'Noted' }, { role: 'user', content: 'What color?' }];
+  let memory = 'old';
+  await api.streamCompletion(local, messages, () => {}, undefined, undefined, { providerId: local.providers[0].id, model: local.activeModel, previousResponseId: 'stale' }, value => memory = value);
+  assert.equal(requests[0].store, false); assert.equal(requests[0].previous_response_id, undefined);
+  assert.equal(requests[0].input.length, 3); assert.equal(requests[0].input[0].content[0].text, 'Remember blue'); assert.equal(memory, undefined);
+});
 test('Responses negotiates stateless and temperature compatibility together without losing history', async () => {
   const bodies = [];
   const { api, reported } = aiWithFetch(async (_, options) => {

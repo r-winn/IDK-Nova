@@ -1,6 +1,6 @@
 {
-  "version": "0.30.1",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.30.1",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.30.1/IDK.Nova_0.30.1_x64-setup.exe",
-  "notes": ["GGUF imports directly into Ollama without an extra permanent Nova copy", "Disk-space preflight accounts for model, projector and safety reserve", "Clear required/available space errors before import starts", "Temporary model definitions are cleaned on success and failure", "Runtime availability is no longer mistaken for successful model readiness"]
+  "version": "0.30.2",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.30.2",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.30.2/IDK.Nova_0.30.2_x64-setup.exe",
+  "notes": ["Ollama Responses calls replay full conversation and tool results without server-side response IDs", "Recover lost proxy chains without rerunning completed tools", "Template failures no longer masquerade as connection outages", "Real local Qwen tool-continuation smoke tests"]
 }

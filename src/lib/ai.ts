@@ -59,8 +59,14 @@ const statelessResponsesProviders = new Set<string>();
 const temperaturelessResponsesProviders = new Set<string>();
 const usageOptionlessProviders = new Set<string>();
 const responsesProviderKey = (provider: Provider) => `${provider.id}:${provider.baseUrl.replace(/\/$/, '')}`;
+// Ollama's Responses compatibility endpoint does not persist OpenAI response
+// chains. Keep the protocol, but replay the complete local conversation.
+const localOllama = (provider: Provider) => {
+  try { const url = new URL(provider.baseUrl); return ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) && url.port === '11434'; }
+  catch { return false; }
+};
 const isStaleResponseError = (status: number, detail: string) => [400, 404].includes(status) && /previous.{0,30}response|response.{0,30}(not found|expired|missing)/i.test(detail);
-const requiresStatelessResponses = (status: number, detail: string) => status === 400 && /(store.{0,30}(not supported|unsupported|must be false)|previous_response_id.{0,30}(not supported|unsupported)|each response request is independent)/i.test(detail);
+const requiresStatelessResponses = (status: number, detail: string) => (status === 400 && /(store.{0,30}(not supported|unsupported|must be false)|previous_response_id.{0,30}(not supported|unsupported)|each response request is independent)/i.test(detail)) || ([400, 500].includes(status) && /No user query found in messages/i.test(detail));
 const rejectsTemperature = (status: number, detail: string) => status === 400 && /temperature.{0,40}(not supported|unsupported|not allowed|unknown)/i.test(detail);
 const responseMemoryMatches = (memory: ResponseMemory | undefined, provider: Provider, model: string) =>
   Boolean(memory?.previousResponseId && memory.providerId === provider.id && memory.model === model);
@@ -159,7 +165,7 @@ async function streamCompletionImpl(config: Config, messages: Message[], onToken
   const chained = responseMemoryMatches(memory, provider, config.activeModel);
   const providerKey = responsesProviderKey(provider);
   if (!unsupportedResponsesProviders.has(providerKey)) {
-    let stateless = statelessResponsesProviders.has(providerKey);
+    let stateless = localOllama(provider) || statelessResponsesProviders.has(providerKey);
     const createResponse = (useChain: boolean, store: boolean) => request(endpoint(provider, '/responses'), {
       method: 'POST',
       headers: { ...headers(provider), Accept: 'text/event-stream' },
@@ -332,10 +338,12 @@ async function runAgentCompletionImpl(
   if (!provider || !config.activeModel) throw new Error('Connect an agent-capable model first');
   const chained = responseMemoryMatches(memory, provider, config.activeModel);
   const providerKey = responsesProviderKey(provider);
-  let stateless = statelessResponsesProviders.has(providerKey);
+  let stateless = localOllama(provider) || statelessResponsesProviders.has(providerKey);
   let previousResponseId = !stateless && chained ? memory!.previousResponseId : '';
   let responseInput: any[] = responsesInput(!stateless && chained ? messages.slice(-1) : messages);
-  let statelessContext: any[] = stateless ? [...responseInput] : [];
+  // Always retain a replay transcript, including successful tool outputs, so a
+  // proxy that loses its server-side chain can recover without rerunning tools.
+  const replayContext: any[] = responsesInput(messages);
   // Preserve genuinely optional layout fields across providers. Runtime handlers
   // validate arguments; Responses must not silently normalize them as required.
   const responseTools = tools.map((tool) => ({ type: 'function', name: tool.function.name, description: tool.function.description, parameters: tool.function.parameters, strict: false }));
@@ -351,12 +359,11 @@ async function runAgentCompletionImpl(
     });
     if (!response.ok) {
       const detail = await response.text();
-      if (requiresStatelessResponses(response.status, detail)) {
+      if (!stateless && requiresStatelessResponses(response.status, detail)) {
         statelessResponsesProviders.add(providerKey);
         stateless = true;
         previousResponseId = '';
-        responseInput = responsesInput(messages);
-        statelessContext = [...responseInput];
+        responseInput = [...replayContext];
         continue;
       }
       if (!temperaturelessResponsesProviders.has(providerKey) && rejectsTemperature(response.status, detail)) {
@@ -378,12 +385,13 @@ async function runAgentCompletionImpl(
     const { payload, streamed } = await readAgentTurn(response, 'responses', pendingTools.size ? () => {} : onToken);
     reportUsage(payload.usage);
     if (!stateless) previousResponseId = payload.id || previousResponseId;
-    if (stateless && Array.isArray(payload.output)) statelessContext.push(...payload.output);
+    if (Array.isArray(payload.output)) replayContext.push(...payload.output);
     const calls = (Array.isArray(payload.output) ? payload.output : []).filter((item: any) => item?.type === 'function_call');
     if (!calls.length) {
       if (pendingTools.size) {
         responseInput = [{ role: 'user', content: [{ type: 'input_text', text: missingToolInstruction() }] }];
-        if (stateless) { statelessContext.push(...responseInput); responseInput = statelessContext; }
+        replayContext.push(...responseInput);
+        if (stateless) responseInput = [...replayContext];
         turn += 1;
         continue;
       }
@@ -414,10 +422,8 @@ async function runAgentCompletionImpl(
       if (screenImage) screenImages.push(screenImage);
     }
     if (screenImages.length) responseInput.push({ role: 'user', content: [{ type: 'input_text', text: 'This is the newest primary-display state after the requested actions. Coordinates are normalized from 0 to 1000. Inspect it carefully and continue until the result is visibly verified.' }, { type: 'input_image', image_url: screenImages.at(-1) }] });
-    if (stateless) {
-      statelessContext.push(...responseInput);
-      responseInput = statelessContext;
-    }
+    replayContext.push(...responseInput);
+    if (stateless) responseInput = [...replayContext];
     turn += 1;
   }
   onMemory?.(undefined);

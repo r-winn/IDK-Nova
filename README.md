@@ -22,6 +22,8 @@ Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
 ### New in 0.30.0 · Designed Office output
 
+**0.30.2 compatibility fix:** Local Ollama tool turns replay complete user/call/result history rather than relying on unsupported server-side response IDs. Lost proxy chains recover without rerunning completed tools. [Diagnosis and verification](docs/releases/v0.30.2.md).
+
 **0.30.1 local-import fix:** GGUF files now import directly into Ollama without an extra permanent Nova copy. A disk-space preflight reports required and available space before import. Original files and existing models are preserved. [Storage requirements and verification limits](docs/releases/v0.30.1.md).
 
 PowerPoint now offers eight art directions and eleven content-driven layouts, with native editable charts, tables, comparisons, timelines, metrics and real attached images. Word adds proposal/academic typography, callouts, real bullet lists and configurable margins. Excel adds branded headers, banding, adaptive widths, filtering and RTL views. New creative-direction and proposal packs are invoked explicitly with `@`; executable plugins remain opt-in beside attachments. [Capabilities, usage and verification limits](docs/releases/v0.30.0.md).

@@ -22,6 +22,7 @@ test('Diagnostics distinguish authentication and avoid guessing CORS', () => {
   assert.match(api.diagnoseConnection('Failed to fetch').action, /cannot distinguish/);
   assert.equal(api.diagnoseConnection('url not allowed on the configured scope: http://127.0.0.1:11434/v1/chat/completions').title, 'Desktop connection permission blocked');
   assert.equal(api.diagnoseConnection('GGUF_IMAGE_MODEL: flux').title, 'Not a chat model');
+  assert.equal(api.diagnoseConnection('Agent provider returned 500: Jinja Exception: No user query found in messages.').title, 'Model conversation template failed');
 });
 function agent(responses) {
   const requests = [];
@@ -57,6 +58,29 @@ test('Vision readiness sends an actual image rather than a text-only ping', asyn
 });
 const tools = [{ type: 'function', function: { name: 'fs_checkpoint', parameters: { type: 'object' }, description: 'Checkpoint' } }];
 const run = (api, execute, onToken = () => {}) => api.runAgentCompletion(config, [{ role: 'user', content: '@fs_checkpoint' }], '', tools, execute, () => {}, onToken, undefined, undefined, undefined, true, 'work', ['fs_checkpoint']);
+test('An Ollama tool continuation sends the user, call and output together without response IDs', async () => {
+  const { api, requests } = agent([{ body: { id: 'r1', output: [{ type: 'function_call', name: 'fs_checkpoint', call_id: 'c1', arguments: '{}' }] } }, { body: { id: 'r2', output_text: 'Verified.' } }]);
+  const localConfig = { ...config, providers: [{ ...config.providers[0], baseUrl: 'http://127.0.0.1:11434/v1' }] };
+  let calls = 0, memory = 'unchanged';
+  await api.runAgentCompletion(localConfig, [{ role: 'user', content: 'Create a checkpoint' }], '', tools, async () => { calls++; return { ok: true }; }, () => {}, () => {}, undefined, { providerId: 'test', model: 'model', previousResponseId: 'stale' }, value => memory = value);
+  assert.equal(calls, 1); assert.equal(memory, undefined);
+  for (const request of requests) { assert.equal(request.body.store, false); assert.equal(request.body.previous_response_id, undefined); }
+  assert.deepEqual(requests[1].body.input.map(item => item.role || item.type), ['user', 'function_call', 'function_call_output']);
+});
+test('A proxy losing a chain after successful execution replays results, not side effects', async () => {
+  const { api, requests } = agent([{ body: { id: 'r1', output: [{ type: 'function_call', name: 'fs_checkpoint', call_id: 'c1', arguments: '{}' }] } }, { status: 500, text: 'Jinja Exception: No user query found in messages.' }, { body: { id: 'r3', output_text: 'Recovered.' } }]);
+  let calls = 0;
+  await run(api, async () => { calls++; return { ok: true }; });
+  assert.equal(calls, 1); assert.equal(requests[1].body.previous_response_id, 'r1');
+  assert.equal(requests[2].body.store, false); assert.equal(requests[2].body.previous_response_id, undefined);
+  assert.deepEqual(requests[2].body.input.map(item => item.role || item.type), ['user', 'function_call', 'function_call_output']);
+  assert.equal(JSON.parse(requests[2].body.input[2].output).ok, true);
+});
+test('A persistent template error is retried once, not indefinitely', async () => {
+  const { api, requests } = agent([{ status: 500, text: 'No user query found in messages.' }, { status: 500, text: 'No user query found in messages.' }]);
+  await assert.rejects(run(api, async () => assert.fail('No tool should run')), /No user query/);
+  assert.equal(requests.length, 2);
+});
 test('Responses executes an explicit tool before declaring completion', async () => {
   const { api, requests } = agent([{ body: { id: 'r1', output: [{ type: 'function_call', name: 'fs_checkpoint', call_id: 'c1', arguments: '{}' }] } }, { body: { id: 'r2', output_text: 'Verified.' } }]);
   let calls = 0; let text = '';
