@@ -1,6 +1,6 @@
 {
-  "version": "0.30.0",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.30.0",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.30.0/IDK.Nova_0.30.0_x64-setup.exe",
-  "notes": ["PowerPoint design studio: eight palettes and eleven purposeful layouts", "Editable charts, tables, timelines and real attachment images", "Word proposal and academic presets with callouts, lists and margins", "Branded Excel sheets with filters, adaptive widths and RTL", "Creative direction and proposal prompt packs with stronger delivery instructions", "Desktop-only features visibly disabled on web without deleting configuration"]
+  "version": "0.30.1",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.30.1",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.30.1/IDK.Nova_0.30.1_x64-setup.exe",
+  "notes": ["GGUF imports directly into Ollama without an extra permanent Nova copy", "Disk-space preflight accounts for model, projector and safety reserve", "Clear required/available space errors before import starts", "Temporary model definitions are cleaned on success and failure", "Runtime availability is no longer mistaken for successful model readiness"]
 }

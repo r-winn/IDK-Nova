@@ -3,6 +3,7 @@ mod credentials;
 mod voice;
 mod chrome;
 mod gguf;
+mod import_storage;
 use chrome::chrome_work_action;
 use voice::create_voice_token;
 use credentials::{read_provider_credential, write_provider_credential};
@@ -413,38 +414,6 @@ fn send_import_status(channel: &Channel<LocalModelImportEvent>, phase: &str, mes
     let _ = channel.send(LocalModelImportEvent::Status { phase: phase.into(), message: message.into(), percent });
 }
 
-fn copy_model_with_progress(source: &Path, destination: &Path, channel: &Channel<LocalModelImportEvent>, offset: u64, combined_total: u64) -> Result<(), String> {
-    if source.canonicalize().ok().as_ref() == destination.canonicalize().ok().as_ref() && destination.is_file() {
-        let total = fs::metadata(source).map(|metadata| metadata.len()).unwrap_or(0);
-        let _ = channel.send(LocalModelImportEvent::Progress { phase: "copying".into(), message: "Model file already stored in Nova".into(), processed: total, total, percent: 62 });
-        return Ok(());
-    }
-    let temporary = destination.with_extension("gguf.nova-partial");
-    struct PartialCopy(PathBuf);
-    impl Drop for PartialCopy { fn drop(&mut self) { let _ = fs::remove_file(&self.0); } }
-    let _cleanup = PartialCopy(temporary.clone());
-    let mut input = fs::File::open(source).map_err(|error| format!("Could not open the selected model: {error}"))?;
-    let mut output = fs::File::create(&temporary).map_err(|error| format!("Could not create Nova's private model copy: {error}"))?;
-    let mut buffer = vec![0u8; 4 * 1024 * 1024];
-    let mut processed = 0u64;
-    loop {
-        let count = input.read(&mut buffer).map_err(|error| format!("Could not read the selected model: {error}"))?;
-        if count == 0 { break; }
-        if let Err(error) = output.write_all(&buffer[..count]) {
-            let _ = fs::remove_file(&temporary);
-            return Err(format!("Could not copy the model into Nova. Check available disk space: {error}"));
-        }
-        processed += count as u64;
-        let done = offset.saturating_add(processed);
-        let percent = if combined_total == 0 { 8 } else { 5 + ((done.saturating_mul(57) / combined_total).min(57) as u8) };
-        let _ = channel.send(LocalModelImportEvent::Progress { phase: "copying".into(), message: "Copying local model components into Nova".into(), processed: done, total: combined_total, percent });
-    }
-    output.sync_all().map_err(|error| format!("Could not finish writing the model: {error}"))?;
-    drop(output);
-    if destination.exists() { fs::remove_file(destination).map_err(|error| format!("Could not replace the previous private model copy: {error}"))?; }
-    fs::rename(&temporary, destination).map_err(|error| format!("Could not finalize the private model copy: {error}"))
-}
-
 fn parse_ollama_percent(value: &str) -> Option<u8> {
     let marker = value.rfind('%')?;
     value[..marker].split(|character: char| !character.is_ascii_digit()).filter(|part| !part.is_empty()).last()?.parse::<u8>().ok().map(|percent| percent.min(100))
@@ -455,6 +424,7 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, projector
     tauri::async_runtime::spawn_blocking(move || {
         send_import_status(&on_event, "validating", "Checking the selected GGUF file", 2);
         let source = PathBuf::from(&source_path);
+        if !source.is_absolute() { return Err("Choose an absolute local model path".into()); }
         if source.extension().and_then(|value| value.to_str()).map(|value| value.eq_ignore_ascii_case("gguf")) != Some(true) {
             return Err("Choose a valid .gguf model file".into());
         }
@@ -464,7 +434,7 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, projector
         gguf::check_chat_file(&source)?;
         let projector = projector_path.filter(|path| !path.trim().is_empty()).map(PathBuf::from);
         if let Some(path) = &projector {
-            if !path.is_file() || path.extension().and_then(|s| s.to_str()).map(|s| s.eq_ignore_ascii_case("gguf")) != Some(true) { return Err("Choose a matching GGUF vision projector file".into()); }
+            if !path.is_absolute() || !path.is_file() || path.extension().and_then(|s| s.to_str()).map(|s| s.eq_ignore_ascii_case("gguf")) != Some(true) { return Err("Choose a matching GGUF vision projector file".into()); }
             if path.canonicalize().ok() == source.canonicalize().ok() { return Err("The main model and Vision projector must be different files".into()); }
             gguf::check_chat_file(path)?;
         }
@@ -475,24 +445,19 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, projector
         if safe_name.is_empty() {
             return Err("Enter a valid model name".into());
         }
-        let models_dir = app.path().app_data_dir().map_err(|error| error.to_string())?.join("models").join(format!("{}-{}", safe_name.replace(':', "-"), std::time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()));
-        fs::create_dir_all(&models_dir).map_err(|error| format!("Could not create the private model folder: {error}"))?;
-        let file_name = source.file_name().ok_or("Invalid model filename")?;
-        let stored_model = models_dir.join(file_name);
         let main_size = fs::metadata(&source).map_err(|e| e.to_string())?.len();
         let combined_size = main_size.saturating_add(projector.as_ref().map(|path| fs::metadata(path).map(|m| m.len()).unwrap_or(0)).unwrap_or(0));
-        copy_model_with_progress(&source, &stored_model, &on_event, 0, combined_size)?;
-        let stored_projector = if let Some(path) = &projector {
-            let destination = models_dir.join("vision-projector.gguf");
-            if destination == stored_model { return Err("Rename the main model; its name conflicts with the projector copy".into()); }
-            copy_model_with_progress(path, &destination, &on_event, main_size, combined_size)?;
-            Some(destination)
-        } else { None };
-        send_import_status(&on_event, "preparing", "Preparing the Ollama model definition", 66);
-        let model_file = models_dir.join("Modelfile");
-        fs::write(&model_file, gguf::modelfile(&stored_model, stored_projector.as_deref())).map_err(|error| format!("Could not prepare the local model: {error}"))?;
+        let home = app.path().home_dir().map_err(|e| e.to_string())?;
+        let store = std::env::var_os("OLLAMA_MODELS").filter(|value| !value.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join(".ollama").join("models"));
+        send_import_status(&on_event, "checking-space", "Checking free disk space before importing", 3);
+        import_storage::check_space(&store, combined_size)?;
+        // Ollama imports the selected files into its own content-addressed store.
+        // A second permanent copy inside Nova is unnecessary and wastes gigabytes.
+        let definition = import_storage::Definition::create(&app.path().app_data_dir().map_err(|e| e.to_string())?, &gguf::modelfile(&source, projector.as_deref()))?;
+        let model_file = definition.path();
+        send_import_status(&on_event, "preparing", "Preparing direct import into Ollama; original files stay unchanged", 5);
         let ollama = ollama_executable().ok_or_else(|| "OLLAMA_NOT_INSTALLED: Install Ollama before importing a GGUF model".to_string())?;
-        send_import_status(&on_event, "starting", "Starting the local Ollama runtime", 69);
+        send_import_status(&on_event, "starting", "Starting the local Ollama runtime", 6);
         ensure_ollama_runtime(&ollama)?;
         let mut command = Command::new(&ollama);
         command.env("OLLAMA_HOST", "127.0.0.1:11434").args(["create", &safe_name, "-f"]).arg(&model_file).stdout(Stdio::null()).stderr(Stdio::piped());
@@ -501,7 +466,7 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, projector
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x08000000);
         }
-        send_import_status(&on_event, "registering", "Registering the model with Ollama", 72);
+        send_import_status(&on_event, "registering", "Importing directly into Ollama without an extra Nova copy", 7);
         let mut child = command.spawn().map_err(|error| format!("Ollama could not start the model import: {error}"))?;
         let stderr = child.stderr.take().ok_or_else(|| "Ollama did not expose import progress".to_string())?;
         let (sender, receiver) = std::sync::mpsc::sync_channel::<Result<Vec<u8>, String>>(16);
@@ -535,7 +500,7 @@ async fn import_gguf_model(app: tauri::AppHandle, source_path: String, projector
                 details.push_str(&line); details.push('\n');
                 if details.len() > 65536 { details = details.chars().rev().take(24000).collect::<String>().chars().rev().collect(); }
                 if let Some(progress) = parse_ollama_percent(&line) {
-                    let percent = 72 + ((progress as u16 * 24 / 100) as u8);
+                    let percent = 7 + ((progress as u16 * 89 / 100) as u8);
                     let _ = on_event.send(LocalModelImportEvent::Progress { phase: "registering".into(), message: "Importing model layers into Ollama".into(), processed: progress as u64, total: 100, percent });
                 }
             }
