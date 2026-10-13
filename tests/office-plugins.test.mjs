@@ -8,6 +8,62 @@ const require = createRequire(import.meta.url), module = { exports: {} };
 const code = ts.transpileModule(readFileSync(new URL('../src/lib/office-plugins.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
 vm.runInNewContext(code, { module, exports: module.exports, require, Uint8Array, Blob, btoa, Error });
 const { createOfficeFile } = module.exports;
+const baseSlide = (layout, extra = {}) => ({ title: 'Verified demonstration', layout, bullets: [], notes: 'Demonstration values, not business results.', ...extra });
+test('All eight art directions export actual distinct slide palettes', async () => {
+  const palettes = new Set();
+  for (const preset of ['minimal', 'midnight', 'editorial', 'executive', 'botanical', 'studio', 'technical', 'luxury']) {
+    const result = await createOfficeFile('create_powerpoint', { filename: preset, title: 'Art direction', rtl: false, theme: { preset }, slides: [baseSlide('cover', { bullets: ['A deliberate visual direction'] })] });
+    const zip = await require('jszip').loadAsync(bytes(result));
+    const xml = await zip.file('ppt/slides/slide1.xml').async('string');
+    palettes.add(/<p:bg>[\s\S]*?<a:srgbClr val="([A-Fa-f0-9]+)"/.exec(xml)?.[1]);
+  }
+  assert.equal(palettes.size, 8); assert.ok(!palettes.has(undefined));
+});
+test('Data layouts create editable chart data, table cells and ordered timelines', async () => {
+  const result = await createOfficeFile('create_powerpoint', { filename: 'data-story', title: 'Data story', rtl: true, theme: { preset: 'executive' }, slides: [
+    baseSlide('chart', { chart: { type: 'bar', labels: ['A', 'B'], series: [{ name: 'Observed', values: [10, 20] }], unit: 'People' }, source: 'Supplied demonstration dataset' }),
+    baseSlide('table', { rows: [['Category', 'Count'], ['A', '10'], ['B', '20']] }),
+    baseSlide('timeline', { steps: [{ label: 'Week 1', title: 'Review' }, { label: 'Week 2', title: 'Deliver' }] }),
+    baseSlide('metrics', { metrics: [{ value: '30', label: 'Participants', detail: 'Provided count' }] }),
+    baseSlide('comparison', { columns: [{ title: 'Option A', items: ['Lower effort'] }, { title: 'Option B', items: ['Broader scope'] }] }),
+  ] });
+  const zip = await require('jszip').loadAsync(bytes(result));
+  assert.match(await zip.file('ppt/charts/chart1.xml').async('string'), /<c:v>20<\/c:v>/);
+  assert.ok(Object.keys(zip.files).some(name => name.startsWith('ppt/embeddings/') && name.endsWith('.xlsx')));
+  assert.match(await zip.file('ppt/slides/slide2.xml').async('string'), /<a:tbl>/);
+  assert.match(await zip.file('ppt/slides/slide3.xml').async('string'), /Week 2/);
+  assert.match(await zip.file('ppt/slides/slide4.xml').async('string'), /Participants/);
+  assert.match(await zip.file('ppt/slides/slide5.xml').async('string'), /Option B/);
+});
+test('Presentation image layout embeds only an exact local attachment and rejects missing or remote images', async () => {
+  const args = { filename: 'image-deck', title: 'Photo', rtl: false, slides: [baseSlide('image', { image: { source: 'photo.png', caption: 'Supplied image' } })] };
+  await assert.rejects(createOfficeFile('create_powerpoint', args), /exact attached/);
+  await assert.rejects(createOfficeFile('create_powerpoint', args, undefined, [{ name: 'photo.png', url: 'https://example.invalid/photo.png', type: 'image/png' }]), /exact attached/);
+  const image = { name: 'photo.png', type: 'image/png', url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=' };
+  const result = await createOfficeFile('create_powerpoint', args, undefined, [image]);
+  const zip = await require('jszip').loadAsync(bytes(result));
+  assert.ok(Object.keys(zip.files).some(name => name.startsWith('ppt/media/') && name.endsWith('.png')));
+});
+test('Dense layouts and misleading chart inputs fail instead of silently creating illegible slides', async () => {
+  const make = slide => createOfficeFile('create_powerpoint', { filename: 'bad', title: 'Bad', rtl: false, slides: [slide] });
+  await assert.rejects(make(baseSlide('content', { bullets: Array(8).fill('A point') })), /too dense/);
+  await assert.rejects(make(baseSlide('chart', { chart: { type: 'bar', labels: ['A'], series: [{ name: 'Count', values: [1, 2] }] } })), /matching label/);
+  await assert.rejects(make(baseSlide('chart', { chart: { type: 'pie', labels: ['A'], series: [{ name: 'Count', values: [-1] }] } })), /non-negative/);
+  await assert.rejects(make(baseSlide('comparison', { columns: [] })), /2–2/);
+});
+test('Word proposal and academic presets use real hierarchy, callouts, lists and margins', async () => {
+  const result = await createOfficeFile('create_word_document', { filename: 'proposal', title: 'A clear proposal', paragraphs: [], rtl: true, layout: { preset: 'proposal', coverPage: true, marginCm: 2.5, headingFont: 'Arial' }, blocks: [{ type: 'heading', level: 3, text: 'Scope' }, { type: 'callout', text: 'Key decision' }, { type: 'bullets', items: ['First deliverable', 'Second deliverable'] }] });
+  const zip = await require('jszip').loadAsync(bytes(result)), xml = await zip.file('word/document.xml').async('string');
+  assert.match(xml, /Heading3/); assert.match(xml, /w:numPr/); assert.match(xml, /w:shd/); assert.match(xml, /w:top="1418"/); assert.match(xml, /3F7252/);
+});
+test('Excel styling is functional: filter, adaptive widths, frozen rows and RTL view', async () => {
+  const result = await createOfficeFile('create_excel_workbook', { filename: 'styled-sheet', style: { accent: '3F7252', rtl: true }, sheets: [{ name: 'Results', rows: [['A longer descriptive column heading', 'Count'], ['Entry', 12]] }] });
+  const workbook = new (require('exceljs').Workbook)(); await workbook.xlsx.load(bytes(result));
+  const sheet = workbook.worksheets[0];
+  assert.equal(sheet.views[0].rightToLeft, true); assert.equal(sheet.views[0].ySplit, 1);
+  assert.ok(sheet.autoFilter); assert.ok(sheet.getColumn(1).width > sheet.getColumn(2).width);
+  assert.equal(sheet.getCell('A1').fill.fgColor.argb, 'FF3F7252');
+});
 const bytes = result => Buffer.from(result.__novaAttachment.url.split(',')[1], 'base64');
 const editing = { exports: {} };
 const editCode = ts.transpileModule(readFileSync(new URL('../src/lib/office-edit.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;

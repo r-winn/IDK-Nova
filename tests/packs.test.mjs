@@ -33,11 +33,12 @@ test('Office support tools are opt-in and exact commands do not match email addr
 });
 test('New prompt pack manifests and Office plugins survive portable config export', () => {
   const { prompts, packs, extensions, bundle, data } = environment();
-  for (const id of ['articles', 'academic', 'business', 'data-work', 'presentation-design', 'document-design', 'education', 'product-design', 'translation', 'meetings']) {
+  for (const id of ['articles', 'academic', 'business', 'data-work', 'presentation-design', 'document-design', 'education', 'product-design', 'translation', 'meetings', 'creative-studio', 'proposal-studio', 'writing']) {
     const manifest = JSON.parse(readFileSync(new URL(`../public/packs/${id}.json`, import.meta.url), 'utf8'));
     const catalog = prompts.promptPacks.find(item => item.id === id);
     assert.ok(catalog); assert.deepEqual(manifest.permissions, []);
     assert.deepEqual(manifest.prompts.map(item => item.shortcut), Array.from(catalog.prompts, item => item.shortcut));
+    assert.deepEqual(manifest.prompts.map(item => item.text), Array.from(catalog.prompts, item => item.text));
     packs.storePrompts([...prompts.savedPrompts(), ...manifest.prompts.map(item => ({ ...item, pack: id }))]);
   }
   extensions.saveExtensions(['word', 'excel', 'powerpoint', 'chrome']);

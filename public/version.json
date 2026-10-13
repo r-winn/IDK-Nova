@@ -1,6 +1,6 @@
 {
-  "version": "0.29.3",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.29.3",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.29.3/IDK.Nova_0.29.3_x64-setup.exe",
-  "notes": ["Select a main GGUF and matching optional Vision projector", "Aggregate progress for all local model components", "Runtime-reported Chat, Vision, Tools and Thinking capabilities", "Vision readiness tested with an actual image request", "Bounded import progress and 30-minute registration safeguard"]
+  "version": "0.30.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.30.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.30.0/IDK.Nova_0.30.0_x64-setup.exe",
+  "notes": ["PowerPoint design studio: eight palettes and eleven purposeful layouts", "Editable charts, tables, timelines and real attachment images", "Word proposal and academic presets with callouts, lists and margins", "Branded Excel sheets with filters, adaptive widths and RTL", "Creative direction and proposal prompt packs with stronger delivery instructions", "Desktop-only features visibly disabled on web without deleting configuration"]
 }

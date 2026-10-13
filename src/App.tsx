@@ -97,6 +97,7 @@ import { Marketplace } from './components/Marketplace';
 import { fetch as pluginFetch } from '@tauri-apps/plugin-http';
 import { PackPicker } from './components/PackPicker';
 import { packContext, preparePackUse } from './lib/packs';
+import { availablePluginIds } from './lib/feature-availability';
 import { executeExtension } from './lib/extensions';
 import { githubFetch } from './lib/github-connection';
 import { generationStatus } from './lib/generation-status';
@@ -1492,7 +1493,7 @@ export default function App() {
       return;
     }
     if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast('Your saved key needs vault access. Restore it in Models → API keys & connections.'); return; }
-    const packUse = preparePackUse(tab.selectedPacks || [], tab.draft);
+    const packUse = preparePackUse(availablePluginIds(tab.selectedPacks || [], isDesktopApp()), tab.draft);
     if (packUse.tools.some(tool => tool.function.name === 'chrome_browser')) { setToast('Chrome automation requires a desktop Work chat, not a temporary side chat.'); return; }
     const user: Message = { role: "user", content: tab.draft.trim(), usedPacks: packUse.usedPacks };
     const generationKind: Message["generationKind"] = isImageGenerationRequest(user.content) ? "image" : "text";
@@ -1697,7 +1698,7 @@ export default function App() {
       setToast('Tool commands require a desktop Work chat. Open a Work project first.');
       return;
     }
-    const packUse = preparePackUse(chat.selectedPacks || [], rawText);
+    const packUse = preparePackUse(availablePluginIds(chat.selectedPacks || [], isDesktopApp(), Boolean(chat.workspaceId)), rawText);
     if (packUse.tools.some(tool => tool.function.name === 'chrome_browser') && (!chat.workspaceId || !isDesktopApp())) { setToast('Use Chrome automation in a desktop Work chat. Office plugins work in ordinary chats too.'); return; }
     const user: Message = {
       role: "user",
@@ -2604,11 +2605,14 @@ export default function App() {
                   <Search />
                   <span>Search</span>
                 </button>
-                <button onClick={() => setWorkspacesOpen(!workspacesOpen)}>
+                {!isDesktopApp() ? <span className="nav-tooltip">
+                  <button disabled><BriefcaseBusiness /><span>Work</span></button>
+                  <i>Available in the desktop app</i>
+                </span> : <button title="Local Work projects" onClick={() => setWorkspacesOpen(!workspacesOpen)}>
                   <BriefcaseBusiness /><span>Work</span>
                   {workspaceLoading ? <RefreshCw className="spin" /> : <ChevronRight className={workspacesOpen ? "open" : ""} />}
-                </button>
-                <div className={`folder-list work-list ${workspacesOpen ? "open" : ""}`} aria-hidden={!workspacesOpen}>
+                </button>}
+                <div className={`folder-list work-list ${isDesktopApp() && workspacesOpen ? "open" : ""}`} aria-hidden={!isDesktopApp() || !workspacesOpen}>
                   <div className="folder-heading"><span>Local workspaces</span><button title="Add workspace" onClick={createWorkspace}><FolderPlus /></button></div>
                   {workspaces.map((workspace) => <div className="folder-row" key={workspace.id}>
                     <button onClick={() => {
@@ -3009,7 +3013,7 @@ export default function App() {
                 >
                   <ImageIcon />
                 </button>}
-                {!editingMessage && <PackPicker selected={chat.selectedPacks || []} disabled={busy} onChange={selectedPacks => setChats(items => items.map(item => item.id === chat.id ? { ...item, selectedPacks, responseMemory: undefined } : item))} />}
+                {!editingMessage && <PackPicker work={Boolean(chatWorkspace && isDesktopApp())} selected={chat.selectedPacks || []} disabled={busy} onChange={selectedPacks => setChats(items => items.map(item => item.id === chat.id ? { ...item, selectedPacks, responseMemory: undefined } : item))} />}
               </div>
               <div>
                 {!editingMessage && <button disabled={busy || voicePrivacyBlocked || !voiceAvailability.available} title={voicePrivacyBlocked ? 'This Work allows local models only' : voiceAvailability.reason} aria-label="Live voice conversation" onClick={() => setVoiceOpen(true)}><AudioLines /></button>}
@@ -3078,6 +3082,8 @@ export default function App() {
                 ).map(([id, Icon, label]) => (
                   <button
                     key={id}
+                    disabled={id === "tools" && !isDesktopApp()}
+                    title={id === "tools" && !isDesktopApp() ? "Work tools require the desktop app" : undefined}
                     className={settingsTab === id ? "active" : ""}
                     onClick={() => setSettingsTab(id)}
                   >
@@ -3295,7 +3301,7 @@ export default function App() {
                       <div className="setup-title"><h2>Add a new model</h2><p>How would you like to connect it?</p></div>
                       <div className="model-source-options">
                         <button onClick={() => setModelSetupView("api")}><span><Globe2 /></span><b>Connect an API</b><small>OpenAI-compatible cloud or local endpoint</small><ArrowRight /></button>
-                        <button onClick={() => setModelSetupView("local")}><span><HardDriveUpload /></span><b>Import a local file</b><small>Run a GGUF model privately with Ollama</small><ArrowRight /></button>
+                        <button disabled={!isDesktopApp()} title={!isDesktopApp() ? "Local GGUF import requires the desktop app" : undefined} onClick={() => setModelSetupView("local")}><span><HardDriveUpload /></span><b>Import a local file</b><small>{isDesktopApp() ? "Run a GGUF model privately with Ollama" : "Available in the desktop app"}</small><ArrowRight /></button>
                       </div>
                     </div>}
                     {modelSetupView === "api" && <div className="model-setup-view api-model-setup">

@@ -3971,7 +3971,14 @@ body.resizing-browser iframe { pointer-events: none; }
 .marketplace-action { display: inline-flex; gap: 5px; align-items: center; justify-content: center; flex-shrink: 0; min-height: 34px; width: 86px; padding: 7px 8px; border-radius: 9px; background: var(--hover); color: var(--text); font-size: 11px; transition: background .18s; }
 .marketplace-action svg { width: 14px; height: 14px; }
 .marketplace-action:hover:not(:disabled) { background: var(--line); }
-.marketplace-action:disabled { opacity: .55; cursor: wait; }
+.marketplace-action:disabled { opacity: .55; cursor: not-allowed; }
+.model-source-options button:disabled,
+.intelligence-tabs button:disabled,
+.pack-menu-list button:disabled,
+.primary-nav > button:disabled,
+.settings-sidebar nav button:disabled { opacity: .45; cursor: not-allowed; }
+.primary-nav > button:disabled:hover,
+.model-source-options button:disabled:hover { background: transparent; }
 .marketplace-action.pack-remove { color: #ef5757; background: #ef575710; }
 .marketplace-action.pack-remove:hover { background: #ef575722; }
 .marketplace-note { padding-top: 16px; border-top: 1px solid var(--line); font-size: 11px; }

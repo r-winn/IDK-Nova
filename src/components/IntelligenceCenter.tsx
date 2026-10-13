@@ -7,6 +7,7 @@ import { loadValue } from '../lib/storage';
 import type { AgentTask } from '../agent/protocol';
 import { UsagePanel } from './UsagePanel';
 import { CheckpointsPanel } from './CheckpointsPanel';
+import { isTauri } from '@tauri-apps/api/core';
 
 const sections = [
   { id: 'memory', title: 'Memory', icon: BookOpen },
@@ -30,7 +31,7 @@ export function IntelligenceCenter({ config, chat, projects, onProjectMemory, ru
   const saveSettings = (value: typeof settings) => { setSettings(value); localStorage.setItem('nova-intelligence', JSON.stringify(value)); };
   const models = config.providers.flatMap(provider => provider.models.map(model => ({ value: `${provider.id}::${model}`, label: `${provider.name} · ${model}` })));
   return <div className="intelligence-center">
-    <nav className="intelligence-tabs" aria-label="Intelligence sections">{sections.map(({ id, title, icon: Icon }) => <button key={id} aria-current={tab === id ? 'page' : undefined} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon />{title}</button>)}</nav>
+    <nav className="intelligence-tabs" aria-label="Intelligence sections">{sections.map(({ id, title, icon: Icon }) => <button key={id} disabled={!isTauri() && (id === 'activity' || id === 'recovery')} title={!isTauri() && (id === 'activity' || id === 'recovery') ? 'Work activity and recovery require the desktop app' : undefined} aria-current={tab === id ? 'page' : undefined} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon />{title}</button>)}</nav>
     <div className="intelligence-tab-content" key={tab}>
     {tab === 'usage' && <UsagePanel config={config} />}
     {tab === 'recovery' && <CheckpointsPanel projects={projects} running={running} />}

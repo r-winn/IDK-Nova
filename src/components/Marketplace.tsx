@@ -5,6 +5,8 @@ import { promptPacks, savedPrompts } from '../lib/prompts';
 import { downloadExtension, downloadPack, PACKS_CHANGED, storePrompts } from '../lib/packs';
 import { PluginIcon } from './PluginIcon';
 import { connectGithub, disconnectGithub, githubLogin } from '../lib/github-connection';
+import { isTauri } from '@tauri-apps/api/core';
+import { pluginAvailability } from '../lib/feature-availability';
 
 export function Marketplace() {
   const [tab, setTab] = useState<'plugins' | 'prompts'>('plugins');
@@ -52,16 +54,17 @@ export function Marketplace() {
     <section><h3>{onlyInstalled ? 'Your collection' : tab === 'plugins' ? 'Explore plugins' : 'Writing, development & research'}</h3>
       <div className="marketplace-grid">{items.map(item => {
         const ready = installed(item.id), download = downloads[item.id], tool = 'tool' in item ? item.tool : '';
+        const availability = pluginAvailability(item.id, isTauri(), true);
         return <Fragment key={item.id}><article className="marketplace-item">
           <PluginIcon id={item.id} /><div className="marketplace-item-content"><h4>{item.name}{ready && <Check aria-label="Installed" />}</h4><p>{item.description}</p>
             <small>Nova · v{'version' in item ? item.version : '1.0'} · {item.id === 'chrome' ? 'Desktop Work · separate Chrome profile · browser permissions' : item.id === 'github' ? 'GitHub API · read-only access' : ['word', 'excel', 'powerpoint'].includes(item.id) ? 'On-device · read, create & revise Office files' : tool ? 'On-device · no network access' : 'Instructions · no executable access'}</small>
-            <code>{tool ? 'Select in chat' : 'prompts' in item ? item.prompts.map(prompt => `@${prompt.shortcut}`).join(' · ') : ''}</code>
+            <code>{!availability.available ? availability.reason : tool ? 'Select in chat' : 'prompts' in item ? item.prompts.map(prompt => `@${prompt.shortcut}`).join(' · ') : ''}</code>
             {item.id === 'github' && ready && <div className="github-connect">
               {login ? <><span>Connected as {login}</span><button disabled={connecting} onClick={async () => { setConnecting(true); try { await disconnectGithub(); setLogin(''); } catch { setError('Could not disconnect GitHub. Try again.'); } finally { setConnecting(false); } }}>Disconnect</button></> : <button onClick={() => setConnectOpen(value => !value)}>Connect GitHub</button>}
             </div>}
             <div className="pack-download-slot" data-active={Boolean(download)}>{download && <div className="pack-download" role="status"><progress max={download.total || undefined} value={download.total ? download.loaded : undefined} /><span>{download.loaded.toLocaleString()} / {download.total ? download.total.toLocaleString() : 'unknown'} bytes</span></div>}</div>
           </div>
-          <button className={`marketplace-action ${ready ? 'pack-remove' : ''}`} disabled={Boolean(download)} aria-label={`${ready ? 'Remove' : 'Install'} ${item.name}`} onClick={() => ready ? remove(item.id) : void install(item.id)}>{ready ? <Trash2 /> : <Download />}<span>{download ? 'Installing…' : ready ? 'Remove' : 'Install'}</span></button>
+          <button className={`marketplace-action ${ready ? 'pack-remove' : ''}`} disabled={Boolean(download) || (!availability.available && !ready)} title={availability.reason} aria-label={`${ready ? 'Remove' : 'Install'} ${item.name}`} onClick={() => ready ? remove(item.id) : availability.available && void install(item.id)}>{ready ? <Trash2 /> : <Download />}<span>{download ? 'Installing…' : ready ? 'Remove' : !availability.available ? 'Desktop' : 'Install'}</span></button>
 </article>{item.id === 'github' && <div className="github-connection-panel" data-open={ready && connectOpen && !login} aria-hidden={!ready || !connectOpen || Boolean(login)}><div><form onSubmit={async event => { event.preventDefault(); setConnecting(true); setError(''); try { setLogin(await connectGithub(token)); setToken(''); setConnectOpen(false); } catch (e) { setError(e instanceof Error ? e.message : 'Connection failed.'); } finally { setConnecting(false); } }}>
           <h4>Connect your GitHub account</h4><p>Use a personal access token, not a connection string or your GitHub password.</p>
           <ol><li>Open GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens.</li><li>Create a token, choose an expiry and select only the repositories you need.</li><li>Set Contents, Issues and Pull requests to Read-only. Copy the token and paste it below.</li></ol>

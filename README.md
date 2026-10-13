@@ -20,7 +20,11 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
-### New in 0.29.3 · Local multimodal import
+### New in 0.30.0 · Designed Office output
+
+PowerPoint now offers eight art directions and eleven content-driven layouts, with native editable charts, tables, comparisons, timelines, metrics and real attached images. Word adds proposal/academic typography, callouts, real bullet lists and configurable margins. Excel adds branded headers, banding, adaptive widths, filtering and RTL views. New creative-direction and proposal packs are invoked explicitly with `@`; executable plugins remain opt-in beside attachments. [Capabilities, usage and verification limits](docs/releases/v0.30.0.md).
+
+### Local multimodal import
 
 The local-model wizard accepts a main GGUF and a matching optional mmproj Vision file. Both are copied privately, registered as Ollama model layers and checked for actual capabilities. Vision-ready imports send a real test image before being marked ready; mismatches and unsupported runtimes remain explicit errors. [Setup and verification limits](docs/releases/v0.29.3.md).
 
