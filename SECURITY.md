@@ -10,11 +10,13 @@ flow rather than a public issue.
 - Treat model responses and uploaded content as untrusted.
 - Download installers only from the official GitHub Releases page.
 
-Windows and macOS desktop builds store saved provider API keys in the native
-Credential Manager / Keychain. Credentials are still present in process memory
-when making provider requests. Web builds retain browser-local storage; do not
-assume this provides OS-vault protection. Credential-bearing configuration
-exports remain plaintext by explicit user choice.
+Windows desktop stores saved provider API keys in Credential Manager. At the
+user's explicit request, macOS now stores provider keys and GitHub tokens locally
+without Keychain access. Mac and web local storage do not provide OS-vault
+protection. Protect access to the device and application data. Previous
+Keychain-only keys require one-time re-entry; old Keychain entries are untouched.
+Credentials also exist in process memory during requests. Credential-bearing
+configuration exports remain plaintext by explicit user choice.
 
 Agent activity applies best-effort redaction of known keys and common secret
 patterns. It is not a general sensitive-data classifier. Work history and memory

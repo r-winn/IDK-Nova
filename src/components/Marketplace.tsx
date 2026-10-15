@@ -71,7 +71,7 @@ export function Marketplace() {
           <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" tabIndex={connectOpen ? 0 : -1}>Create a fine-grained token on GitHub ↗</a>
           <label>Personal access token<input type="password" aria-label="GitHub access token" placeholder="github_pat_…" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" disabled={!connectOpen || connecting} /></label>
           <div className="github-connection-actions"><button type="button" disabled={connecting} tabIndex={connectOpen ? 0 : -1} onClick={() => { setConnectOpen(false); setToken(''); }}>Cancel</button><button disabled={!connectOpen || connecting || !token.trim()}>{connecting ? 'Connecting…' : 'Test & connect'}</button></div>
-          <small>Never share this token. Desktop saves it in the OS vault; web keeps it for this session only. Tokens are never exported. Organization repositories may require administrator approval.</small>
+          <small>Never share this token. Windows uses the OS vault; Mac saves locally without Keychain; web keeps it for this session only. Tokens are never exported. Organization repositories may require administrator approval.</small>
         </form></div></div>}</Fragment>;
       })}</div>{!items.length && <p className="marketplace-empty">No matching packages. Try another search.</p>}
     </section>

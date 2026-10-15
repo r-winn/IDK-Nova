@@ -125,6 +125,7 @@ import {
   loadConfig,
   hydrateProviderCredentials,
   restoreProviderCredential,
+  macLocalCredentials,
   loadManagedConfig,
   loadValue,
   restoreChatAttachments,
@@ -891,7 +892,7 @@ export default function App() {
         saveConfig(next);
         return next;
       });
-    }).catch(() => setToast('Could not load API keys from the system vault. Unlock it, then restart Nova.')).finally(() => setCredentialsLoading(false));
+    }).catch(() => setToast(macLocalCredentials() ? 'Could not save local settings. Check available disk space and local storage.' : 'Could not load API keys from the system vault. Unlock it, then restart Nova.')).finally(() => setCredentialsLoading(false));
     return () => window.removeEventListener('nova-credential-error', credentialError);
   }, []);
 
@@ -1492,7 +1493,7 @@ export default function App() {
       setSettingsOpen(true);
       return;
     }
-    if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast('Your saved key needs vault access. Restore it in Models → API keys & connections.'); return; }
+    if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast(macLocalCredentials() ? 'Re-enter this API key once in Models → API keys & connections. Mac Keychain is no longer used.' : 'Your saved key needs vault access. Restore it in Models → API keys & connections.'); return; }
     const packUse = preparePackUse(availablePluginIds(tab.selectedPacks || [], isDesktopApp()), tab.draft);
     if (packUse.tools.some(tool => tool.function.name === 'chrome_browser')) { setToast('Chrome automation requires a desktop Work chat, not a temporary side chat.'); return; }
     const user: Message = { role: "user", content: tab.draft.trim(), usedPacks: packUse.usedPacks };
@@ -1690,7 +1691,7 @@ export default function App() {
     }
     const rawText = edited?.content.trim() ?? text.trim();
     const outgoingText = rawText;
-    if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast('Your saved API key needs vault access. Use Restore saved key in Models → API keys & connections.'); setSettingsTab('models'); setModelSetupView('connections'); setSettingsOpen(true); return; }
+    if (!activeProvider.apiKey && activeProvider.apiKeyStored) { setToast(macLocalCredentials() ? 'Re-enter this API key once. macOS credentials are saved locally without Keychain.' : 'Your saved API key needs vault access. Use Restore saved key in Models → API keys & connections.'); setSettingsTab('models'); setModelSetupView('connections'); setSettingsOpen(true); return; }
     const outgoingFiles = edited?.attachments ?? files;
     const history = edited?.history ?? chat?.messages ?? [];
     if ((!outgoingText && !outgoingFiles.length) || busy || promptInput || browserTabs.some(tab => tab.busy) || !chat) return;
@@ -2011,7 +2012,7 @@ export default function App() {
                   index === item.messages.length - 1
                     ? {
                         ...message,
-                        content: `The response could not be completed by ${config.activeModel || "the selected model"}.\n\n${redactSecrets(error instanceof Error ? error.message : "Unknown error")}`,
+                        content: `${message.content ? message.content + '\n\n---\n' : ''}The response could not be completed by ${config.activeModel || "the selected model"}.\n\n${redactSecrets(error instanceof Error ? error.message : "Unknown error")}`,
                       }
                     : message,
                 ),
@@ -2174,7 +2175,7 @@ export default function App() {
       return next;
     });
     try {
-      if (!provider.apiKey && provider.apiKeyStored) throw new Error('Saved key needs vault access. Restore it in API keys & connections before testing.');
+      if (!provider.apiKey && provider.apiKeyStored) throw new Error(macLocalCredentials() ? 'Re-enter this API key once before testing. macOS Keychain is no longer used.' : 'Saved key needs vault access. Restore it in API keys & connections before testing.');
       const latency = await testModel(provider, model, provider.modelCapabilities?.[model]?.includes("vision") || false);
       setModelHealth((current) => ({ ...current, [key]: { state: "online", latency, checkedAt: Date.now() } }));
       setToast(`Model verified in ${latency} ms`);
@@ -3292,7 +3293,7 @@ export default function App() {
                       <section className="provider-connections">
                         {draftConfig.providers.map((provider) => <div className="provider-connection-row" key={provider.id}>
                           <div className="provider-connection-copy"><b>{provider.name}</b><code title={provider.baseUrl}>{provider.baseUrl}</code><small>{provider.models.length} model{provider.models.length === 1 ? "" : "s"}</small></div>
-                          <label><span>API key <small>{provider.apiKey ? "Configured" : provider.apiKeyStored ? "Saved key needs vault access · not deleted" : "Required only if this provider uses authentication"}</small></span><input type="password" disabled={credentialsLoading} value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value, apiKeyStored: false } : item) }))} />{isDesktopApp() && provider.apiKeyStored && !provider.apiKey && <button type="button" className="secondary" disabled={credentialsLoading} onClick={async () => { setCredentialsLoading(true); try { const restored = await restoreProviderCredential(provider, true); setDraftConfig(current => ({ ...current, providers: current.providers.map(item => item.id === provider.id ? { ...item, apiKey: restored.apiKey, apiKeyStored: true, credentialAccount: restored.credentialAccount } : item) })); setToast('Saved API key restored'); } catch (error) { setToast(error instanceof Error ? error.message : 'Could not restore key'); } finally { setCredentialsLoading(false); } }}>Restore saved key</button>}<small>{isDesktopApp() ? 'Saved in the operating-system credential vault.' : 'Stored in this browser. Use the desktop app for native credential protection.'}</small></label>
+                          <label><span>API key <small>{provider.apiKey ? "Configured" : provider.apiKeyStored ? macLocalCredentials() ? "Re-enter once · previous Keychain entry is unchanged" : "Saved key needs vault access · not deleted" : "Required only if this provider uses authentication"}</small></span><input type="password" disabled={credentialsLoading} value={provider.apiKey} placeholder="Paste one key for this connection" onChange={(event) => setDraftConfig((current) => ({ ...current, providers: current.providers.map((item) => item.id === provider.id ? { ...item, apiKey: event.target.value, apiKeyStored: false } : item) }))} />{isDesktopApp() && !macLocalCredentials() && provider.apiKeyStored && !provider.apiKey && <button type="button" className="secondary" disabled={credentialsLoading} onClick={async () => { setCredentialsLoading(true); try { const restored = await restoreProviderCredential(provider, true); setDraftConfig(current => ({ ...current, providers: current.providers.map(item => item.id === provider.id ? { ...item, apiKey: restored.apiKey, apiKeyStored: true, credentialAccount: restored.credentialAccount } : item) })); setToast('Saved API key restored'); } catch (error) { setToast(error instanceof Error ? error.message : 'Could not restore key'); } finally { setCredentialsLoading(false); } }}>Restore saved key</button>}<small>{macLocalCredentials() ? 'Saved locally on this Mac without Keychain. Keys are not protected by the system credential vault.' : isDesktopApp() ? 'Saved in the operating-system credential vault.' : 'Stored in this browser. Use the desktop app for native credential protection.'}</small></label>
                         </div>)}
                       </section>
                     </div>}

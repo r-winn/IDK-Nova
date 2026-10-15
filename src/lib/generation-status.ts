@@ -1,4 +1,7 @@
 const steps: Record<string, string> = {
+  'Reducing model context…': 'Reducing completed tool history to fit the model…',
+  'Reconnecting to the model…': 'Reconnecting to the model without repeating completed actions…',
+  'Retrying the interrupted model request…': 'Retrying the interrupted model request…',
   inspect_pdf: 'Reading the PDF page…', create_archive: 'Packaging your files…',
   chrome_browser: 'Working in Chrome…',
   create_word_document: 'Creating your Word document…', create_excel_workbook: 'Building your Excel workbook…', create_powerpoint: 'Preparing your PowerPoint slides…',

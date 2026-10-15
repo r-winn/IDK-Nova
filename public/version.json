@@ -1,6 +1,6 @@
 {
-  "version": "0.30.2",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.30.2",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.30.2/IDK.Nova_0.30.2_x64-setup.exe",
-  "notes": ["Ollama Responses calls replay full conversation and tool results without server-side response IDs", "Recover lost proxy chains without rerunning completed tools", "Template failures no longer masquerade as connection outages", "Real local Qwen tool-continuation smoke tests"]
+  "version": "0.30.3",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.30.3",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.30.3/IDK.Nova_0.30.3_x64-setup.exe",
+  "notes": ["Paged Office inspection with sheet filters and local numeric statistics", "Spreadsheet parsing and generation run in cancellable workers", "Recover oversized tool context without rerunning completed actions", "Bounded recovery for transient provider interruptions; partial replies preserved", "macOS saves provider and GitHub credentials locally without Keychain; one-time re-entry for vault-only keys"]
 }

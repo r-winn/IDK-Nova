@@ -70,6 +70,23 @@ const requiresStatelessResponses = (status: number, detail: string) => (status =
 const rejectsTemperature = (status: number, detail: string) => status === 400 && /temperature.{0,40}(not supported|unsupported|not allowed|unknown)/i.test(detail);
 const responseMemoryMatches = (memory: ResponseMemory | undefined, provider: Provider, model: string) =>
   Boolean(memory?.previousResponseId && memory.providerId === provider.id && memory.model === model);
+const contextOverflow = (status: number, detail: string) => [400, 413].includes(status) && /context.{0,60}(too long|exceed|length|window)|maximum context|too many tokens/i.test(detail);
+// Compact only completed tool exchanges and older assistant prose. Original
+// user requests and call/output ID relationships are never removed or edited.
+export function compactToolTranscript(items: any[], limit = 1600): any[] {
+  const completed = new Set(items.filter(item => item.type === 'function_call_output' || item.role === 'tool').map(item => item.call_id || item.tool_call_id));
+  const excerpt = (value: string) => {
+    let data: any; try { data = JSON.parse(value); } catch { data = {}; }
+    return JSON.stringify({ ...Object.fromEntries(['ok', 'status', 'filename', 'source', 'path', 'totalEntries', 'nextOffset', 'error'].filter(key => data && typeof data === 'object' && key in data).map(key => [key, data[key]])), __nova_compacted: true, note: 'Completed exchange shortened for context. Do not rerun it. Re-inspect the source/file for exact data.', excerpt: value.slice(0, limit) });
+  };
+  return items.map((item, index) => {
+    if (item.type === 'function_call' && completed.has(item.call_id) && typeof item.arguments === 'string' && item.arguments.length > limit * 2) return { ...item, arguments: excerpt(item.arguments) };
+    if (item.type === 'function_call_output' && typeof item.output === 'string' && item.output.length > limit * 2) return { ...item, output: excerpt(item.output) };
+    if (item.role === 'tool' && typeof item.content === 'string' && item.content.length > limit * 2) return { ...item, content: excerpt(item.content) };
+    if (item.role === 'assistant') return { ...item, ...(typeof item.content === 'string' && item.content.length > limit * 2 && index < items.length - 2 ? { content: item.content.slice(0, limit) + '\n[Earlier assistant text shortened; original chat is unchanged.]' } : {}), ...(item.tool_calls ? { tool_calls: item.tool_calls.map((call: any) => completed.has(call.id) && call.function.arguments.length > limit * 2 ? { ...call, function: { ...call.function, arguments: excerpt(call.function.arguments) } } : call) } : {}) };
+    return item;
+  });
+}
 
 const readResponseStream = async (response: Response, onToken: (token: string) => void, reportUsage: (usage: unknown) => void) => {
   if (!response.body) throw new Error('The provider did not return a response stream');
@@ -351,14 +368,36 @@ async function runAgentCompletionImpl(
   const watchdog = new AgentLoopWatchdog();
   if (!responsesSupported) previousResponseId = '';
   let turn = 0;
+  let contextRetries = 0, interruptedRetries = 0;
+  let recoveryInstruction = '';
+  const prepareInterruptedRetry = (error: unknown) => {
+    if (/length|max_output_tokens/i.test(String(error))) recoveryInstruction = '\nYour previous response exceeded the output limit before completing a tool call. Return a smaller valid call. Do not reproduce entire source files or spreadsheets in arguments. Use bounded inspection and small exact edit batches; create a concise derived report. Do not claim unsupported bulk transformations were performed.';
+    onStep('Reconnecting to the model…');
+  };
+  const agentRequest = async (url: string, init: RequestInit) => {
+    try { return await request(url, init); }
+    catch (error) {
+      if (signal?.aborted || interruptedRetries++ >= 1) throw error;
+      onStep('Reconnecting to the model…');
+      return request(url, init);
+    }
+  };
   while (responsesSupported) {
     if (signal?.aborted) throw new DOMException('The task was stopped', 'AbortError');
-    const response = await request(endpoint(provider, '/responses'), {
+    const response = await agentRequest(endpoint(provider, '/responses'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, stream: true, instructions: systemContext, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: temperaturelessResponsesProviders.has(providerKey) ? undefined : config.temperature, store: !stateless, tools: responseTools, tool_choice: pendingTools.size || (turn === 0 && requireTool) ? 'required' : 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, stream: true, instructions: systemContext + recoveryInstruction, input: responseInput, previous_response_id: stateless ? undefined : previousResponseId || undefined, temperature: temperaturelessResponsesProviders.has(providerKey) ? undefined : config.temperature, store: !stateless, tools: responseTools, tool_choice: pendingTools.size || (turn === 0 && requireTool) ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
+      if (contextOverflow(response.status, detail) && contextRetries < 2) {
+        const compacted = compactToolTranscript(replayContext, contextRetries ? 400 : 1600);
+        if (JSON.stringify(compacted) !== JSON.stringify(replayContext) || !stateless) {
+          contextRetries++; replayContext.splice(0, replayContext.length, ...compacted);
+          stateless = true; previousResponseId = ''; responseInput = [...replayContext]; onMemory?.(undefined);
+          onStep('Reducing model context…'); continue;
+        }
+      }
       if (!stateless && requiresStatelessResponses(response.status, detail)) {
         statelessResponsesProviders.add(providerKey);
         stateless = true;
@@ -380,9 +419,14 @@ async function runAgentCompletionImpl(
         responsesSupported = false;
         break;
       }
+      if ([408, 500, 502, 503, 504].includes(response.status) && !/Jinja|No user query|context.{0,40}(too long|exceed)/i.test(detail) && interruptedRetries++ < 1) { onStep('Retrying the interrupted model request…'); continue; }
       throw new Error(`Agent provider returned ${response.status}: ${detail}`);
     }
-    const { payload, streamed } = await readAgentTurn(response, 'responses', pendingTools.size ? () => {} : onToken);
+    let visible = false, parsed;
+    try { parsed = await readAgentTurn(response, 'responses', token => { if (!pendingTools.size) { visible ||= Boolean(token); onToken(token); } }); }
+    catch (error) { if (!visible && !signal?.aborted && interruptedRetries++ < 1 && /stream|interrupt|network|fetch|terminated|reset|body|max_output_tokens/i.test(String(error))) { prepareInterruptedRetry(error); continue; } throw error; }
+    const { payload, streamed } = parsed;
+    interruptedRetries = 0;
     reportUsage(payload.usage);
     if (!stateless) previousResponseId = payload.id || previousResponseId;
     if (Array.isArray(payload.output)) replayContext.push(...payload.output);
@@ -435,17 +479,26 @@ async function runAgentCompletionImpl(
   turn = 0;
   while (true) {
     if (signal?.aborted) throw new DOMException('The task was stopped', 'AbortError');
-    const response = await request(endpoint(provider, '/chat/completions'), {
+    const response = await agentRequest(endpoint(provider, '/chat/completions'), {
       method: 'POST', headers: headers(provider), signal,
-      body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, stream_options: usageOptionlessProviders.has(providerKey) ? undefined : { include_usage: true }, messages: conversation, tools, tool_choice: forceFirstTool && (pendingTools.size || turn === 0) ? 'required' : 'auto' }),
+      body: JSON.stringify({ model: config.activeModel, temperature: config.temperature, stream: true, stream_options: usageOptionlessProviders.has(providerKey) ? undefined : { include_usage: true }, messages: recoveryInstruction ? conversation.map((item, index) => index === 0 ? { ...item, content: systemContext + recoveryInstruction } : item) : conversation, tools, tool_choice: forceFirstTool && (pendingTools.size || turn === 0) ? 'required' : 'auto' }),
     });
     if (!response.ok) {
       const detail = await response.text();
+      if (contextOverflow(response.status, detail) && contextRetries < 2) {
+        const compacted = compactToolTranscript(conversation, contextRetries ? 400 : 1600);
+        if (JSON.stringify(compacted) !== JSON.stringify(conversation)) { contextRetries++; conversation.splice(0, conversation.length, ...compacted); onStep('Reducing model context…'); continue; }
+      }
       if (response.status === 400 && /stream_options|include_usage/i.test(detail) && !usageOptionlessProviders.has(providerKey)) { usageOptionlessProviders.add(providerKey); continue; }
       if (turn === 0 && forceFirstTool && response.status === 400 && /tool_choice|required/i.test(detail)) { forceFirstTool = false; continue; }
+      if ([408, 500, 502, 503, 504].includes(response.status) && !/Jinja|No user query|context.{0,40}(too long|exceed)/i.test(detail) && interruptedRetries++ < 1) { onStep('Retrying the interrupted model request…'); continue; }
       throw new Error(`Agent provider returned ${response.status}: ${detail}`);
     }
-    const { payload, streamed } = await readAgentTurn(response, 'chat', pendingTools.size ? () => {} : onToken);
+    let visible = false, parsed;
+    try { parsed = await readAgentTurn(response, 'chat', token => { if (!pendingTools.size) { visible ||= Boolean(token); onToken(token); } }); }
+    catch (error) { if (!visible && !signal?.aborted && interruptedRetries++ < 1 && /stream|interrupt|network|fetch|terminated|reset|body|max_output_tokens/i.test(String(error))) { prepareInterruptedRetry(error); continue; } throw error; }
+    const { payload, streamed } = parsed;
+    interruptedRetries = 0;
     reportUsage(payload.usage);
     const assistant = payload.choices?.[0]?.message;
     if (!assistant) throw new Error('Agent provider returned an invalid completion');

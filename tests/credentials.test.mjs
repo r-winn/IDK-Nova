@@ -4,18 +4,36 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-function storageWithVault(invoke) {
+function storageWithVault(invoke, platform = 'Win32') {
   const data = new Map();
   const events = [];
   const module = { exports: {} };
   const source = readFileSync(new URL('../src/lib/storage.ts', import.meta.url), 'utf8').replaceAll('import.meta.env.BASE_URL', "'/'");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   class CustomEvent { constructor(name, options) { this.type = name; this.detail = options.detail; } }
-  vm.runInNewContext(compiled, { exports: module.exports, module, require: name => ({ '../types': { defaultConfig: {}, defaultProvider: {} }, '@tauri-apps/api/core': { invoke }, './secrets': { registerSecrets() {} } })[name], localStorage: { getItem: key => data.get(key), setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) }, window: { __TAURI_INTERNALS__: {}, dispatchEvent: event => events.push(event) }, structuredClone, CustomEvent });
+  vm.runInNewContext(compiled, { exports: module.exports, module, navigator: { platform }, require: name => ({ '../types': { defaultConfig: {}, defaultProvider: {} }, '@tauri-apps/api/core': { invoke }, './secrets': { registerSecrets() {} } })[name], localStorage: { getItem: key => data.get(key), setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) }, window: { __TAURI_INTERNALS__: {}, dispatchEvent: event => events.push(event) }, structuredClone, CustomEvent });
   return { api: module.exports, data, events };
 }
 const config = { providers: [{ id: 'company', baseUrl: 'https://example.com/v1', apiKey: 'test-only-secret', models: ['test'] }] };
 const flush = () => new Promise(resolve => setImmediate(resolve));
+test('Mac config saves locally and restores without any Keychain calls', async () => {
+  let calls = 0;
+  const { api, data } = storageWithVault(async () => { calls++; throw new Error('Keychain unavailable'); }, 'MacIntel');
+  api.saveConfig({ ...config, theme: 'dark' });
+  const saved = JSON.parse(data.get('idk-nova-config'));
+  assert.equal(saved.theme, 'dark'); assert.equal(saved.providers[0].apiKey, 'test-only-secret');
+  const restored = await api.hydrateProviderCredentials(saved);
+  assert.equal(restored.providers[0].apiKey, 'test-only-secret'); assert.equal(calls, 0);
+});
+test('Mac vault-only legacy entries are preserved and require one-time manual re-entry', async () => {
+  const { api, data, events } = storageWithVault(async () => assert.fail('Mac must never call the vault'), 'MacIntel');
+  const legacy = { providers: [{ ...config.providers[0], apiKey: '', apiKeyStored: true }] };
+  const restored = await api.hydrateProviderCredentials(legacy);
+  api.saveConfig({ ...restored, theme: 'light' });
+  assert.equal(JSON.parse(data.get('idk-nova-config')).theme, 'light');
+  assert.equal(restored.providers[0].apiKeyStored, true); assert.match(events[0].detail, /Re-enter/);
+  await assert.rejects(api.restoreProviderCredential(restored.providers[0], true), /Re-enter/);
+});
 test('A locked provider does not block other providers or remove its stored-key marker', async () => {
   const { api, events } = storageWithVault(async (_command, args) => {
     if (args.account.startsWith('locked:')) throw new Error('access denied');

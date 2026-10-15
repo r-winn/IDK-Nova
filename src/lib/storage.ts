@@ -2,6 +2,7 @@ import type { Attachment, Chat, Config } from '../types';
 import { defaultConfig, defaultProvider } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 import { registerSecrets } from './secrets';
+export const macLocalCredentials = () => typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent) && '__TAURI_INTERNALS__' in window;
 export function loadValue<T>(key: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(key) || '') as T; } catch { return fallback; } }
 const ATTACHMENT_DB = 'idk-nova-memory';
 const ATTACHMENT_STORE = 'attachments';
@@ -65,6 +66,10 @@ const savedCredentialValues = new Map<string, string>();
 // Keep the original vault identifier across config merges and URL edits.
 const credentialAccount = (provider: Config['providers'][number]) => provider.credentialAccount || `${provider.id}:${provider.baseUrl.replace(/\/+$/, '')}`;
 export async function restoreProviderCredential(provider: Config['providers'][number], allowPrompt = false) {
+  if (macLocalCredentials()) {
+    if (provider.apiKey) return provider;
+    throw new Error('Re-enter this API key once in Settings. macOS Keychain access is disabled; existing Keychain entries have not been deleted.');
+  }
   const account = credentialAccount(provider);
   const apiKey = await invoke<string | null>('read_provider_credential', { account, allowPrompt });
   if (!apiKey) throw new Error('No saved key was found. Re-enter the key for this connection; Nova has not deleted any vault entries.');
@@ -74,6 +79,11 @@ export async function restoreProviderCredential(provider: Config['providers'][nu
 }
 export async function hydrateProviderCredentials(config: Config): Promise<Config> {
   if (!('__TAURI_INTERNALS__' in window)) return config;
+  if (macLocalCredentials()) {
+    registerSecrets(config.providers.map(provider => provider.apiKey));
+    if (config.providers.some(provider => !provider.apiKey && provider.apiKeyStored)) window.dispatchEvent(new CustomEvent('nova-credential-error', { detail: 'Re-enter previously vault-stored API keys once in Settings. On macOS, Nova now saves locally without accessing Keychain. Existing vault entries are unchanged.' }));
+    return config;
+  }
   const providers = [];
   for (const provider of config.providers) {
     if (!provider.apiKey && provider.apiKeyStored) {
@@ -90,7 +100,7 @@ export async function hydrateProviderCredentials(config: Config): Promise<Config
 }
 export function saveConfig(config: Config) {
   registerSecrets(config.providers.map(provider => provider.apiKey));
-  if (!('__TAURI_INTERNALS__' in window)) { localStorage.setItem('idk-nova-config', JSON.stringify(config)); return; }
+  if (!('__TAURI_INTERNALS__' in window) || macLocalCredentials()) { localStorage.setItem('idk-nova-config', JSON.stringify(config)); return; }
   const snapshot = structuredClone(config);
   credentialQueue = credentialQueue.catch(() => {}).then(async () => {
     for (const provider of snapshot.providers) {

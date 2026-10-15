@@ -58,6 +58,21 @@ test('Vision readiness sends an actual image rather than a text-only ping', asyn
 });
 const tools = [{ type: 'function', function: { name: 'fs_checkpoint', parameters: { type: 'object' }, description: 'Checkpoint' } }];
 const run = (api, execute, onToken = () => {}) => api.runAgentCompletion(config, [{ role: 'user', content: '@fs_checkpoint' }], '', tools, execute, () => {}, onToken, undefined, undefined, undefined, true, 'work', ['fs_checkpoint']);
+test('Context overflow replays compacted completed tool exchanges without repeating execution', async () => {
+  const { api, requests } = agent([{ body: { id: 'r1', output: [{ type: 'function_call', name: 'fs_checkpoint', call_id: 'c1', arguments: JSON.stringify({ source: 'large.xlsx', content: 'x'.repeat(30000) }) }] } }, { status: 400, text: 'Response context is too long' }, { body: { id: 'r3', output_text: 'Recovered' } }]);
+  let executions = 0;
+  await run(api, async () => { executions++; return { ok: true, filename: 'result.xlsx', rows: 'x'.repeat(30000) }; });
+  assert.equal(executions, 1); assert.equal(requests[2].body.store, false);
+  assert.equal(requests[2].body.input[0].content[0].text, '@fs_checkpoint');
+  assert.equal(requests[2].body.input[1].call_id, 'c1'); assert.equal(requests[2].body.input[2].call_id, 'c1');
+  assert.ok(JSON.stringify(requests[2].body.input).length < 8000);
+  assert.equal(JSON.parse(requests[2].body.input[2].output).filename, 'result.xlsx');
+});
+test('A transient model failure after a tool result does not repeat that tool', async () => {
+  const { api } = agent([{ body: { id: 'r1', output: [{ type: 'function_call', name: 'fs_checkpoint', call_id: 'c1', arguments: '{}' }] } }, { status: 503, text: 'upstream timeout' }, { body: { id: 'r3', output_text: 'Complete' } }]);
+  let executions = 0; await run(api, async () => { executions++; return { ok: true }; });
+  assert.equal(executions, 1);
+});
 test('An Ollama tool continuation sends the user, call and output together without response IDs', async () => {
   const { api, requests } = agent([{ body: { id: 'r1', output: [{ type: 'function_call', name: 'fs_checkpoint', call_id: 'c1', arguments: '{}' }] } }, { body: { id: 'r2', output_text: 'Verified.' } }]);
   const localConfig = { ...config, providers: [{ ...config.providers[0], baseUrl: 'http://127.0.0.1:11434/v1' }] };

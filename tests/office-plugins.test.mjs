@@ -69,6 +69,18 @@ const editing = { exports: {} };
 const editCode = ts.transpileModule(readFileSync(new URL('../src/lib/office-edit.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
 vm.runInNewContext(editCode, { module: editing, exports: editing.exports, require: name => name === './office-plugins' ? module.exports : require(name), Uint8Array, DataView, atob, Error });
 const { editOfficeFile, validateOfficeZip } = editing.exports;
+test('Large spreadsheet inspections are paginated and numeric summaries use actual values', async () => {
+  const result = await createOfficeFile('create_excel_workbook', { filename: 'large', sheets: [{ name: 'Sales', rows: [['Description', 'Value'], ...Array.from({ length: 600 }, (_, i) => [`Line ${i} ${'details '.repeat(20)}`, i + 1])] }] });
+  const files = [result.__novaAttachment];
+  const first = await editOfficeFile('inspect_office_file', { source: 'large.xlsx' }, files);
+  assert.ok(first.entries.length <= 80); assert.ok(JSON.stringify(first).length < 14000); assert.ok(first.nextOffset > 0);
+  assert.equal(first.sheets[0].numericColumns.B.sum, 600 * 601 / 2);
+  const next = await editOfficeFile('inspect_office_file', { source: 'large.xlsx', offset: first.nextOffset, sheet: 'Sales', limit: 10 }, files);
+  assert.notEqual(next.entries[0].id, first.entries[0].id);
+  const found = await editOfficeFile('inspect_office_file', { source: 'large.xlsx', query: 'Line 599' }, files);
+  assert.equal(found.entries.length, 1); assert.match(found.entries[0].text, /Line 599/);
+  await assert.rejects(editOfficeFile('inspect_office_file', { source: 'large.xlsx', offset: -1 }, files), /offset/);
+});
 const preview = { exports: {} };
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/office-preview.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText, { module: preview, exports: preview.exports, require: name => name === './office-edit' ? editing.exports : name === './office-format' ? {} : require(name), Uint8Array, atob, Error });
 const archive = { exports: {} };
