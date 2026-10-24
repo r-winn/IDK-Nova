@@ -22,7 +22,7 @@ Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
 ### New in 0.31.0 · Company Linux server
 
-Deploy the same Nova web interface on a company domain, with mandatory OIDC sign-in (Entra ID, AD FS, or Keycloak connected to internal AD), server-side provider credentials, account-scoped browser history, HTTPS and a versioned update/rollback command. Download **IDK-Nova-Server-0.31.0.tar.gz** and its checksum from [Releases](https://github.com/r-winn/IDK-Nova/releases/latest).
+Deploy the same Nova web interface on a company domain, with mandatory OIDC sign-in (Entra ID, AD FS, or Keycloak connected to internal AD), server-side provider credentials, account-scoped browser history, HTTPS and a versioned update/rollback command. Download **IDK-Nova-Server-0.31.0.tar.gz** and its checksum from the dedicated [Nova Server release](https://github.com/r-winn/IDK-Nova/releases/tag/server-v0.31.0).
 
 **For IT:** [فارسی: نصب و اتصال به اکتیو دایرکتوری](server/README.fa.md) · [Deployment, configuration, updates and security limits](server/README.md). This is web hosting, not desktop Work execution on users' PCs or cross-device history sync.
 
@@ -121,7 +121,7 @@ Nova is local-first and provider-neutral. It does not ship with a hidden model o
 | Windows 10/11 (64-bit) | **[Choose Setup.exe in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | Choose MSI for managed deployment |
 | macOS (Apple Silicon + Intel) | **[Choose Universal DMG in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | — |
 | Browser | **[Open the web app](https://r-winn.github.io/IDK-Nova/)** | Desktop is required for Nova Work and local GGUF import |
-| Company Linux server | **[Choose IDK-Nova-Server-*.tar.gz in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | [IT installation guide](server/README.fa.md); x86_64 / ARM64 Docker host |
+| Company Linux server | **[Download Nova Server bundle](https://github.com/r-winn/IDK-Nova/releases/tag/server-v0.31.0)** | [IT installation guide](server/README.fa.md); x86_64 / ARM64 Docker host |
 
 All official binaries are attached to the **[latest GitHub Release](https://github.com/r-winn/IDK-Nova/releases/latest)**. Do not download Nova installers from unofficial mirrors.
 
