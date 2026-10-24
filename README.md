@@ -22,9 +22,9 @@ Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
 ### New in 0.31.0 · Company Linux server
 
-Deploy the same Nova web interface on a company domain, with mandatory internal OIDC sign-in (on-prem AD FS or internal Keycloak connected to local AD over LDAPS), server-side provider credentials, account-scoped browser history, corporate HTTPS certificates and versioned updates/rollback. **Server 0.31.3** defaults to on-premises AD; no Microsoft cloud account is required for authentication. Download **IDK-Nova-Server-0.31.3.tar.gz** and its checksum from the dedicated [Nova Server release](https://github.com/r-winn/IDK-Nova/releases/tag/server-v0.31.3).
+Deploy the same Nova web interface on a company domain, with mandatory internal OIDC sign-in (on-prem AD FS or internal Keycloak connected to local AD over LDAPS), server-side provider credentials, account-scoped browser history, corporate HTTPS certificates and versioned updates/rollback. **Server 0.31.4** defaults to on-premises AD; no Microsoft cloud account is required for authentication. Download **IDK-Nova-Server-0.31.4.tar.gz** and its checksum from the dedicated [Nova Server release](https://github.com/r-winn/IDK-Nova/releases/tag/server-v0.31.4).
 
-**New:** Nova-branded Keycloak login with Persian/English, light/dark and safe local visual preview. [Login theme guide](server/keycloak/README.fa.md).
+**New:** Nova-branded Keycloak login with minimal English-only sign-in, automatic system theme and safe local visual preview. [Login theme guide](server/keycloak/README.fa.md).
 
 **For IT:** [فارسی: نصب و اتصال به اکتیو دایرکتوری](server/README.fa.md) · [Deployment, configuration, updates and security limits](server/README.md). This is web hosting, not desktop Work execution on users' PCs or cross-device history sync.
 
@@ -123,7 +123,7 @@ Nova is local-first and provider-neutral. It does not ship with a hidden model o
 | Windows 10/11 (64-bit) | **[Choose Setup.exe in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | Choose MSI for managed deployment |
 | macOS (Apple Silicon + Intel) | **[Choose Universal DMG in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | — |
 | Browser | **[Open the web app](https://r-winn.github.io/IDK-Nova/)** | Desktop is required for Nova Work and local GGUF import |
-| Company Linux server | **[Download Nova Server bundle](https://github.com/r-winn/IDK-Nova/releases/tag/server-v0.31.3)** | [Local AD installation guide](server/onprem/README.fa.md); x86_64 / ARM64 Docker host |
+| Company Linux server | **[Download Nova Server bundle](https://github.com/r-winn/IDK-Nova/releases/tag/server-v0.31.4)** | [Local AD installation guide](server/onprem/README.fa.md); x86_64 / ARM64 Docker host |
 
 All official binaries are attached to the **[latest GitHub Release](https://github.com/r-winn/IDK-Nova/releases/latest)**. Do not download Nova installers from unofficial mirrors.
 

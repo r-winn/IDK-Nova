@@ -11,18 +11,12 @@
   --nova-shadow: 0 20px 70px rgba(35,42,34,.07);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme=light]) {
+  :root {
     color-scheme: dark; --nova-bg:#161816; --nova-surface:rgba(32,35,32,.92);
     --nova-text:#f0f2ed; --nova-muted:#a2a79f; --nova-line:rgba(239,244,236,.16);
     --nova-input:#1b1e1b; --nova-button:#f1f3ef; --nova-button-text:#151715;
     --nova-shadow:0 24px 80px rgba(0,0,0,.2);
   }
-}
-:root[data-theme=dark] {
-  color-scheme:dark; --nova-bg:#161816; --nova-surface:rgba(32,35,32,.92);
-  --nova-text:#f0f2ed; --nova-muted:#a2a79f; --nova-line:rgba(239,244,236,.16);
-  --nova-input:#1b1e1b; --nova-button:#f1f3ef; --nova-button-text:#151715;
-  --nova-shadow:0 24px 80px rgba(0,0,0,.2);
 }
 html.login-pf { min-height:100%; background:var(--nova-bg); }
 .login-pf body {
@@ -31,7 +25,7 @@ html.login-pf { min-height:100%; background:var(--nova-bg); }
 }
 .login-pf body::before {
   content:""; position:fixed; inset:0; pointer-events:none;
-  background:radial-gradient(ellipse at 12% 15%,rgba(95,142,108,.085),transparent 55%),radial-gradient(ellipse at 88% 85%,rgba(128,106,162,.075),transparent 55%);
+  background:radial-gradient(ellipse at 12% 15%,rgba(95,142,108,.14),transparent 55%),radial-gradient(ellipse at 88% 85%,rgba(128,106,162,.13),transparent 55%);
   animation:nova-drift 22s ease-in-out infinite alternate;
 }
 @keyframes nova-drift { to { opacity:.65; transform:translateY(-12px); } }
@@ -39,10 +33,16 @@ html.login-pf { min-height:100%; background:var(--nova-bg); }
   position:relative; min-height:100svh; box-sizing:border-box; padding:64px 24px;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
 }
-#kc-header { width:100%; max-width:440px; margin:0 0 28px; padding:0; color:var(--nova-text); text-align:center; }
-#kc-header-wrapper { padding:0; font-size:25px; line-height:1.4; font-weight:650; letter-spacing:-.6px; text-transform:none; overflow-wrap:anywhere; }
-#kc-header-wrapper::before { content:""; display:block; width:54px; height:54px; margin:0 auto 16px; background:var(--nova-logo) center/contain no-repeat; border-radius:16px; }
-.login-pf-page .card-pf { box-sizing:border-box; width:100%; max-width:440px; margin:0; padding:34px 36px 24px; border:0; border-radius:24px; background:var(--nova-surface); box-shadow:var(--nova-shadow); color:var(--nova-text); }
+#kc-header { width:100%; max-width:340px; margin:0 0 32px; padding:0; color:var(--nova-text); text-align:center; }
+#kc-header-wrapper { padding:0; font-size:0; line-height:0; }
+#kc-header-wrapper::before { content:""; display:block; width:54px; height:54px; margin:0 auto; background:var(--nova-logo) center/contain no-repeat; border-radius:16px; }
+.login-pf-page .card-pf { box-sizing:border-box; width:100%; max-width:340px; margin:0; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; color:var(--nova-text); }
+/* Only simplify the initial password form, never required errors or MFA flows. */
+body[data-page-id="login-login"] .login-pf-header { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); }
+body[data-page-id="login-login"] button[data-password-toggle],
+body[data-page-id="login-login"] .login-pf-settings > div:not(#kc-form-options),
+body[data-page-id="login-login"] #kc-registration-container,
+#kc-locale { display:none; }
 .login-pf-header { margin:0 0 26px; }
 #kc-page-title { margin:0; color:var(--nova-text); font-size:22px; font-weight:600; line-height:1.6; letter-spacing:-.5px; text-align:start; }
 #kc-content, #kc-content-wrapper, #kc-form-wrapper { width:auto; margin:0; padding:0; float:none; }
@@ -78,7 +78,6 @@ html.login-pf { min-height:100%; background:var(--nova-bg); }
 #kc-form-options label { display:flex; align-items:center; gap:8px; margin:0; padding:0; color:var(--nova-muted); font-size:12px; }
 #kc-form-options input[type=checkbox] { position:static; margin:0; width:16px; height:16px; accent-color:var(--nova-accent,var(--nova-button)); }
 #kc-form-buttons { padding:0; margin:24px 0 0; float:none; }
-.nova-security-note { margin:24px 0 0; color:var(--nova-muted); font-size:11px; line-height:1.8; text-align:center; }
 .login-pf-page .pf-c-alert { margin:0 0 22px; padding:12px 14px; border:0; border-radius:12px; background:color-mix(in srgb,#c94755 9%,var(--nova-bg)); color:var(--nova-text); box-shadow:none; }
 .login-pf-page .pf-c-alert__title { color:var(--nova-text); font-size:13px; font-weight:400; }
 .login-pf-page .pf-c-alert__icon { color:#c94755; }
@@ -90,14 +89,8 @@ html.login-pf { min-height:100%; background:var(--nova-bg); }
 #kc-locale-dropdown button { min-height:40px; padding:8px 12px; border:1px solid var(--nova-line); border-radius:12px; background:var(--nova-surface); color:var(--nova-text); font:inherit; font-size:12px; }
 #kc-locale ul { border:1px solid var(--nova-line); border-radius:12px; padding:6px; background:var(--nova-surface); box-shadow:var(--nova-shadow); }
 #kc-locale ul a { padding:9px 14px; border-radius:8px; color:var(--nova-text); text-decoration:none; }
-html[lang^=fa] body { direction:rtl; }
-html[lang^=fa] #kc-page-title, html[lang^=fa] #kc-header-wrapper { letter-spacing:0; }
-html[lang^=fa] #username, html[lang^=fa] #password, html[lang^=fa] #otp { direction:ltr; text-align:left; unicode-bidi:plaintext; }
-.preview-controls { display:flex; justify-content:center; flex-wrap:wrap; gap:16px; margin:22px 0 0; font-size:12px; }
-.preview-banner { max-width:440px; margin:24px auto 0; font-size:12px; text-align:center; color:var(--nova-muted); }
 @media (max-width:480px) {
-  .login-pf-page { padding:88px 16px 28px; justify-content:flex-start; }
-  .login-pf-page .card-pf { padding:28px 24px 22px; border-radius:20px; }
-  #kc-header { margin-bottom:24px; } #kc-page-title { font-size:20px; }
+  .login-pf-page { padding:40px 24px; }
+  #kc-page-title { font-size:20px; }
 }
 @media (prefers-reduced-motion:reduce) { .login-pf body::before { animation:none; } .login-pf-page *, .login-pf-page *::before { transition:none !important; } }

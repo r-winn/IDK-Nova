@@ -7,7 +7,7 @@ test('company defaults use internal OIDC and model endpoints with an explicit gr
   const example = JSON.parse(read('config.example.json'));
   const config = validateConfig(example, { NOVA_OIDC_CLIENT_SECRET: 'test-only', NOVA_COMPANY_AI_KEY: 'test-only' });
   assert.equal(config.oidc.issuer, 'https://sso.company.internal/realms/company');
-  assert.equal(config.oidc.uiLocales, 'fa en');
+  assert.equal(config.oidc.uiLocales, 'en');
   assert.deepEqual(config.oidc.allowedGroups, ['nova-users']);
   assert.equal(config.providers[0].baseUrl, 'https://ai.company.internal/v1');
   assert.doesNotMatch(read('config.example.json') + read('.env.example'), /microsoftonline|TENANT-ID|Entra/);

@@ -38,7 +38,7 @@ jobs:
           cp "$NOVA_CONFIG_DIR/tls/server.crt" "$NOVA_CONFIG_DIR/ca/company-ca.pem"
           docker compose --env-file "$NOVA_CONFIG_DIR/.env" -f "$release/compose.yaml" -f "$release/onprem/compose.override.yaml" config --quiet
           docker run --rm -e NOVA_DOMAIN=nova.company.internal -v "$release/onprem/Caddyfile:/etc/caddy/Caddyfile:ro" -v "$NOVA_CONFIG_DIR/tls:/run/nova/tls:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile
-      - name: Render the native themed Keycloak login in English and Persian
+      - name: Render the native minimal English Keycloak login
         run: |
           for attempt in 1 2 3; do
             if docker pull quay.io/keycloak/keycloak:26.8.1; then break; fi
