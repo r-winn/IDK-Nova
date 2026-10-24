@@ -48,6 +48,7 @@ export function validateConfig(input, env = process.env, { testHTTP = false } = 
 export async function createApplication(input, { env = process.env, webRoot = path.join(here, 'web'), testHTTP = false } = {}) {
   const config = validateConfig(input, env, { testHTTP });
   const root = await realpath(webRoot);
+  const version = env.NOVA_VERSION || JSON.parse(await readFile(path.join(here, 'package.json'), 'utf8')).version;
   const client = await oidc.discovery(new URL(config.oidc.issuer), config.oidc.clientId, env[config.oidc.clientSecretEnv], undefined, testHTTP ? { execute: [oidc.allowInsecureRequests] } : undefined);
   const sessions = new Map(), pending = new Map(), usage = new Map();
   const cookieName = testHTTP ? 'nova_session' : '__Host-nova_session';
@@ -80,7 +81,7 @@ export async function createApplication(input, { env = process.env, webRoot = pa
     try {
       if (!req.url?.startsWith('/') || req.url.startsWith('//')) return json(res, 400, { error: 'Invalid path.' });
       url = new URL(req.url, config.publicOrigin);
-      if (req.method === 'GET' && url.pathname === '/healthz') return json(res, 200, { status: 'ok', version: env.NOVA_VERSION || '0.31.0' });
+      if (req.method === 'GET' && url.pathname === '/healthz') return json(res, 200, { status: 'ok', version });
       if (req.method === 'GET' && url.pathname === '/auth/login') {
         if (pending.size >= 2000 || sessions.size >= 10000) return json(res, 503, { error: 'Sign-in capacity reached. Try again shortly.' });
         if (cookies[loginCookie]) pending.delete(digest(cookies[loginCookie]));

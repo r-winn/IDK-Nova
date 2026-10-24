@@ -1,5 +1,5 @@
 {
-  "publicOrigin": "https://nova.example.com",
+  "publicOrigin": "https://nova.company.internal",
   "port": 8080,
   "sessionHours": 8,
   "maxBodyMB": 12,
@@ -7,12 +7,12 @@
   "requestsPerMinute": 60,
   "concurrentRequestsPerUser": 4,
   "oidc": {
-    "issuer": "https://login.microsoftonline.com/YOUR-TENANT-ID/v2.0",
-    "clientId": "YOUR-APPLICATION-CLIENT-ID",
+    "issuer": "https://sso.company.internal/realms/company",
+    "clientId": "nova-web",
     "clientSecretEnv": "NOVA_OIDC_CLIENT_SECRET",
     "scopes": "openid profile email",
     "groupsClaim": "groups",
-    "allowedGroups": []
+    "allowedGroups": ["nova-users"]
   },
   "ui": {
     "theme": "system",
@@ -22,11 +22,11 @@
     {
       "id": "company-ai",
       "name": "Company AI",
-      "baseUrl": "https://ai.goldiran.ir/v1",
+      "baseUrl": "https://ai.company.internal/v1",
       "apiKeyEnv": "NOVA_COMPANY_AI_KEY",
-      "models": ["goldiran-auto"]
+      "models": ["company-model"]
     }
   ],
   "defaultProviderId": "company-ai",
-  "defaultModel": "goldiran-auto"
+  "defaultModel": "company-model"
 }

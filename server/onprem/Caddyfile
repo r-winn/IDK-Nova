@@ -1,0 +1,8 @@
+{$NOVA_DOMAIN} {
+  # Corporate PKI: no public ACME certificate or public DNS is required.
+  tls /run/nova/tls/server.crt /run/nova/tls/server.key
+  header Strict-Transport-Security "max-age=31536000"
+  reverse_proxy nova:8080 {
+    flush_interval -1
+  }
+}

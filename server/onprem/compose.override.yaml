@@ -1,0 +1,12 @@
+# Installed into config/compose.override.yaml for NEW installations.
+# All paths reference the persistent company config, not this example folder.
+services:
+  nova:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/nova/ca/company-ca.pem
+    volumes:
+      - ${NOVA_CONFIG_DIR}/ca:/run/nova/ca:ro
+  gateway:
+    volumes:
+      - ./onprem/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${NOVA_CONFIG_DIR}/tls:/run/nova/tls:ro

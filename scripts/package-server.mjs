@@ -5,11 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+// Server patches can ship independently of desktop installers/UI versions.
+const { version } = JSON.parse(await readFile(path.join(root, 'server/package.json'), 'utf8'));
 const stage = await mkdtemp(path.join(tmpdir(), 'nova-server-package-'));
 const output = path.join(root, 'server-dist');
 try {
   for (const name of ['app.mjs', 'package.json', 'package-lock.json', 'Dockerfile', '.dockerignore', 'compose.yaml', 'Caddyfile', '.env.example', 'config.example.json', 'install.sh', 'manage.sh', 'README.fa.md', 'README.md']) await cp(path.join(root, 'server', name), path.join(stage, name));
+  await cp(path.join(root, 'server/onprem'), path.join(stage, 'onprem'), { recursive: true });
   await cp(path.join(root, 'dist'), path.join(stage, 'web'), { recursive: true });
   await writeFile(path.join(stage, 'VERSION'), `${version}\n`);
   await mkdir(output, { recursive: true });

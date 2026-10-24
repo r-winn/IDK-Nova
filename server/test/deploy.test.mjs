@@ -13,13 +13,16 @@ test('Linux deployment scripts preserve configuration, verify updates and restor
     await cp(new URL('..', import.meta.url), source, { recursive: true, filter: src => !src.includes('node_modules') && !src.includes('/test') });
     await writeFile(path.join(source, 'VERSION'), '0.31.0\n');
     await writeFile(path.join(bin, 'docker'), '#!/bin/sh\nprintf "%s %s\\n" "$NOVA_VERSION" "$*" >> "$DEPLOY_LOG"\ncase "$*" in *" up "*) [ "$NOVA_VERSION" != "$FAIL_VERSION" ] || exit 1;; esac\n', { mode: 0o755 });
-    await writeFile(path.join(bin, 'curl'), '#!/bin/sh\nurl=""\nout=""\nwhile [ "$#" -gt 0 ]; do case "$1" in https:*) url="$1";; -o) shift; out="$1";; esac; shift; done\ncp "$FIXTURES/$(basename "$url")" "$out"\n', { mode: 0o755 });
+    await writeFile(path.join(bin, 'curl'), '#!/bin/sh\nurl=""\nout=""\nwhile [ "$#" -gt 0 ]; do case "$1" in https:*) url="$1";; -o) shift; out="$1";; esac; shift; done\nif [ -z "$out" ]; then cat "$FIXTURES/releases.json"; else cp "$FIXTURES/$(basename "$url")" "$out"; fi\n', { mode: 0o755 });
     const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, DEPLOY_LOG: path.join(temp, 'deploy.log'), FIXTURES: fixtures };
     const run = (file, args = [], extra = {}) => spawnSync('bash', [file, ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
     assert.equal(run(path.join(source, 'install.sh'), [root]).status, 0);
     await writeFile(path.join(root, 'config/config.json'), '{"kept":"company-config"}');
     await writeFile(path.join(root, 'config/.env'), 'COMPANY_KEY=must-survive\n');
     const manager = path.join(root, 'manage.sh');
+    assert.match(await readFile(path.join(root, 'config/compose.override.yaml'), 'utf8'), /onprem\/Caddyfile/);
+    const missingTLS = run(manager, ['start']); assert.notEqual(missingTLS.status, 0); assert.match(missingTLS.stderr, /Missing corporate certificate/);
+    for (const name of ['tls/server.crt', 'tls/server.key', 'ca/company-ca.pem']) await writeFile(path.join(root, 'config', name), 'deployment-control-flow-test-only');
     const start = run(manager, ['start']); assert.equal(start.status, 0, start.stderr);
     async function release(version, corrupt = false) {
       const staging = path.join(temp, `stage-${version}`); await mkdir(staging);
@@ -46,6 +49,11 @@ test('Linux deployment scripts preserve configuration, verify updates and restor
     assert.notEqual(corrupt.status, 0); assert.match(corrupt.stderr, /Checksum mismatch/);
     const rollback = run(manager, ['rollback']); assert.equal(rollback.status, 0, rollback.stderr);
     assert.match(await readlink(path.join(root, 'current')), /0\.31\.0$/);
+    assert.equal(run(manager, ['use', '0.31.1']).status, 0);
+    assert.match(await readlink(path.join(root, 'current')), /0\.31\.1$/);
+    assert.notEqual(run(manager, ['use', '../../bad']).status, 0);
+    await writeFile(path.join(fixtures, 'releases.json'), '[\n {"tag_name": "v0.40.0"},\n {"tag_name": "server-v0.31.2", "assets": [{"name": "IDK-Nova-Server-0.31.2.tar.gz"}]}\n]\n');
+    const check = run(manager, ['check']); assert.equal(check.status, 0, check.stderr); assert.match(check.stdout, /update v0\.31\.2/); assert.doesNotMatch(check.stdout, /update v0\.40/);
     assert.notEqual(run(manager, ['update', '../../bad']).status, 0);
   } finally { await rm(temp, { recursive: true, force: true }); }
 });

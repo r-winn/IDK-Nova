@@ -14,11 +14,18 @@ cp -a "$source_dir/." "$root/releases/$version/"
 if [[ ! -f "$root/config/config.json" ]]; then
   cp "$source_dir/config.example.json" "$root/config/config.json"
   chmod 644 "$root/config/config.json"
+  # Existing deployments and their proxy overrides are never silently changed.
+  if [[ ! -f "$root/config/compose.override.yaml" ]]; then
+    cp "$source_dir/onprem/compose.override.yaml" "$root/config/compose.override.yaml"
+  fi
 fi
+mkdir -p "$root/config/ca" "$root/config/tls"
+chmod 755 "$root/config/ca"
+chmod 700 "$root/config/tls"
 if [[ ! -f "$root/config/.env" ]]; then
   install -m 600 "$source_dir/.env.example" "$root/config/.env"
 fi
 cp "$source_dir/manage.sh" "$root/manage.sh"
 chmod 755 "$root/manage.sh"
 if [[ ! -e "$root/current" ]]; then ln -s "releases/$version" "$root/current"; fi
-printf 'Installed %s into %s\nEdit config/config.json and config/.env, then run:\n  %s/manage.sh start\n' "$version" "$root" "$root"
+printf 'Installed %s into %s\nRead onprem/README.fa.md: configure LOCAL SSO, company CA and TLS certificate before starting.\nEdit config/config.json and config/.env, then run:\n  %s/manage.sh start\n' "$version" "$root" "$root"

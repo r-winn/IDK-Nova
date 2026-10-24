@@ -1,0 +1,55 @@
+name: Publish Nova Server
+on:
+  push:
+    tags: ['server-v*']
+permissions:
+  contents: write
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm ci --prefix server --ignore-scripts
+      - run: npm test --prefix server
+      - run: npm run build
+      - run: npm run server:bundle
+      - name: Verify tagged server version
+        run: |
+          version="$(node -p 'require("./server/package.json").version')"
+          test "$GITHUB_REF_NAME" = "server-v$version"
+      - name: Build and test actual Linux package and corporate TLS configuration
+        run: |
+          release="$RUNNER_TEMP/nova-server"
+          mkdir "$release"
+          tar -xzf server-dist/IDK-Nova-Server-*.tar.gz -C "$release"
+          docker build --tag nova-server-ci "$release"
+          docker run --rm -v "$PWD/server/test:/app/test:ro" nova-server-ci node --test test/server.test.mjs
+          export NOVA_CONFIG_DIR="$RUNNER_TEMP/nova-config" NOVA_VERSION="$(cat "$release/VERSION")"
+          mkdir -p "$NOVA_CONFIG_DIR/tls" "$NOVA_CONFIG_DIR/ca"
+          cp "$release/.env.example" "$NOVA_CONFIG_DIR/.env"
+          cp "$release/config.example.json" "$NOVA_CONFIG_DIR/config.json"
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$NOVA_CONFIG_DIR/tls/server.key" -out "$NOVA_CONFIG_DIR/tls/server.crt" -days 1 -subj '/CN=nova.company.internal' -addext 'subjectAltName=DNS:nova.company.internal'
+          cp "$NOVA_CONFIG_DIR/tls/server.crt" "$NOVA_CONFIG_DIR/ca/company-ca.pem"
+          docker compose --env-file "$NOVA_CONFIG_DIR/.env" -f "$release/compose.yaml" -f "$release/onprem/compose.override.yaml" config --quiet
+          docker run --rm -e NOVA_DOMAIN=nova.company.internal -v "$release/onprem/Caddyfile:/etc/caddy/Caddyfile:ro" -v "$NOVA_CONFIG_DIR/tls:/run/nova/tls:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile
+      - name: Publish independent server downloads
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            draft="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"
+            if [[ "$draft" != true ]]; then
+              echo 'Server release already public; immutable downloads will not be overwritten.'
+              exit 0
+            fi
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Nova Server ${GITHUB_REF_NAME#server-v} · On-premises AD" --notes-file "docs/releases/$GITHUB_REF_NAME.md" --draft --latest=false
+          fi
+          gh release upload "$GITHUB_REF_NAME" server-dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false

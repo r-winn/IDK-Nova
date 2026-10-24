@@ -1,12 +1,14 @@
 # IDK Nova Server
 
-Linux deployment of the **same Nova web UI**, protected by company OpenID Connect sign-in. Docker Compose runs a Node.js gateway and Caddy HTTPS endpoint. There is no Linux desktop emulator and no access to users' computers from the website.
+Linux deployment of the **same Nova web UI**, configured by default for **on-premises Active Directory**, internal OIDC sign-in and corporate TLS certificates. Docker Compose runs a Node.js gateway and Caddy HTTPS endpoint. No Microsoft cloud account is required for AD authentication. There is no Linux desktop emulator or access to users' computers from the website.
+
+**Start with [the on-premises IT checklist (Persian)](onprem/README.fa.md).** Local AD is not the same as a fully air-gapped deployment: installation/images and GitHub updates require network access or IT-managed mirrors, and AI provider connectivity is independent.
 
 ## Requirements
 
 - Linux x86_64 or ARM64, Docker Engine with Compose v2 supporting `up --wait`, Bash, curl, GNU tar/coreutils; outbound HTTPS for images, npm, GitHub, the identity provider and AI providers.
-- A domain with DNS pointing to the server and inbound TCP 80/443 (Caddy obtains a public TLS certificate). For private domains/corporate PKI, IT must replace the TLS gateway configuration appropriately.
-- A confidential OIDC application in Entra ID, AD FS (2016+) or Keycloak. **A plain Active Directory domain controller is not an OIDC provider.** Use Keycloak's AD/LDAP federation over LDAPS when no Entra/AD FS service exists. Do not send AD passwords to Nova or use an AI provider API key for domain sign-in.
+- Internal DNS names for Nova and the identity service, HTTPS access on TCP 443, and corporate certificates trusted by servers and employee browsers. New installations use `onprem/compose.override.yaml`: the certificate is supplied by IT, not public ACME. TCP 80 is only for HTTPS redirects in the base deployment.
+- A confidential OIDC application on internal AD FS (2016+) or internal Keycloak federated to AD over LDAPS. **A plain AD domain controller is not an OIDC provider.** Keycloak and its persistent database are not installed by this bundle. Do not send AD passwords to Nova. Domain join is not required for this OIDC path; automatic Windows/Kerberos sign-in is a separate setup.
 - Starting allocation: 2 vCPU / 2 GB RAM for a small gateway deployment, plus disk for Docker images and rollback versions. This is not an AI inference server; load test for the actual number of users. Local model hosting needs separate hardware.
 
 ## Install
@@ -21,6 +23,8 @@ cd nova-server-package
 sudo bash install.sh /opt/idk-nova
 sudo nano /opt/idk-nova/config/config.json
 sudo nano /opt/idk-nova/config/.env
+# Supply corporate CA and the matching Nova TLS certificate/private key first.
+# See onprem/README.fa.md for paths and permissions.
 sudo /opt/idk-nova/manage.sh start
 sudo /opt/idk-nova/manage.sh status
 ```
@@ -29,12 +33,12 @@ Use the real archive version instead of X.Y.Z. The download contains **no compan
 
 ### IT configuration checklist
 
-1. `publicOrigin`: exact HTTPS origin, e.g. `https://nova.company.ir`, no path or trailing slash. Serve Nova at the domain root, not a subdirectory.
-2. `.env` `NOVA_DOMAIN`: the same host, e.g. `nova.company.ir`.
-3. OIDC redirect URI: **`https://nova.company.ir/auth/callback`**. Register as a confidential **web** application using Authorization Code, client secret, PKCE S256 and query response mode. Do not register as an SPA. Use a tenant-specific issuer, not `common`.
+1. `publicOrigin`: exact internal HTTPS origin, e.g. `https://nova.company.internal`, no path or trailing slash. Replace every example with the real company's DNS names. Serve Nova at the domain root, not a subdirectory.
+2. `.env` `NOVA_DOMAIN`: the same host, e.g. `nova.company.internal`.
+3. OIDC redirect URI: **`https://nova.company.internal/auth/callback`**. Register as a confidential **web** application using Authorization Code, client secret, PKCE S256 and query response mode. Do not register as an SPA. Use the exact issuer from the internal identity service's discovery document.
 4. Put issuer/client ID in `config.json`, actual client secret in `.env` under the name referenced by `clientSecretEnv`. `openid profile email` are the default scopes; group mappings are optional.
-5. `allowedGroups`: empty means **all identities allowed by that issuer/application**, not public anonymous access. To restrict access, configure IdP app assignment and/or group claims and list exact IDs in `allowedGroups`. Missing/oversized/overage group claims fail closed; Nova does not query Microsoft Graph to expand them. In Keycloak, map `groups` into the ID token. AD FS may need a custom claim name in `groupsClaim`.
-6. Each provider has a stable unique ID, base URL including `/v1` if required, and explicit model IDs. The corresponding company API key lives only in `.env` under `apiKeyEnv`. Add multiple provider entries and environment variables as needed. No per-model key duplication. For a trusted internal HTTP provider only, set `allowHttp: true`; prefer TLS.
+5. The example restricts `allowedGroups` to `nova-users`. Map AD groups into an array claim in the ID token; use the exact value (e.g. `/nova-users` if the mapper includes a leading slash). Missing claims fail closed with 403. Empty `allowedGroups` means all identities allowed by the issuer/application, not anonymous access; do not remove restrictions simply to hide a mapping error. AD FS may need a different `groupsClaim`.
+6. The example AI endpoint is internal too: replace `https://ai.company.internal/v1` and `company-model` with the real endpoint/model IDs. AI may be internal or external independently of AD. Keys live in `.env` under `apiKeyEnv`; remove that field for an upstream that truly requires no key. No per-model key duplication. For a trusted internal HTTP provider only, set `allowHttp: true`; prefer TLS.
 7. `ui.theme` and `ui.branding` keep the existing Nova configuration shape; do not edit bundled HTML/CSS. Branding, theme and company model defaults are delivered after SSO. Existing user-added providers remain supported; this is **not a locked-down DLP system**.
 8. Keep the internal port `8080`. Only Caddy publishes ports. Do not expose the Node port directly. If using your own reverse proxy, retain TLS, disable buffering for SSE, and allow long responses up to the configured timeout.
 
@@ -42,11 +46,10 @@ Issuer examples (replace all placeholders):
 
 | Company identity | Issuer |
 | --- | --- |
-| Entra ID | `https://login.microsoftonline.com/TENANT-ID/v2.0` |
 | AD FS | Use the exact issuer from your AD FS OpenID discovery document; confirm with IT (do not assume the host alone is correct). |
-| Keycloak + internal AD | `https://sso.company.ir/realms/company` |
+| Keycloak + internal AD | `https://sso.company.internal/realms/company` |
 
-The server discovers the provider, validates signatures, issuer, audience, expiry, state and nonce, and exchanges codes with PKCE. Nova never receives the employee's domain password. Corporate CA certificates must be added to the container trust store / `NODE_EXTRA_CA_CERTS` using an IT-managed `config/compose.override.yaml` (automatically included by the management script); never disable TLS verification. Single-quote secrets in `.env` when they contain `$`, `#` or other Compose interpolation characters; follow Docker's env-file escaping rules.
+The server discovers the provider, validates signatures, issuer, audience, expiry, state and nonce, and exchanges codes with PKCE. Nova never receives the employee's domain password. New installs automatically include the on-prem override in `config/compose.override.yaml`. Place the trusted company CA bundle in `config/ca/company-ca.pem`, the Nova certificate chain in `config/tls/server.crt` and its private key in `config/tls/server.key`. The override sets `NODE_EXTRA_CA_CERTS` and configures Caddy to use the corporate certificate. Missing files stop the management command before deployment. Configure Keycloak's trust of the DC certificate separately. Never disable TLS verification. Single-quote secrets in `.env` when they contain `$` or `#`.
 
 ## Updates and rollback
 
@@ -56,7 +59,9 @@ sudo /opt/idk-nova/manage.sh update vX.Y.Z
 sudo /opt/idk-nova/manage.sh rollback
 ```
 
-Updates are deliberately **administrator approved**, not silently executed by a website visitor. The update command downloads from the fixed official repository, verifies SHA-256, validates archive paths/types, builds the new image, and waits for health. A failed startup restores the previous deployment. `config/`, secrets and Caddy's named TLS volumes are preserved. Old versions/downloads are retained for recovery; IT manages retention. Checksums detect corruption; they are not an independent digital publisher signature. Schedule `check` through your company's monitoring if update notifications are needed.
+Updates are deliberately **administrator approved**. The manager checks dedicated `server-vX.Y.Z` releases, downloads from the fixed official repository, verifies SHA-256, validates archive paths/types, builds the new image, and waits for health. A failed startup restores the previous deployment. `config/`, secrets, certificates and named volumes are preserved. Old versions/downloads are retained for recovery; IT manages retention. Checksums detect corruption, not independent publisher authenticity. Schedule `check` through company monitoring if desired; authentication itself never calls GitHub.
+
+**Migrating from 0.31.0:** defaults/configuration are not silently rewritten. Download and verify the new Server archive, run its `install.sh` against the same installation directory, prepare/merge the on-prem override and certificates, and run `manage.sh use 0.31.1`. Existing overrides are preserved. Back up configuration before changing it; code rollback alone cannot undo an administrator's TLS/issuer changes. For isolated networks, supply Docker images/build dependencies through IT mirrors and transfer the verified archive manually; an offline one-click installer is not provided.
 
 Existing web pages need to reload to receive new code. Server session memory is reset on restart/update, so users sign in again. No data migration or deletion is performed by the updater. Back up `/opt/idk-nova/config` securely and the Docker TLS volumes before infrastructure changes. Never use `docker compose down -v` for a routine update.
 
@@ -66,7 +71,7 @@ Existing web pages need to reload to receive new code. Server session memory is 
 - Chat history, uploaded attachments, personal preferences and memories stay in the user's browser storage, namespaced by validated issuer + subject. **This does not provide cross-device history synchronization or encrypted browser storage.** A different browser/device starts fresh. Browser administrators can inspect local data; use separate OS/browser profiles on shared machines. SSO identity separation prevents accidental display of another account's data; it is not protection against a compromised browser or XSS.
 - Company AI credentials are never included in browser configuration. A logged-in employee can use the allowed models and consume company quota. Set provider-side budgets and tenant policies; request limits are not token/cost budgets. User-provided external API providers are still possible in the normal UI.
 - Only model listing and Chat Completions / Responses are proxied. Realtime voice, native Work, local GGUF import, desktop filesystem/terminal/browser control stay subject to existing web capability restrictions. Do not expose server shell execution as a workaround.
-- `/auth/logout` provides a confirmation form for **local Nova sign-out**. This is not global AD/Entra sign-out; the IdP may automatically sign the user in again. Clearing browser data removes locally saved chats. `/healthz` is a non-sensitive process health endpoint, not a provider/AD credential test.
+- `/auth/logout` provides a confirmation form for **local Nova sign-out**, not global directory/identity-service sign-out. The IdP may sign the user in again. Clearing browser data removes locally saved chats. `/healthz` is process health, not a provider/AD credential test.
 - Logs contain generic error type/route categories, not request bodies, chat text, API keys or callback query strings. Avoid reverse-proxy access logging of `/auth/callback` query strings. Corporate audit/retention, backups, MFA, CA policy, firewall, monitoring and an external security review remain IT responsibilities.
 
 ## Acceptance test before employee rollout
