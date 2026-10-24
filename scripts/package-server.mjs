@@ -12,6 +12,7 @@ const output = path.join(root, 'server-dist');
 try {
   for (const name of ['app.mjs', 'package.json', 'package-lock.json', 'Dockerfile', '.dockerignore', 'compose.yaml', 'Caddyfile', '.env.example', 'config.example.json', 'install.sh', 'manage.sh', 'README.fa.md', 'README.md']) await cp(path.join(root, 'server', name), path.join(stage, name));
   await cp(path.join(root, 'server/onprem'), path.join(stage, 'onprem'), { recursive: true });
+  await cp(path.join(root, 'server/keycloak'), path.join(stage, 'keycloak'), { recursive: true });
   await cp(path.join(root, 'dist'), path.join(stage, 'web'), { recursive: true });
   await writeFile(path.join(stage, 'VERSION'), `${version}\n`);
   await mkdir(output, { recursive: true });

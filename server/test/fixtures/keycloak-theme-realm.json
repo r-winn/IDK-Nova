@@ -1,0 +1,21 @@
+{
+  "realm": "nova-theme-test",
+  "enabled": true,
+  "displayName": "Nova",
+  "loginTheme": "nova",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["en", "fa"],
+  "defaultLocale": "en",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "clients": [{
+    "clientId": "nova-theme-test",
+    "enabled": true,
+    "publicClient": true,
+    "standardFlowEnabled": true,
+    "directAccessGrantsEnabled": false,
+    "protocol": "openid-connect",
+    "redirectUris": ["http://127.0.0.1:1430/"],
+    "attributes": { "pkce.code.challenge.method": "S256" }
+  }]
+}

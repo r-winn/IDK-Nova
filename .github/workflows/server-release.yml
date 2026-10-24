@@ -38,6 +38,16 @@ jobs:
           cp "$NOVA_CONFIG_DIR/tls/server.crt" "$NOVA_CONFIG_DIR/ca/company-ca.pem"
           docker compose --env-file "$NOVA_CONFIG_DIR/.env" -f "$release/compose.yaml" -f "$release/onprem/compose.override.yaml" config --quiet
           docker run --rm -e NOVA_DOMAIN=nova.company.internal -v "$release/onprem/Caddyfile:/etc/caddy/Caddyfile:ro" -v "$NOVA_CONFIG_DIR/tls:/run/nova/tls:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile
+      - name: Render the native themed Keycloak login in English and Persian
+        run: |
+          docker run -d --name nova-keycloak-theme-test -p 127.0.0.1:18080:8080 \
+            -v "$RUNNER_TEMP/nova-server/keycloak/themes/nova:/opt/keycloak/themes/nova:ro" \
+            -v "$PWD/server/test/fixtures/keycloak-theme-realm.json:/opt/keycloak/data/import/nova-theme-test-realm.json:ro" \
+            quay.io/keycloak/keycloak:26.8.1 start-dev --import-realm --hostname=http://127.0.0.1:18080
+          node server/test/keycloak-render-check.mjs
+      - name: Keycloak diagnostic logs on failure
+        if: failure()
+        run: docker logs nova-keycloak-theme-test || true
       - name: Publish independent server downloads
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
