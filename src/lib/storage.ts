@@ -1,14 +1,15 @@
+import { clientStorage, browserDataName } from './client-storage';
 import type { Attachment, Chat, Config } from '../types';
 import { defaultConfig, defaultProvider } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 import { registerSecrets } from './secrets';
 export const macLocalCredentials = () => typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent) && '__TAURI_INTERNALS__' in window;
-export function loadValue<T>(key: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(key) || '') as T; } catch { return fallback; } }
+export function loadValue<T>(key: string, fallback: T): T { try { return JSON.parse(clientStorage.getItem(key) || '') as T; } catch { return fallback; } }
 const ATTACHMENT_DB = 'idk-nova-memory';
 const ATTACHMENT_STORE = 'attachments';
 const persistedAttachmentKeys = new Set<string>();
 const openAttachmentDb = () => new Promise<IDBDatabase>((resolve, reject) => {
-  const request = indexedDB.open(ATTACHMENT_DB, 1);
+  const request = indexedDB.open(browserDataName(ATTACHMENT_DB), 1);
   request.onupgradeneeded = () => request.result.createObjectStore(ATTACHMENT_STORE);
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => reject(request.error);
@@ -42,7 +43,7 @@ export function saveChats(chats: Chat[]) {
       return { ...attachment, url: `idb:${key}` };
     }),
   })) }));
-  localStorage.setItem('idk-nova-history', JSON.stringify(safe));
+  clientStorage.setItem('idk-nova-history', JSON.stringify(safe));
 }
 export async function restoreChatAttachments(chats: Chat[]): Promise<Chat[]> {
   return Promise.all(chats.map(async (chat) => ({ ...chat, messages: await Promise.all(chat.messages.map(async (message) => ({
@@ -100,7 +101,7 @@ export async function hydrateProviderCredentials(config: Config): Promise<Config
 }
 export function saveConfig(config: Config) {
   registerSecrets(config.providers.map(provider => provider.apiKey));
-  if (!('__TAURI_INTERNALS__' in window) || macLocalCredentials()) { localStorage.setItem('idk-nova-config', JSON.stringify(config)); return; }
+  if (!('__TAURI_INTERNALS__' in window) || macLocalCredentials()) { clientStorage.setItem('idk-nova-config', JSON.stringify(config)); return; }
   const snapshot = structuredClone(config);
   credentialQueue = credentialQueue.catch(() => {}).then(async () => {
     for (const provider of snapshot.providers) {
@@ -110,8 +111,8 @@ export function saveConfig(config: Config) {
       await invoke('write_provider_credential', { account, secret: provider.apiKey });
       savedCredentialValues.set(account, provider.apiKey);
     }
-    localStorage.setItem('idk-nova-config', JSON.stringify({ ...snapshot, providers: snapshot.providers.map(provider => ({ ...provider, credentialAccount: credentialAccount(provider), apiKey: '', apiKeyStored: Boolean(provider.apiKey || provider.apiKeyStored) })) }));
-    localStorage.removeItem('nova-chat-config'); // Remove the migrated legacy credential copy only after vault writes succeed.
+    clientStorage.setItem('idk-nova-config', JSON.stringify({ ...snapshot, providers: snapshot.providers.map(provider => ({ ...provider, credentialAccount: credentialAccount(provider), apiKey: '', apiKeyStored: Boolean(provider.apiKey || provider.apiKeyStored) })) }));
+    clientStorage.removeItem('nova-chat-config'); // Remove the migrated legacy credential copy only after vault writes succeed.
   });
   void credentialQueue.catch(() => window.dispatchEvent(new CustomEvent('nova-credential-error', { detail: 'Could not save credentials securely. Settings were not persisted; unlock the system vault, then close Settings to retry.' })));
 }

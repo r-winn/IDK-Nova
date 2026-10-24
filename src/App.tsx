@@ -1,3 +1,4 @@
+import { clientStorage } from './lib/client-storage';
 import {
   ChangeEvent,
   CSSProperties,
@@ -674,10 +675,10 @@ export default function App() {
     setActive(id);
   }, []);
   useEffect(() => {
-    localStorage.setItem("idk-nova-folders", JSON.stringify(folders));
+    clientStorage.setItem("idk-nova-folders", JSON.stringify(folders));
   }, [folders]);
   useEffect(() => {
-    localStorage.setItem("idk-nova-workspaces", JSON.stringify(workspaces));
+    clientStorage.setItem("idk-nova-workspaces", JSON.stringify(workspaces));
   }, [workspaces]);
   useEffect(() => {
     if (!isDesktopApp() || !watchedWorkspace) return;
@@ -730,7 +731,7 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [chats, workspaces]);
   useEffect(() => {
-    localStorage.setItem("idk-nova-browser-width", JSON.stringify(browserWidth));
+    clientStorage.setItem("idk-nova-browser-width", JSON.stringify(browserWidth));
   }, [browserWidth]);
   useEffect(() => {
     const adaptBrowser = () => {
@@ -845,7 +846,7 @@ export default function App() {
   }, [browserOpen, activeBrowserTabId, browserMaximized, sidebar]);
   useEffect(
     () => {
-      localStorage.setItem("idk-nova-active", JSON.stringify(active));
+      clientStorage.setItem("idk-nova-active", JSON.stringify(active));
     },
     [active],
   );

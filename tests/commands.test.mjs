@@ -1,3 +1,4 @@
+import { loadBrowserStorage } from './helpers/client-storage.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -5,6 +6,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { inflateSync } from 'node:zlib';
 function load(path, dependencies = {}, globals = {}) {
+  dependencies = { ...dependencies, './client-storage': loadBrowserStorage(globals), '../lib/client-storage': loadBrowserStorage(globals) };
   const module = { exports: {} };
   const source = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   vm.runInNewContext(source, { exports: module.exports, module, require: name => dependencies[name], URL, Error, DOMException, performance, crypto, ...globals });

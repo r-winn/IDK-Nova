@@ -1,0 +1,39 @@
+services:
+  nova:
+    image: idk-nova-server:${NOVA_VERSION:?Run through manage.sh}
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 1g
+    tmpfs: [/tmp:size=32m,noexec,nosuid]
+    env_file: ${NOVA_CONFIG_DIR:?Run through manage.sh}/.env
+    environment:
+      NOVA_VERSION: ${NOVA_VERSION}
+    volumes:
+      - ${NOVA_CONFIG_DIR}/config.json:/run/nova/config.json:ro
+    expose: ["8080"]
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+  gateway:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      NOVA_DOMAIN: ${NOVA_DOMAIN:?Set NOVA_DOMAIN in config/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - tls-data:/data
+      - tls-config:/config
+    depends_on:
+      nova: { condition: service_healthy }
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+volumes:
+  tls-data:
+  tls-config:

@@ -1,14 +1,15 @@
+import { clientStorage } from '../lib/client-storage';
 import type { AgentTask, TaskEvent, TaskState } from "./protocol";
 import { redactSecrets } from '../lib/secrets';
 
 const KEY = "idk-nova-agent-tasks-v1";
 
 const read = (): AgentTask[] => {
-  try { return JSON.parse(localStorage.getItem(KEY) || "[]") as AgentTask[]; }
+  try { return JSON.parse(clientStorage.getItem(KEY) || "[]") as AgentTask[]; }
   catch { return []; }
 };
 
-const write = (tasks: AgentTask[]) => { try { localStorage.setItem(KEY, JSON.stringify(tasks.slice(-100))); } catch { /* Activity quota must not interrupt a running action. */ } };
+const write = (tasks: AgentTask[]) => { try { clientStorage.setItem(KEY, JSON.stringify(tasks.slice(-100))); } catch { /* Activity quota must not interrupt a running action. */ } };
 
 /** On a fresh app launch no in-flight tool or approval promise is still alive. */
 export function recoverInterruptedTasks(): number {

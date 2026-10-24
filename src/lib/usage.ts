@@ -1,3 +1,4 @@
+import { clientStorage } from './client-storage';
 import type { Config } from '../types';
 import { getActiveProvider } from '../types';
 import { loadValue } from './storage';
@@ -43,7 +44,7 @@ export class UsageTracker {
     const cost = rates.every(rate => Number.isFinite(rate) && rate >= 0) && completeUsage ? ((this.tokens.input - this.tokens.cached) * rates[0] + this.tokens.cached * rates[2] + this.tokens.output * rates[1]) / 1_000_000 : undefined;
     const record: UsageRecord = { ...this.tokens, id: crypto.randomUUID(), at: Date.now(), providerId: provider.id, providerName: provider.name, model: this.config.activeModel, workId: this.workId, durationMs: Math.round(performance.now() - this.started), firstTextMs: this.firstTextMs, requests: this.requests, reportedRequests: this.reportedRequests, status, cost };
     try {
-      localStorage.setItem('nova-usage-v1', JSON.stringify([...usageRecords(), record].slice(-10000)));
+      clientStorage.setItem('nova-usage-v1', JSON.stringify([...usageRecords(), record].slice(-10000)));
       window.dispatchEvent(new Event('nova-usage-updated'));
     } catch { /* Storage quota must never turn a successful AI response into a failure. */ }
   }

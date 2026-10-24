@@ -1,5 +1,7 @@
 node_modules/
 dist/
+server-dist/
+server/config.json
 src-tauri/target/
 src-tauri/gen/
 .DS_Store

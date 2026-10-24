@@ -1,3 +1,4 @@
+import { clientStorage } from './client-storage';
 import { NOVA_TOOLS } from '../agent/catalog';
 import { extensionCatalog } from './extensions';
 export type SavedPrompt = { id: string; name: string; shortcut: string; text: string; pack?: string };
@@ -26,7 +27,7 @@ export const promptPacks = [
   { id: 'research', name: 'Research checklist', description: 'Organize sources and distinguish evidence from assumptions.', prompts: [{ name: 'Research brief', shortcut: 'research_brief', text: 'Prepare a research brief for the topic below. Distinguish verified sources from assumptions. If web tools are unavailable, say so and do not fabricate citations.' }] },
 ] as const;
 export function savedPrompts(): SavedPrompt[] {
-  try { return validatePrompts(JSON.parse(localStorage.getItem('nova-prompts-v1') || '[]')); } catch { return []; }
+  try { return validatePrompts(JSON.parse(clientStorage.getItem('nova-prompts-v1') || '[]')); } catch { return []; }
 }
 export function validatePrompts(value: unknown): SavedPrompt[] {
   if (!Array.isArray(value) || value.length > 200) throw new Error('A prompt library must contain at most 200 entries.');

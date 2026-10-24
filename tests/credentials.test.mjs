@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { loadBrowserStorage } from './helpers/client-storage.mjs';
 
 function storageWithVault(invoke, platform = 'Win32') {
   const data = new Map();
@@ -11,7 +12,8 @@ function storageWithVault(invoke, platform = 'Win32') {
   const source = readFileSync(new URL('../src/lib/storage.ts', import.meta.url), 'utf8').replaceAll('import.meta.env.BASE_URL', "'/'");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   class CustomEvent { constructor(name, options) { this.type = name; this.detail = options.detail; } }
-  vm.runInNewContext(compiled, { exports: module.exports, module, navigator: { platform }, require: name => ({ '../types': { defaultConfig: {}, defaultProvider: {} }, '@tauri-apps/api/core': { invoke }, './secrets': { registerSecrets() {} } })[name], localStorage: { getItem: key => data.get(key), setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) }, window: { __TAURI_INTERNALS__: {}, dispatchEvent: event => events.push(event) }, structuredClone, CustomEvent });
+  const localStorage = { getItem: key => data.get(key), setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) };
+  vm.runInNewContext(compiled, { exports: module.exports, module, navigator: { platform }, require: name => ({ './client-storage': loadBrowserStorage({ localStorage }), '../types': { defaultConfig: {}, defaultProvider: {} }, '@tauri-apps/api/core': { invoke }, './secrets': { registerSecrets() {} } })[name], localStorage, window: { __TAURI_INTERNALS__: {}, dispatchEvent: event => events.push(event) }, structuredClone, CustomEvent });
   return { api: module.exports, data, events };
 }
 const config = { providers: [{ id: 'company', baseUrl: 'https://example.com/v1', apiKey: 'test-only-secret', models: ['test'] }] };

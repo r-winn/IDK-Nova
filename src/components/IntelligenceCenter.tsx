@@ -1,3 +1,4 @@
+import { clientStorage } from '../lib/client-storage';
 import { useState, type ReactNode } from 'react';
 import { ThemedSelect } from './ThemedSelect';
 import { Pin, Plus, Trash2, Workflow, BookOpen, Activity, ChartNoAxesCombined, History } from 'lucide-react';
@@ -27,8 +28,8 @@ export function IntelligenceCenter({ config, chat, projects, onProjectMemory, ru
   const [draft, setDraft] = useState('');
   const [excluded, setExcluded] = useState(() => loadValue<number[]>(`nova-context-excluded-${chat.id}`, []));
   const tasks = loadValue<AgentTask[]>('idk-nova-agent-tasks-v1', []).slice().reverse();
-  const saveNotes = (value: MemoryNote[]) => { setNotes(value); localStorage.setItem('nova-memory-notes', JSON.stringify(value)); if (scope !== 'personal') onProjectMemory(scope, value.filter(note => note.scope === scope)); };
-  const saveSettings = (value: typeof settings) => { setSettings(value); localStorage.setItem('nova-intelligence', JSON.stringify(value)); };
+  const saveNotes = (value: MemoryNote[]) => { setNotes(value); clientStorage.setItem('nova-memory-notes', JSON.stringify(value)); if (scope !== 'personal') onProjectMemory(scope, value.filter(note => note.scope === scope)); };
+  const saveSettings = (value: typeof settings) => { setSettings(value); clientStorage.setItem('nova-intelligence', JSON.stringify(value)); };
   const models = config.providers.flatMap(provider => provider.models.map(model => ({ value: `${provider.id}::${model}`, label: `${provider.name} · ${model}` })));
   return <div className="intelligence-center">
     <nav className="intelligence-tabs" aria-label="Intelligence sections">{sections.map(({ id, title, icon: Icon }) => <button key={id} disabled={!isTauri() && (id === 'activity' || id === 'recovery')} title={!isTauri() && (id === 'activity' || id === 'recovery') ? 'Work activity and recovery require the desktop app' : undefined} aria-current={tab === id ? 'page' : undefined} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon />{title}</button>)}</nav>
@@ -44,7 +45,7 @@ export function IntelligenceCenter({ config, chat, projects, onProjectMemory, ru
         <textarea dir="auto" placeholder="Add a fact or preference to remember…" maxLength={4000} value={draft} onChange={event => setDraft(event.target.value)} /><button className="primary-button" disabled={!draft.trim()} onClick={() => { saveNotes([...notes, { id: crypto.randomUUID(), scope, text: draft.trim(), pinned: false }]); setDraft(''); }}><Plus />Add memory</button><small>Do not store API keys or passwords in memory notes.</small>
       </section>
       <section className="settings-section"><h3>Current conversation context</h3><p>About {contextEstimate(chat.messages).toLocaleString()} text tokens before filtering. This is an estimate, not provider billing or image usage.</p><label>Recent messages to include<input type="number" min={2} max={200} value={settings.contextMessages} onChange={event => saveSettings({ ...settings, contextMessages: Math.max(2, Math.min(200, Number(event.target.value) || 2)) })} /></label>
-        <div className="context-message-list">{chat.messages.map((message, index) => <label key={index}><input type="checkbox" checked={!excluded.includes(index)} onChange={() => { const next = excluded.includes(index) ? excluded.filter(item => item !== index) : [...excluded, index]; setExcluded(next); localStorage.setItem(`nova-context-excluded-${chat.id}`, JSON.stringify(next)); }} /><span><b>{message.role}</b><small>{message.content.slice(0, 160)}</small></span></label>)}</div>
+        <div className="context-message-list">{chat.messages.map((message, index) => <label key={index}><input type="checkbox" checked={!excluded.includes(index)} onChange={() => { const next = excluded.includes(index) ? excluded.filter(item => item !== index) : [...excluded, index]; setExcluded(next); clientStorage.setItem(`nova-context-excluded-${chat.id}`, JSON.stringify(next)); }} /><span><b>{message.role}</b><small>{message.content.slice(0, 160)}</small></span></label>)}</div>
       </section>
       {storagePanel}
     </>}

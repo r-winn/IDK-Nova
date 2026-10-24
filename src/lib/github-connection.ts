@@ -1,3 +1,4 @@
+import { clientStorage } from './client-storage';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { fetch as nativeFetch } from '@tauri-apps/plugin-http';
 import { registerSecrets } from './secrets';
@@ -5,7 +6,7 @@ const account = 'nova-plugin:github', marker = 'nova-github-account';
 let token = '', sessionLogin = '';
 const macLocal = () => isTauri() && typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
 const localTokenKey = 'nova-github-token-local';
-export function githubLogin() { return sessionLogin || (isTauri() ? localStorage.getItem(marker) || '' : ''); }
+export function githubLogin() { return sessionLogin || (isTauri() ? clientStorage.getItem(marker) || '' : ''); }
 export async function connectGithub(value: string) {
   const candidate = value.trim();
   if (!candidate || candidate.length > 255 || /\s/.test(candidate)) throw new Error('Enter a GitHub access token.');
@@ -14,22 +15,22 @@ export async function connectGithub(value: string) {
   if (!response.ok) throw new Error(`GitHub authentication failed (${response.status}). Check token access and expiry.`);
   const user = await response.json();
   if (typeof user.login !== 'string') throw new Error('Invalid GitHub account response.');
-  if (macLocal()) localStorage.setItem(localTokenKey, candidate);
+  if (macLocal()) clientStorage.setItem(localTokenKey, candidate);
   else if (isTauri()) await invoke('write_provider_credential', { account, secret: candidate });
   token = candidate; sessionLogin = user.login;
-  if (isTauri()) localStorage.setItem(marker, user.login);
+  if (isTauri()) clientStorage.setItem(marker, user.login);
   return user.login as string;
 }
 export async function disconnectGithub() {
-  if (macLocal()) localStorage.removeItem(localTokenKey);
+  if (macLocal()) clientStorage.removeItem(localTokenKey);
   else if (isTauri()) await invoke('write_provider_credential', { account, secret: '' });
-  token = ''; sessionLogin = ''; localStorage.removeItem(marker);
+  token = ''; sessionLogin = ''; clientStorage.removeItem(marker);
 }
 export const githubFetch: typeof fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
   if (url.origin !== 'https://api.github.com' || (init?.method || 'GET').toUpperCase() !== 'GET' || url.username || url.password) throw new Error('GitHub connection permits read-only GitHub API requests only.');
   if (!token && githubLogin()) {
-    token = macLocal() ? localStorage.getItem(localTokenKey) || '' : await invoke<string | null>('read_provider_credential', { account, allowPrompt: false }) || '';
+    token = macLocal() ? clientStorage.getItem(localTokenKey) || '' : await invoke<string | null>('read_provider_credential', { account, allowPrompt: false }) || '';
     if (!token) throw new Error('Reconnect GitHub in Marketplace to restore its credentials.');
     registerSecrets([token]);
   }

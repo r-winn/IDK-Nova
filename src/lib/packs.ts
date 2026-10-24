@@ -1,3 +1,4 @@
+import { clientStorage } from './client-storage';
 import { promptPacks, savedPrompts, validatePrompts, type SavedPrompt } from './prompts';
 import { extensionCatalog, extensionUse, installedExtensions, saveExtensions } from './extensions';
 import { inputTool, inputInstructions } from './input-requests';
@@ -15,7 +16,7 @@ export function installedPlugins(): InstalledPack[] {
   return installedPacks().filter(pack => !pack.prompts.length);
 }
 export function storePrompts(prompts: SavedPrompt[]) {
-  localStorage.setItem('nova-prompts-v1', JSON.stringify(validatePrompts(prompts)));
+  clientStorage.setItem('nova-prompts-v1', JSON.stringify(validatePrompts(prompts)));
   window.dispatchEvent(new Event(PACKS_CHANGED));
 }
 export function packContext(_ids: string[]): string {

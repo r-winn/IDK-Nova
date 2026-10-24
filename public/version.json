@@ -1,6 +1,11 @@
 {
-  "version": "0.30.3",
-  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.30.3",
-  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.30.3/IDK.Nova_0.30.3_x64-setup.exe",
-  "notes": ["Paged Office inspection with sheet filters and local numeric statistics", "Spreadsheet parsing and generation run in cancellable workers", "Recover oversized tool context without rerunning completed actions", "Bounded recovery for transient provider interruptions; partial replies preserved", "macOS saves provider and GitHub credentials locally without Keychain; one-time re-entry for vault-only keys"]
+  "version": "0.31.0",
+  "releaseUrl": "https://github.com/r-winn/IDK-Nova/releases/tag/v0.31.0",
+  "installerUrl": "https://github.com/r-winn/IDK-Nova/releases/download/v0.31.0/IDK.Nova_0.31.0_x64-setup.exe",
+  "notes": [
+    "New Linux server deployment bundle with mandatory company OIDC sign-in",
+    "Company provider keys stay server-side; browser history is isolated by account",
+    "HTTPS configuration, separate company defaults, versioned update and rollback scripts",
+    "Persian and English IT deployment guides; existing desktop behavior preserved"
+  ]
 }

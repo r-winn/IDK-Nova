@@ -1,3 +1,4 @@
+import { loadBrowserStorage } from './helpers/client-storage.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -5,6 +6,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 function load(path, dependencies, globals) {
+  dependencies = { ...dependencies, './client-storage': loadBrowserStorage(globals), '../lib/client-storage': loadBrowserStorage(globals) };
   if (path === '../src/lib/packs.ts') dependencies = { ...dependencies, './input-requests': load('../src/lib/input-requests.ts', {}, globals) };
   if (path !== '../src/lib/extensions.ts' && !dependencies['./extensions']) dependencies = { ...dependencies, './extensions': load('../src/lib/extensions.ts', {}, globals) };
   const module = { exports: {} };

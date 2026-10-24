@@ -20,7 +20,13 @@
 
 Technical design: **[Nova Work architecture](docs/NOVA_WORK_ARCHITECTURE.md)**
 
-### New in 0.30.0 · Designed Office output
+### New in 0.31.0 · Company Linux server
+
+Deploy the same Nova web interface on a company domain, with mandatory OIDC sign-in (Entra ID, AD FS, or Keycloak connected to internal AD), server-side provider credentials, account-scoped browser history, HTTPS and a versioned update/rollback command. Download **IDK-Nova-Server-0.31.0.tar.gz** and its checksum from [Releases](https://github.com/r-winn/IDK-Nova/releases/latest).
+
+**For IT:** [فارسی: نصب و اتصال به اکتیو دایرکتوری](server/README.fa.md) · [Deployment, configuration, updates and security limits](server/README.md). This is web hosting, not desktop Work execution on users' PCs or cross-device history sync.
+
+### Designed Office output
 
 **0.30.3 reliability update:** paged Office analysis, local numeric summaries, cancellable spreadsheet workers, bounded context/stream recovery and Mac local settings without mandatory Keychain. [Behavior and verification limits](docs/releases/v0.30.3.md).
 
@@ -32,7 +38,7 @@ PowerPoint now offers eight art directions and eleven content-driven layouts, wi
 
 ### Local multimodal import
 
-The local-model wizard accepts a main GGUF and a matching optional mmproj Vision file. Both are copied privately, registered as Ollama model layers and checked for actual capabilities. Vision-ready imports send a real test image before being marked ready; mismatches and unsupported runtimes remain explicit errors. [Setup and verification limits](docs/releases/v0.29.3.md).
+The local-model wizard accepts a main GGUF and a matching optional mmproj Vision file. Since 0.30.1 the files are imported directly into Ollama without an extra permanent Nova copy. Vision-ready imports send a real test image before being marked ready; mismatches and unsupported runtimes remain explicit errors. [Setup and verification limits](docs/releases/v0.29.3.md).
 
 ### Local GGUF connectivity
 
@@ -106,7 +112,7 @@ See [implementation status and remaining limitations](UPGRADE_STATUS.md) before 
 | --- | --- | --- | --- |
 | Streaming conversations, temporary sessions, attachments, documents, email drafts, code and math | Project-aware chats with local folder context and portable `.nova-work` history | Image viewer, PDF viewer, text preview and generated-code workspace | Local Ollama/GGUF, LM Studio, company APIs, cloud providers and three agent approval levels |
 
-Nova is local-first and provider-neutral. It does not ship with a hidden model or proxy your conversations through an IDK Nova server.
+Nova is local-first and provider-neutral. It does not ship with a hidden model or route your conversations through a vendor-operated IDK Nova service. The optional company server routes configured company-provider requests through your own infrastructure.
 
 ## Get Nova
 
@@ -115,6 +121,7 @@ Nova is local-first and provider-neutral. It does not ship with a hidden model o
 | Windows 10/11 (64-bit) | **[Choose Setup.exe in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | Choose MSI for managed deployment |
 | macOS (Apple Silicon + Intel) | **[Choose Universal DMG in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | — |
 | Browser | **[Open the web app](https://r-winn.github.io/IDK-Nova/)** | Desktop is required for Nova Work and local GGUF import |
+| Company Linux server | **[Choose IDK-Nova-Server-*.tar.gz in Releases](https://github.com/r-winn/IDK-Nova/releases/latest)** | [IT installation guide](server/README.fa.md); x86_64 / ARM64 Docker host |
 
 All official binaries are attached to the **[latest GitHub Release](https://github.com/r-winn/IDK-Nova/releases/latest)**. Do not download Nova installers from unofficial mirrors.
 

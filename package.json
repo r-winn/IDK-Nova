@@ -1,10 +1,12 @@
 {
   "name": "idk-nova",
   "private": true,
-  "version": "0.30.3",
+  "version": "0.31.0",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "test:server": "npm test --prefix server",
+    "server:bundle": "node scripts/package-server.mjs",
     "packs:sync": "node scripts/sync-prompt-manifests.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",

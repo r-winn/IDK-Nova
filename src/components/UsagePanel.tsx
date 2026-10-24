@@ -1,3 +1,4 @@
+import { clientStorage } from '../lib/client-storage';
 import { useEffect, useState } from 'react';
 import { ThemedSelect } from './ThemedSelect';
 import type { Config } from '../types';
@@ -16,7 +17,7 @@ export function UsagePanel({ config }: { config: Config }) {
     const next = { ...prices };
     if (text === '') { next[key] = { ...next[key] }; delete next[key][field]; }
     else { const value = Number(text); if (!Number.isFinite(value) || value < 0) return; next[key] = { ...next[key], [field]: value }; }
-    setPrices(next); localStorage.setItem('nova-prices-v1', JSON.stringify(next));
+    setPrices(next); clientStorage.setItem('nova-prices-v1', JSON.stringify(next));
   };
   return <section className="settings-section usage-panel"><h3>Usage & latency</h3><p>Only provider-reported tokens are counted. Missing usage is shown as unavailable, never estimated. First text measures the first visible response, including planning time for Work.</p>
     <ThemedSelect value={period} onValueChange={value => setPeriod(value as typeof period)}><option value="day">Today</option><option value="month">This month</option></ThemedSelect>

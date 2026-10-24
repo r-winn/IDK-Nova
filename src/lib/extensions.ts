@@ -1,3 +1,4 @@
+import { clientStorage } from './client-storage';
 import type { AgentTool, AgentToolCall } from './ai';
 
 export const EXTENSIONS_KEY = 'nova-extensions-v1';
@@ -20,10 +21,10 @@ export function validateExtensions(value: unknown): string[] {
   return [...new Set(value)] as string[];
 }
 export function installedExtensions() {
-  try { return validateExtensions(JSON.parse(localStorage.getItem(EXTENSIONS_KEY) || '[]')); } catch { return []; }
+  try { return validateExtensions(JSON.parse(clientStorage.getItem(EXTENSIONS_KEY) || '[]')); } catch { return []; }
 }
 export function saveExtensions(ids: string[]) {
-  localStorage.setItem(EXTENSIONS_KEY, JSON.stringify(validateExtensions(ids)));
+  clientStorage.setItem(EXTENSIONS_KEY, JSON.stringify(validateExtensions(ids)));
   window.dispatchEvent(new Event('nova-packs-changed'));
 }
 // Deliberately parse arithmetic; downloaded packages never execute JavaScript.

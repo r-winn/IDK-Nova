@@ -1,3 +1,4 @@
+import { clientStorage } from './client-storage';
 import type { Config } from '../types';
 import { intelligenceSettings, type IntelligenceSettings } from './intelligence';
 import { modelPrices, type ModelPrice } from './usage';
@@ -46,7 +47,7 @@ export function configPreferences(value: unknown): Partial<Config> {
   return result;
 }
 export function exportConfigBundle(config: Config, includeKeys = false, includeMemory = false, sections: ExportSections = defaultExportSections) {
-  const personalMemory: MemoryNote[] = includeMemory ? JSON.parse(localStorage.getItem('nova-memory-notes') || '[]').filter((note: MemoryNote) => note.scope === 'personal') : [];
+  const personalMemory: MemoryNote[] = includeMemory ? JSON.parse(clientStorage.getItem('nova-memory-notes') || '[]').filter((note: MemoryNote) => note.scope === 'personal') : [];
   return {
     ...(sections.appearance ? { theme: config.theme, temperature: config.temperature, branding: config.branding, database: { ...config.database, url: '' } } : {}),
     ...(sections.providers ? { activeProviderId: config.activeProviderId, activeModel: config.activeModel, providers: config.providers.map(provider => ({ id: provider.id, name: provider.name, baseUrl: provider.baseUrl, models: provider.models, apiKey: includeKeys ? provider.apiKey : '', apiKeyStored: false })) } : {}),
@@ -107,23 +108,23 @@ export function importConfigBundle(bundle: Bundle | undefined, source: Config, m
   const prices = bundle.prices && { ...modelPrices(), ...Object.fromEntries(Object.entries(bundle.prices).map(([key, price]) => [remap(key), price])) };
   // Roll back portable settings together if storage is full.
   const keys = ['nova-prompts-v1', 'nova-intelligence', 'nova-prices-v1', 'nova-memory-notes'];
-  const before = keys.map(key => localStorage.getItem(key));
-  const extensionsBefore = localStorage.getItem(EXTENSIONS_KEY);
+  const before = keys.map(key => clientStorage.getItem(key));
+  const extensionsBefore = clientStorage.getItem(EXTENSIONS_KEY);
   try {
-    if (bundle.extensions !== undefined) localStorage.setItem(EXTENSIONS_KEY, JSON.stringify(validateExtensions([...new Set([...installedExtensions(), ...validateExtensions(bundle.extensions)])])));
-    if (bundle.prompts !== undefined) localStorage.setItem(keys[0], JSON.stringify(prompts));
-    if (intelligence) localStorage.setItem(keys[1], JSON.stringify(intelligence));
-    if (prices) localStorage.setItem(keys[2], JSON.stringify(prices));
+    if (bundle.extensions !== undefined) clientStorage.setItem(EXTENSIONS_KEY, JSON.stringify(validateExtensions([...new Set([...installedExtensions(), ...validateExtensions(bundle.extensions)])])));
+    if (bundle.prompts !== undefined) clientStorage.setItem(keys[0], JSON.stringify(prompts));
+    if (intelligence) clientStorage.setItem(keys[1], JSON.stringify(intelligence));
+    if (prices) clientStorage.setItem(keys[2], JSON.stringify(prices));
     if (bundle.personalMemory) {
-      const notes: MemoryNote[] = JSON.parse(localStorage.getItem(keys[3]) || '[]');
+      const notes: MemoryNote[] = JSON.parse(clientStorage.getItem(keys[3]) || '[]');
       const ids = new Set(bundle.personalMemory.map(note => note.id));
-      localStorage.setItem(keys[3], JSON.stringify([...notes.filter(note => note.scope !== 'personal' || !ids.has(note.id)), ...bundle.personalMemory]));
+      clientStorage.setItem(keys[3], JSON.stringify([...notes.filter(note => note.scope !== 'personal' || !ids.has(note.id)), ...bundle.personalMemory]));
     }
     if (bundle.prompts !== undefined || bundle.extensions !== undefined) window.dispatchEvent(new Event(PACKS_CHANGED));
   } catch (error) {
-    if (extensionsBefore === null) localStorage.removeItem(EXTENSIONS_KEY); else localStorage.setItem(EXTENSIONS_KEY, extensionsBefore);
-    keys.forEach(key => localStorage.removeItem(key));
-    keys.forEach((key, index) => { if (before[index] !== null) localStorage.setItem(key, before[index]!); });
+    if (extensionsBefore === null) clientStorage.removeItem(EXTENSIONS_KEY); else clientStorage.setItem(EXTENSIONS_KEY, extensionsBefore);
+    keys.forEach(key => clientStorage.removeItem(key));
+    keys.forEach((key, index) => { if (before[index] !== null) clientStorage.setItem(key, before[index]!); });
     throw error;
   }
 }

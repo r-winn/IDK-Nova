@@ -1,10 +1,41 @@
-name: Build Desktop Installers
+name: Build Desktop Installers and Linux Server
 on:
   push:
     tags: ['v*']
 permissions:
   contents: write
 jobs:
+  server:
+    name: Linux server bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm ci --prefix server --ignore-scripts
+      - run: npm test --prefix server
+      - run: npm run build
+      - run: npm run server:bundle
+      - name: Verify packaged Linux container and deployment configuration
+        run: |
+          mkdir "$RUNNER_TEMP/nova-server"
+          tar -xzf server-dist/IDK-Nova-Server-*.tar.gz -C "$RUNNER_TEMP/nova-server"
+          docker build --tag nova-server-ci "$RUNNER_TEMP/nova-server"
+          docker run --rm -v "$PWD/server/test:/app/test:ro" nova-server-ci node --test test/server.test.mjs
+          export NOVA_CONFIG_DIR="$RUNNER_TEMP/nova-config" NOVA_VERSION="$(cat "$RUNNER_TEMP/nova-server/VERSION")"
+          mkdir "$NOVA_CONFIG_DIR"
+          cp "$RUNNER_TEMP/nova-server/.env.example" "$NOVA_CONFIG_DIR/.env"
+          cp "$RUNNER_TEMP/nova-server/config.example.json" "$NOVA_CONFIG_DIR/config.json"
+          docker compose --env-file "$NOVA_CONFIG_DIR/.env" -f "$RUNNER_TEMP/nova-server/compose.yaml" config --quiet
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-server-bundle
+          path: server-dist/*
+          if-no-files-found: error
   windows:
     runs-on: windows-latest
     env:
@@ -121,17 +152,25 @@ jobs:
               fi
             done
   publish:
-    name: Publish complete desktop release
-    needs: [windows, macos]
+    name: Publish desktop and server release
+    needs: [windows, macos, server]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-server-bundle
+          path: server-dist
+      - name: Attach Linux server downloads
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" server-dist/* --repo "$GITHUB_REPOSITORY" --clobber
       - name: Verify installers and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets > assets.json
-          node -e 'const a=require("./assets.json").assets; for(const suffix of ["-setup.exe", ".msi", ".dmg", "latest.json"]) if(!a.some(x=>x.name.endsWith(suffix))) throw new Error("Missing release asset: "+suffix);'
+          node -e 'const a=require("./assets.json").assets; for(const suffix of ["-setup.exe", ".msi", ".dmg", "latest.json", ".tar.gz", ".tar.gz.sha256"]) if(!a.some(x=>x.name.endsWith(suffix))) throw new Error("Missing release asset: "+suffix);'
           if [[ -f "docs/releases/$GITHUB_REF_NAME.md" ]]; then
             gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file "docs/releases/$GITHUB_REF_NAME.md"
           fi
