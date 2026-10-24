@@ -40,7 +40,7 @@ before(async () => {
   const upstreamUrl = await listen(upstream);
   temp = await mkdtemp(path.join(tmpdir(), 'nova-server-test-'));
   await writeFile(path.join(temp, 'index.html'), '<!doctype html><html><head></head><body>unchanged Nova UI</body></html>');
-  config = { publicOrigin: 'http://127.0.0.1', oidc: { issuer, clientId: 'nova-test', clientSecretEnv: 'OIDC_SECRET', allowedGroups: ['nova-users'] }, providers: [{ id: 'company', baseUrl: `${upstreamUrl}/v1`, apiKeyEnv: 'PROVIDER_SECRET', allowHttp: true, models: ['model-a'] }] };
+  config = { publicOrigin: 'http://127.0.0.1', oidc: { issuer, clientId: 'nova-test', clientSecretEnv: 'OIDC_SECRET', allowedGroups: ['nova-users'], uiLocales: 'fa en' }, providers: [{ id: 'company', baseUrl: `${upstreamUrl}/v1`, apiKeyEnv: 'PROVIDER_SECRET', allowHttp: true, models: ['model-a'] }] };
   // Reserve a port before discovery so the canonical callback is never inferred from Host.
   const reserve = http.createServer(); base = await listen(reserve); await close(reserve);
   config.publicOrigin = base;
@@ -54,6 +54,7 @@ async function login(subject = 'alice', { wrongState = false, claims = {} } = {}
   const cookie = start.headers.get('set-cookie').split(';')[0];
   const url = new URL(start.headers.get('location'));
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(url.searchParams.get('ui_locales'), 'fa en');
   const code = `code-${Math.random()}`;
   codes.set(code, { challenge: url.searchParams.get('code_challenge'), nonce: url.searchParams.get('nonce'), subject, claims: { ...nextClaims, ...claims } });
   const callback = `${base}/auth/callback?code=${code}&state=${wrongState ? 'bad' : url.searchParams.get('state')}`;

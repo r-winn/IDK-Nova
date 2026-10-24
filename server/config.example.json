@@ -11,6 +11,7 @@
     "clientId": "nova-web",
     "clientSecretEnv": "NOVA_OIDC_CLIENT_SECRET",
     "scopes": "openid profile email",
+    "uiLocales": "fa en",
     "groupsClaim": "groups",
     "allowedGroups": ["nova-users"]
   },

@@ -23,6 +23,7 @@ export function validateConfig(input, env = process.env, { testHTTP = false } = 
   config.oidc.allowedGroups ??= [];
   if (!Array.isArray(config.oidc.allowedGroups) || config.oidc.allowedGroups.some(x => typeof x !== 'string')) throw new Error('allowedGroups must contain group IDs/names.');
   if (!(config.oidc.scopes || 'openid profile email').split(/\s+/).includes('openid')) throw new Error('OIDC scopes must include openid.');
+  if (config.oidc.uiLocales !== undefined && (typeof config.oidc.uiLocales !== 'string' || config.oidc.uiLocales.length > 128 || !/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*(?: +[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*)*$/.test(config.oidc.uiLocales))) throw new Error('uiLocales must be space-separated language tags such as fa en.');
   if (!Array.isArray(config.providers) || !config.providers.length) throw new Error('Configure at least one company provider.');
   const ids = new Set();
   for (const provider of config.providers) {
@@ -87,7 +88,7 @@ export async function createApplication(input, { env = process.env, webRoot = pa
         if (cookies[loginCookie]) pending.delete(digest(cookies[loginCookie]));
         const sid = token(), state = oidc.randomState(), nonce = oidc.randomNonce(), verifier = oidc.randomPKCECodeVerifier();
         pending.set(digest(sid), { state, nonce, verifier, expires: Date.now() + 600000 });
-        const to = oidc.buildAuthorizationUrl(client, { redirect_uri: `${config.publicOrigin}/auth/callback`, scope: config.oidc.scopes || 'openid profile email', state, nonce, code_challenge: await oidc.calculatePKCECodeChallenge(verifier), code_challenge_method: 'S256' });
+        const to = oidc.buildAuthorizationUrl(client, { redirect_uri: `${config.publicOrigin}/auth/callback`, scope: config.oidc.scopes || 'openid profile email', ...(config.oidc.uiLocales ? { ui_locales: config.oidc.uiLocales } : {}), state, nonce, code_challenge: await oidc.calculatePKCECodeChallenge(verifier), code_challenge_method: 'S256' });
         res.setHeader('Set-Cookie', cookie(loginCookie, sid, 600));
         return redirect(res, to.href);
       }

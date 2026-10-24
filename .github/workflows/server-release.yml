@@ -40,6 +40,11 @@ jobs:
           docker run --rm -e NOVA_DOMAIN=nova.company.internal -v "$release/onprem/Caddyfile:/etc/caddy/Caddyfile:ro" -v "$NOVA_CONFIG_DIR/tls:/run/nova/tls:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile
       - name: Render the native themed Keycloak login in English and Persian
         run: |
+          for attempt in 1 2 3; do
+            if docker pull quay.io/keycloak/keycloak:26.8.1; then break; fi
+            if [[ "$attempt" == 3 ]]; then exit 1; fi
+            sleep 5
+          done
           docker run -d --name nova-keycloak-theme-test -p 127.0.0.1:18080:8080 \
             -v "$RUNNER_TEMP/nova-server/keycloak/themes/nova:/opt/keycloak/themes/nova:ro" \
             -v "$PWD/server/test/fixtures/keycloak-theme-realm.json:/opt/keycloak/data/import/nova-theme-test-realm.json:ro" \
